@@ -754,3 +754,4 @@ button, .row, summary { -webkit-tap-highlight-color: transparent; }
 .contour-key { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; color: var(--muted); font-weight: 650; white-space: nowrap; }
 .contour-key svg { width: 16px; height: 8px; color: #5a7090; }
 :root[data-theme="dark"] .contour-key svg { color: #7d93b3; }
+.section-note { text-transform: none; letter-spacing: 0; font-weight: 500; margin-left: 6px; color: var(--muted); }
