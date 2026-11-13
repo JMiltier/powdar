@@ -1,16 +1,17 @@
 {
-  "name": "Colorado Snow",
-  "short_name": "CO Snow",
-  "description": "Colorado ski resorts: what's open, opening days and snow on the way.",
+  "name": "PowScout",
+  "short_name": "PowScout",
+  "description": "Colorado ski resorts on one map: snow on the way, base depth, and opening and closing days.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#eef2f7",
-  "theme_color": "#1b4f9c",
+  "orientation": "portrait",
+  "background_color": "#f4f6f9",
+  "theme_color": "#ffffff",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]
 }
