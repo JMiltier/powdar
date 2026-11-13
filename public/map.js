@@ -244,7 +244,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // lit surface: brightness by depth, light from the northwest, so deep snow reads as a raised layer)
   // and/or contours ({ levels, color }: smooth lines where depth crosses each level, by marching
   // squares over a blurred depth grid).
-  async function picture(src, recolor, { shadow = null, depth = null, relief = false, contours = null } = {}) {
+  // smooth: a ramp ([r, g, b, a] per depth class) to draw the depth as smooth-edged bands at 3× the
+  // grid's resolution, instead of NOAA's ~1 km squares.
+  async function picture(src, recolor, { shadow = null, depth = null, relief = false, contours = null, smooth = null } = {}) {
     const size = map.getSize();
     const b = map.getPixelBounds();
     const sw = map.options.crs.project(map.unproject(L.point(b.min.x, b.max.y)));
@@ -315,6 +317,50 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = c[3];
     }
     g.putImageData(data, 0, 0);
+    // Smooth bands: the blurred depth field, sampled between grid points, cut into bands with a soft
+    // edge only right at each boundary (so bands stay distinct but their outlines are curves).
+    let source = small;
+    if (smooth && f) {
+      const K = 3;
+      const W = w * K;
+      const H = h * K;
+      const hi = document.createElement('canvas');
+      hi.width = W;
+      hi.height = H;
+      const hg = hi.getContext('2d');
+      const out = hg.createImageData(W, H);
+      const o = out.data;
+      const step = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+      const top = smooth.length - 1;
+      for (let Y = 0; Y < H; Y++) {
+        const fy = (Y + 0.5) / K - 0.5;
+        const y0 = Math.max(0, Math.min(h - 1, Math.floor(fy)));
+        const y1 = Math.min(h - 1, y0 + 1);
+        const ty = Math.max(0, Math.min(1, fy - y0));
+        for (let X = 0; X < W; X++) {
+          const fx = (X + 0.5) / K - 0.5;
+          const x0 = Math.max(0, Math.min(w - 1, Math.floor(fx)));
+          const x1 = Math.min(w - 1, x0 + 1);
+          const tx = Math.max(0, Math.min(1, fx - x0));
+          const v = (f[y0 * w + x0] * (1 - tx) + f[y0 * w + x1] * tx) * (1 - ty) + (f[y1 * w + x0] * (1 - tx) + f[y1 * w + x1] * tx) * ty;
+          const cover = step(-0.75, -0.45, v);
+          if (cover <= 0) continue;
+          const c = Math.max(0, Math.min(top, v));
+          const lo = Math.min(top, Math.floor(c));
+          const hiC = Math.min(top, lo + 1);
+          const t = step(0.44, 0.56, c - lo);
+          const A = smooth[lo];
+          const B = smooth[hiC];
+          const i = (Y * W + X) * 4;
+          o[i] = A[0] + (B[0] - A[0]) * t;
+          o[i + 1] = A[1] + (B[1] - A[1]) * t;
+          o[i + 2] = A[2] + (B[2] - A[2]) * t;
+          o[i + 3] = (A[3] + (B[3] - A[3]) * t) * cover;
+        }
+      }
+      hg.putImageData(out, 0, 0);
+      source = hi;
+    }
     // Drawn at the screen's real pixel density (crisp on phones), smoothed rather than blocky.
     const dpr = Math.min(3, window.devicePixelRatio || 1);
     const big = document.createElement('canvas');
@@ -324,7 +370,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     G.imageSmoothingEnabled = true;
     G.imageSmoothingQuality = 'high';
     if (shadow) Object.assign(G, { shadowColor: shadow, shadowBlur: 5 * dpr });
-    G.drawImage(small, 0, 0, big.width, big.height);
+    G.drawImage(source, 0, 0, big.width, big.height);
     if (contours && f) {
       G.shadowColor = 'transparent';
       const sx = big.width / w;
@@ -458,13 +504,13 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         // surface), contours (shaded + depth lines), color (a blue depth scale).
         const shadow = isDark() ? 'rgba(0, 0, 0, 0.6)' : 'rgba(20, 32, 55, 0.85)';
         const depth = { classify: classOf };
-        if (snowStyle === 'color') next = await picture(snowExport, (r, g, b) => SNOW_COLOR[classOf(r, g, b)], { shadow: isDark() ? 'rgba(0, 0, 0, 0.5)' : 'rgba(20, 32, 55, 0.6)' });
+        if (snowStyle === 'color') next = await picture(snowExport, (r, g, b) => SNOW_COLOR[classOf(r, g, b)], { shadow: isDark() ? 'rgba(0, 0, 0, 0.5)' : 'rgba(20, 32, 55, 0.6)', depth, smooth: SNOW_COLOR.slice(0, 8) });
         else if (snowStyle === 'volume') next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], { shadow, depth, relief: true });
         else if (snowStyle === 'contours') {
           next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], {
-            shadow, depth, contours: { levels: [3, 4, 6], color: isDark() ? 'rgba(70, 90, 120, 0.8)' : 'rgba(60, 80, 110, 0.75)' },
+            shadow, depth, smooth: SNOW_RAMP.slice(0, 8), contours: { levels: [3, 4, 6], color: isDark() ? 'rgba(70, 90, 120, 0.8)' : 'rgba(60, 80, 110, 0.75)' },
           });
-        } else next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], { shadow });
+        } else next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], { shadow, depth, smooth: SNOW_RAMP.slice(0, 8) });
       }
       else if (layerName === 'radar') {
         try {
