@@ -191,9 +191,10 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     const b = map.getPixelBounds();
     const sw = map.options.crs.project(map.unproject(L.point(b.min.x, b.max.y)));
     const ne = map.options.crs.project(map.unproject(L.point(b.max.x, b.min.y)));
-    // Half resolution is about NOAA's own 1 km grid at this zoom; smoothing does the rest.
-    const w = Math.max(1, Math.round(size.x / 2));
-    const h = Math.max(1, Math.round(size.y / 2));
+    // About NOAA's own 1 km grid at this zoom (finer just shows its squares as stair-steps); smooth
+    // upscaling below turns the squares into clean rounded edges.
+    const w = Math.max(1, Math.round(size.x / 2.5));
+    const h = Math.max(1, Math.round(size.y / 2.5));
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.src = src(w, h, sw, ne);
@@ -214,14 +215,16 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = c[3];
     }
     g.putImageData(data, 0, 0);
+    // Drawn at the screen's real pixel density (crisp on phones), smoothed rather than blocky.
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
     const big = document.createElement('canvas');
-    big.width = size.x;
-    big.height = size.y;
+    big.width = Math.round(size.x * dpr);
+    big.height = Math.round(size.y * dpr);
     const G = big.getContext('2d');
     G.imageSmoothingEnabled = true;
     G.imageSmoothingQuality = 'high';
-    if (shadow) Object.assign(G, { shadowColor: shadow, shadowBlur: 7 });
-    G.drawImage(small, 0, 0, size.x, size.y);
+    if (shadow) Object.assign(G, { shadowColor: shadow, shadowBlur: 5 * dpr });
+    G.drawImage(small, 0, 0, big.width, big.height);
     return L.imageOverlay(big.toDataURL('image/png'), map.getBounds(), { pane: 'snow', interactive: false });
   }
   async function outlookLayer() {

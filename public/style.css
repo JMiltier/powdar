@@ -53,9 +53,9 @@ button { font: inherit; color: inherit; }
 .leaflet-tile-pane { filter: grayscale(0.75) contrast(1.15) brightness(0.92); transition: filter 0.3s ease; }
 /* Light map with snow cover on: a darker, slate relief so the white snow stands out. */
 :root:not([data-theme="dark"]) #map[data-layer="snow"] .leaflet-tile-pane { filter: grayscale(0.6) contrast(1.15) brightness(0.68) sepia(0.15) hue-rotate(180deg); }
-:root[data-theme="dark"] .leaflet-tile-pane { opacity: 0.9; filter: contrast(1.6) brightness(1.15); }
+:root[data-theme="dark"] .leaflet-tile-pane { opacity: 0.9; filter: contrast(1.25) brightness(1.05); }
 /* NOAA's snow cover comes as coarse squares: a slight blur turns them into soft cover. */
-.leaflet-snow-pane { filter: blur(1px); }
+.leaflet-snow-pane { filter: none; }
 
 
 /* ---------- Floating controls along the top ---------- */
