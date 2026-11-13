@@ -1521,6 +1521,11 @@ window.addEventListener('resize', () => {
 });
 WIDE.addEventListener('change', onResize);
 
+// No zooming the page on phones: iPhones ignore the viewport's "no zoom" for accessibility, so their
+// pinch gestures (and any two-finger move) are cancelled here too.
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+
 $('#credit-text').innerHTML = CREDITS;
 $('#info-btn').innerHTML = UI.info;
 function syncUnitPick() {

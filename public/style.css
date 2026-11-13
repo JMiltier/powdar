@@ -32,10 +32,11 @@
 }
 
 * { box-sizing: border-box; }
-html, body { height: 100%; }
+html, body { height: 100%; touch-action: pan-x pan-y; }
 body {
-  /* No double-tap-to-zoom (it swallowed quick taps on resorts) and no tap delay; pinch zoom still works. */
-  touch-action: manipulation;
+  /* Scrolling only: no pinch or double-tap zoom (the layout is made for the screen as it is), and
+     no tap delay. */
+  touch-action: pan-x pan-y;
   margin: 0;
   overflow: hidden;
   background: var(--bg);
@@ -48,7 +49,7 @@ body {
 button { font: inherit; color: inherit; }
 
 /* ---------- Map: the whole screen ---------- */
-#map { position: fixed; inset: 0; background: var(--bg); touch-action: manipulation; }
+#map { position: fixed; inset: 0; background: var(--bg); touch-action: pan-x pan-y; }
 .leaflet-container { font: inherit; background: var(--bg); }
 /* The relief, softened and tinted by the app's own background showing through. */
 .leaflet-tile-pane { filter: grayscale(0.75) contrast(1.15) brightness(0.92); transition: filter 0.3s ease; }
