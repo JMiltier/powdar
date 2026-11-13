@@ -13,7 +13,8 @@ const today = new Date().toISOString().slice(0, 10);
 const { startYear } = waterYear(today); // the current, unfinished season starts this year
 // Every station the app uses: Colorado's hand-picked ones plus the rest of the country's.
 const us = JSON.parse(await readFile(new URL('../src/us-resorts.json', import.meta.url), 'utf8'));
-const stations = new Map([...RESORTS, ...us.resorts].filter((r) => r.snotel).map((r) => [r.snotel[0], r.snotel[1]]));
+// Colorado only, unless US_STATES=1 (see scripts/build.mjs).
+const stations = new Map([...RESORTS, ...(process.env.US_STATES === '1' ? us.resorts : [])].filter((r) => r.snotel).map((r) => [r.snotel[0], r.snotel[1]]));
 // ONLY=780:CO:SNTL,505:CO:SNTL limits the run to those stations (e.g. after changing a resort's station).
 if (process.env.ONLY) for (const t of [...stations.keys()]) if (!process.env.ONLY.split(',').includes(t)) stations.delete(t);
 const outDir = new URL('../public/history/', import.meta.url);
