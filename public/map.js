@@ -38,10 +38,14 @@ const NOAA_CLASSES = [
 // Our ramp, one entry per class: [r, g, b, alpha 0–255]. Snow is drawn as snow: white, thin and see-
 // through where it's shallow, solid where it's deep (a faint cool tint keeps it from reading as cloud).
 // Blue stays for the resort numbers. The key's gradient (.ramp) matches it.
+// Depth reads as brightness: a dusting is a dim grey-white, deep snow brilliant white; even a dusting is
+// clearly there.
 export const SNOW_RAMP = [
-  [236, 244, 252, 70], [238, 245, 252, 100], [240, 246, 253, 130], [242, 247, 253, 160], [244, 248, 254, 185],
-  [246, 250, 255, 205], [248, 251, 255, 222], [250, 252, 255, 235], [252, 253, 255, 245], [252, 253, 255, 245], [252, 253, 255, 245],
+  [196, 206, 219, 135], [212, 220, 231, 165], [225, 231, 240, 192], [236, 241, 247, 215], [244, 247, 251, 232],
+  [250, 252, 254, 242], [255, 255, 255, 250], [255, 255, 255, 252], [255, 255, 255, 255], [255, 255, 255, 255], [255, 255, 255, 255],
 ];
+// Depth contours (like a topo map), at NOAA class boundaries: 10″, 20″ and 59″ (~5 ft).
+export const SNOW_CONTOURS = [3, 4, 6];
 const classOf = (r, g, b) => {
   let best = 0;
   let bestD = Infinity;
@@ -219,7 +223,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     transparent: 'true', layers: 'show:3', f: 'image', t: Math.floor(Date.now() / 3600000),
   })}`;
   // shadow: a soft edge color around what's drawn (white snow needs one on the light map).
-  async function picture(src, recolor, shadow = null) {
+  // contours: { classify(r, g, b) → class index, levels: [class index…], color } draws smooth lines where
+  // the class crosses each level (marching squares over a lightly blurred class grid).
+  async function picture(src, recolor, shadow = null, contours = null) {
     const size = map.getSize();
     const b = map.getPixelBounds();
     const sw = map.options.crs.project(map.unproject(L.point(b.min.x, b.max.y)));
@@ -239,6 +245,24 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     g.drawImage(img, 0, 0);
     const data = g.getImageData(0, 0, w, h);
     const d = data.data;
+    let field = null;
+    if (contours) {
+      const raw = new Float32Array(w * h);
+      for (let i = 0, p = 0; i < d.length; i += 4, p++) raw[p] = d[i + 3] < 8 ? -1 : contours.classify(d[i], d[i + 1], d[i + 2]);
+      field = new Float32Array(w * h); // 3×3 average: rounder contours
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          let sum = 0;
+          let n = 0;
+          for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx;
+            const yy = y + dy;
+            if (xx >= 0 && yy >= 0 && xx < w && yy < h) { sum += raw[yy * w + xx]; n++; }
+          }
+          field[y * w + x] = sum / n;
+        }
+      }
+    }
     const memo = new Map();
     for (let i = 0; i < d.length; i += 4) {
       if (d[i + 3] < 8) { d[i + 3] = 0; continue; }
@@ -258,6 +282,35 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     G.imageSmoothingQuality = 'high';
     if (shadow) Object.assign(G, { shadowColor: shadow, shadowBlur: 5 * dpr });
     G.drawImage(small, 0, 0, big.width, big.height);
+    if (field) {
+      G.shadowColor = 'transparent';
+      const sx = big.width / w;
+      const sy = big.height / h;
+      G.strokeStyle = contours.color;
+      G.lineWidth = 1.1 * dpr;
+      G.lineJoin = G.lineCap = 'round';
+      G.beginPath();
+      for (const level of contours.levels) {
+        const t = level - 0.5;
+        const v = (x, y) => field[y * w + x];
+        const lerp = (a, b2) => (t - a) / (b2 - a);
+        for (let y = 0; y < h - 1; y++) {
+          for (let x = 0; x < w - 1; x++) {
+            const a = v(x, y); const b1 = v(x + 1, y); const c = v(x + 1, y + 1); const e = v(x, y + 1);
+            const pts = [];
+            if ((a >= t) !== (b1 >= t)) pts.push([x + lerp(a, b1), y]);
+            if ((b1 >= t) !== (c >= t)) pts.push([x + 1, y + lerp(b1, c)]);
+            if ((e >= t) !== (c >= t)) pts.push([x + lerp(e, c), y + 1]);
+            if ((a >= t) !== (e >= t)) pts.push([x, y + lerp(a, e)]);
+            for (let k = 0; k + 1 < pts.length; k += 2) {
+              G.moveTo((pts[k][0] + 0.5) * sx, (pts[k][1] + 0.5) * sy);
+              G.lineTo((pts[k + 1][0] + 0.5) * sx, (pts[k + 1][1] + 0.5) * sy);
+            }
+          }
+        }
+      }
+      G.stroke();
+    }
     return L.imageOverlay(big.toDataURL('image/png'), map.getBounds(), { pane: 'snow', interactive: false });
   }
   async function outlookLayer() {
@@ -337,7 +390,10 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     let next = null;
     let nextFrames = [];
     try {
-      if (layerName === 'snow') next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], isDark() ? null : 'rgba(25, 40, 65, 0.7)');
+      if (layerName === 'snow') {
+        next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], isDark() ? 'rgba(0, 0, 0, 0.6)' : 'rgba(20, 32, 55, 0.85)',
+          { classify: classOf, levels: SNOW_CONTOURS, color: isDark() ? 'rgba(70, 90, 120, 0.75)' : 'rgba(60, 80, 110, 0.7)' });
+      }
       else if (layerName === 'radar') {
         try {
           nextFrames = await radarLayer();

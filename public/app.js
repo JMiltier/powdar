@@ -283,7 +283,8 @@ function legendFor(layer) {
   if (layer === 'outlook') {
     return `<span class="legend-title">${esc(seasonSpan(state.outlookSeason))} outlook</span><span class="legend-keys"><span>Drier</span><i class="ramp ramp-outlook" aria-hidden="true"></i><span>Wetter</span><span class="muted">· ${esc(seasonSpan(state.outlookSeason))}</span></span>`;
   }
-  return '<span class="legend-title">Snow on the ground</span><span class="legend-keys"><span>1″</span><i class="ramp" aria-hidden="true"></i><span>8 ft+</span></span>';
+  return `<span class="legend-title">Snow on the ground</span><span class="legend-keys"><span>1″</span><i class="ramp" aria-hidden="true"></i><span>8 ft+</span>
+    <span class="contour-key" title="Depth contour lines at 10 inches, 20 inches and 5 feet"><svg viewBox="0 0 16 8" aria-hidden="true"><path d="M1 5.5C4 1 6 1 8 4s4 3 7-1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>10″ 20″ 5′</span></span>`;
 }
 
 function seasonText(r, today) {
