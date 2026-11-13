@@ -909,3 +909,23 @@ body.reordering, body.reordering * { user-select: none; cursor: grabbing; }
    view and has a soft tint instead, so its icon stays in the accent color.) */
 :root[data-theme="dark"] .ribbon .snow-toggle[aria-pressed="true"] { color: var(--accent); }
 :root[data-theme="dark"] .ribbon .snow-toggle[aria-expanded="true"] { color: var(--card); }
+
+/* Snow by day as one row of 10; today's column softly highlighted. */
+.rr-days { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; align-items: end; }
+.rd { padding: 2px 0 2px; border-radius: 6px; }
+.rd.today { background: var(--accent-soft); }
+.rd.today small { color: var(--accent); font-weight: 800; }
+.rd i { max-width: 18px; }
+
+/* Best bet: today and tomorrow's picks, side by side. */
+.best-bets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0 4px; }
+.best-bet { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 12px; border-radius: 14px; cursor: pointer;
+  border: 1px solid color-mix(in srgb, #e8a400 45%, var(--line)); background: color-mix(in srgb, #e8a400 9%, var(--card)); color: inherit; font: inherit; }
+.best-bet small { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #a87400; }
+:root[data-theme="dark"] .best-bet small { color: #f2c14e; }
+.best-bet b { font-size: 1.05rem; }
+.best-bet span { font-size: 0.78rem; color: var(--muted); line-height: 1.35; }
+.best-bet em { font-style: normal; font-size: 0.72rem; color: var(--muted); margin-top: 3px; }
+.best-note { margin: 2px 2px 8px; font-size: 0.7rem; color: var(--muted); }
+.best-star { color: #e8a400; margin-right: 5px; }
+@media (max-width: 360px) { .best-bets { grid-template-columns: 1fr; } }

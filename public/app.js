@@ -531,7 +531,7 @@ function rowSub(r) {
 }
 
 // Snow by day, like a ski app's list but both ways: the last 5 days (what fell, model estimates; the
-// resort's own report for the last 24 hours where it has one) | today | the next 5 days (forecast), as
+// resort's own report for the last 24 hours where it has one), today, and the next 4 (forecast), as
 // small bars with day letters and the inches above any bar with an inch or more.
 function miniDays(r) {
   const f = r.forecast;
@@ -549,11 +549,9 @@ function miniDays(r) {
     return `<span class="rd ${kind}${v > 0.2 ? ' snow' : ''}"><em>${v >= 1 ? `${Math.round(v)}″` : ''}</em><i style="height:${h}px"></i><small>${esc(letter)}</small></span>`;
   };
   const label = (d) => `${weekday(d.date, state.data.today)} ${d.snow >= 0.5 ? inches(d.snow) : 'none'}`;
-  return `<span class="rr-days" aria-label="Last 5 days: ${past.map(label).join(', ')}. Next 5 days: ${future.map(label).join(', ')}">
-    <span class="rd-group">${past.map((d) => bar(d, 'past')).join('')}</span>
-    <span class="rd-today" aria-hidden="true"><b>today</b></span>
-    <span class="rd-group">${future.map((d) => bar(d, 'next')).join('')}</span>
-  </span>`;
+  // One row: the last 5 days, today (highlighted), the next 4.
+  return `<span class="rr-days" aria-label="Last 5 days: ${past.map(label).join(', ')}. Today and the next 4: ${future.map(label).join(', ')}">${
+    past.map((d) => bar(d, 'past')).join('')}${future.map((d, i) => bar(d, i === 0 ? 'next today' : 'next')).join('')}</span>`;
 }
 
 // Each resort as a card: status, then the numbers that matter side by side (the map's current view
@@ -828,6 +826,68 @@ function todayStats() {
   const top = (key) => rs.map((r) => ({ r, v: METRICS[key].get(r) ?? 0 })).sort((a, b) => b.v - a.v)[0];
   return { open, lifts, runs, fresh: top('new24'), week: top('next7') };
 }
+// ---------- Best bet ----------
+// Which open resort looks best for skiing today and tomorrow, scored from what makes a good day:
+// fresh snow (most), how much terrain is open, sun vs storm, wind, temperature, and base. Each pick
+// lists its reasons so it can be judged, not just trusted.
+const windMph = (s) => Math.max(0, ...String(s ?? '').match(/\d+/g)?.map(Number) ?? [0]);
+function dayScore(r, which) {
+  const f = r.forecast;
+  const day = f?.days?.[which];
+  if (!day) return null;
+  // Fresh snow on the slopes that morning: today, the last 24 hours (the resort's report first);
+  // tomorrow, what falls today and overnight.
+  const fresh = which === 0 ? (r.report?.new24 ?? f.past24 ?? 0) : (f.days[0]?.snow ?? 0);
+  const during = day.snow ?? 0;
+  const trails = r.report?.trails;
+  const runs = trails?.total ? trails.open / trails.total : null;
+  const lifts = r.report?.lifts?.total ? r.report.lifts : r.lifts?.total ? r.lifts : null;
+  const liftFrac = lifts ? lifts.open / lifts.total : null;
+  const base = r.report?.depth ?? 0;
+  const wind = windMph(day.wind);
+  const sky = String(day.sky ?? '').toLowerCase();
+  const hi = day.hi;
+  let score = 0;
+  score += (Math.min(fresh, 12) / 12) * 40;
+  score += (Math.min(during, 8) / 8) * 8;
+  score += Math.sqrt(runs ?? (liftFrac ?? 0) * 0.5) * 20;
+  score += (liftFrac ?? 0) * 5;
+  score += (Math.min(base, 48) / 48) * 10;
+  score += /sunny|clear/.test(sky) ? 8 : /snow/.test(sky) ? 4 : /cloud/.test(sky) ? 3 : 0;
+  score -= wind >= 25 ? 12 : wind >= 15 ? 5 : 0;
+  if (hi != null) score += hi >= 18 && hi <= 38 ? 7 : hi > 45 || hi < 5 ? -6 : 0;
+  const reasons = [];
+  if (fresh >= 1) reasons.push(`${inches(fresh)} fresh`);
+  if (during >= 1) reasons.push(`${inches(during)} more during the day`);
+  if (runs != null) reasons.push(`${Math.round(runs * 100)}% of runs open`);
+  else if (lifts) reasons.push(`${lifts.open} of ${lifts.total} lifts`);
+  if (day.sky) reasons.push(`${day.sky.replace(/^Chance /, '').replace(/ Showers.*/, ' showers')}, ${deg(hi)}`);
+  if (wind) reasons.push(wind >= 25 ? `windy (${wind} mph)` : wind >= 15 ? `breezy (${wind} mph)` : 'light wind');
+  if (base) reasons.push(`${inches(base)} base`);
+  return { r, score, reasons };
+}
+function bestBets(which) {
+  const d = state.data;
+  const tomorrow = addDaysIso(d.today, 1);
+  return d.resorts
+    // Open that day: open now, or opening tomorrow for tomorrow's pick.
+    .filter((r) => r.status.state === 'open' || (which === 1 && r.status.state === 'soon' && r.status.date === tomorrow))
+    .map((r) => dayScore(r, which)).filter(Boolean).sort((a, b) => b.score - a.score);
+}
+const addDaysIso = (iso, n) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
+function bestBetCard(which) {
+  const bets = bestBets(which);
+  if (!bets.length) return '';
+  const [top, next] = bets;
+  return `
+    <button type="button" class="best-bet" data-open="${esc(top.r.id)}">
+      <small>${which === 0 ? 'Best bet today' : 'Best bet tomorrow'}</small>
+      <b>${esc(top.r.name)}</b>
+      <span>${esc(top.reasons.slice(0, 4).join(' · '))}</span>
+      ${next ? `<em>Next best: ${esc(next.r.name)}</em>` : ''}
+    </button>`;
+}
+
 // ---------- Today in Colorado ----------
 // Highlights computed from the data (facts, with forecast ranges), plus the NWS forecasters' key
 // messages and active alerts, quoted as published (the build fetches them; src/insights.js).
@@ -884,6 +944,8 @@ function todaySection() {
   const disc = ins?.discussions ?? [];
   return `
     <h3 class="section">Today in Colorado</h3>
+    <div class="best-bets">${bestBetCard(0)}${bestBetCard(1)}</div>
+    <p class="best-note">Picked from fresh snow, open terrain, sun, wind, temperature and base, among resorts open that day.</p>
     ${alertsBlock(ins?.alerts)}
     <ul class="highlights">${items.map((t) => `<li>${t}</li>`).join('')}</ul>
     ${disc.length ? `<h3 class="section">From the forecasters <span class="section-note">National Weather Service, as written</span></h3>
@@ -895,12 +957,13 @@ function todaySection() {
         </div>`).join('')}` : ''}`;
 }
 
-// One line for the card: an active alert first, else the biggest snow on the way.
+// One line for the card: today's best bet (and an active alert, if any, after it).
 function headlineInsight() {
+  const best = bestBets(0)[0];
   const a = state.data.insights?.alerts?.[0];
-  if (a) return `<span class="dot-alert"></span>${esc(a.event)}: ${esc(a.areas.split(';')[0].trim())}${a.areas.split(';').length > 1 ? ' +' : ''}`;
-  const best = state.data.resorts.map((r) => ({ r, v: r.forecast?.next72 ?? 0 })).sort((x, y) => y.v - x.v)[0];
-  return best?.v >= 3 ? `Most snow next 3 days: ${esc(best.r.name)} ${inches(best.v)}` : '';
+  const pick = best ? `<span class="best-star">★</span>Best today: <b>${esc(best.r.name)}</b>${best.reasons[0] ? ` · ${esc(best.reasons[0])}` : ''}` : '';
+  const alert = a ? `<span class="dot-alert"></span>${esc(a.event)}: ${esc(a.areas.split(';')[0].trim())}` : '';
+  return [pick, alert].filter(Boolean).join('</span><span class="row-sub overview-line">');
 }
 function overviewCard() {
   if (!state.data?.snowpack || state.code !== 'CO') return '';
