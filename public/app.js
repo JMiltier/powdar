@@ -52,8 +52,12 @@ const METRICS = {
   next7: { kind: 'snow', get: (r) => r.forecast?.next7, range: (r) => r.forecast?.next7Range, steps: [1, 3, 6, 12], top: 'Most snow, next 7 days' },
   // Snowpack at the nearest SNOTEL station as a % of normal for the date.
   season: { kind: 'season', get: (r) => station(r)?.pct ?? null },
-  // States without snow stations (Midwest, East): NOAA's modelled snow depth instead.
-  depth: { kind: 'base', get: (r) => r.noaa?.depth ?? null, steps: [6, 12, 24, 48], top: 'Deepest snow (NOAA)' },
+  // Base depth: the resort's own report when it gives one (usually once open), otherwise NOAA's
+  // modelled snow depth at the resort (marked est.).
+  base: {
+    kind: 'base', get: (r) => r.report?.depth ?? r.noaa?.depth ?? null, est: (r) => r.report?.depth == null && r.noaa?.depth != null,
+    steps: [6, 12, 24, 48], top: 'Deepest base',
+  },
   dates: { kind: 'dates' },
 };
 
@@ -198,15 +202,13 @@ function availableMetrics() {
   const rs = state.data?.resorts ?? [];
   const hasDates = rs.some((r) => r.dates?.open || r.dates?.close);
   const hasStations = rs.some((r) => r.station);
-  return ['new24', 'next72', 'next7', hasStations ? 'season' : 'depth', ...(hasDates ? ['dates'] : [])];
+  return ['new24', 'next72', 'next7', 'base', ...(hasStations ? ['season'] : []), ...(hasDates ? ['dates'] : [])];
 }
 function syncRibbon() {
   const avail = availableMetrics();
-  if (!avail.includes(state.metric)) state.metric = state.metric === 'season' || state.metric === 'depth' ? avail[3] : 'new24';
-  const seasonBtn = document.querySelector('[data-metric="season"], [data-metric="depth"]');
-  seasonBtn.dataset.metric = avail[3];
-  seasonBtn.textContent = avail[3] === 'season' ? 'Season' : 'Depth';
-  seasonBtn.title = avail[3] === 'season' ? 'Snowpack vs normal' : 'Snow on the ground (NOAA)';
+  if (state.metric === 'depth') state.metric = 'base'; // its old name
+  if (!avail.includes(state.metric)) state.metric = 'new24';
+  document.querySelector('[data-metric="season"]').hidden = !avail.includes('season');
   document.querySelector('[data-metric="dates"]').hidden = !avail.includes('dates');
 }
 
@@ -234,7 +236,7 @@ function renderHeadline() {
     const best = [...data.resorts].sort((a, b) => (m.get(b) ?? -1) - (m.get(a) ?? -1))[0];
     const v = best && m.get(best);
     if (m.kind === 'base') {
-      text = v ? `${m.top}: <strong>${esc(best.name)} ${Math.round(v)}″</strong>` : 'No snow on the ground yet (NOAA)';
+      text = v ? `${m.top}: <strong>${esc(best.name)} ${Math.round(v)}″</strong>` : 'No snow on the ground yet';
     } else if (m.kind === 'season') {
       const pcts = data.resorts.map((r) => m.get(r)).filter((p) => p != null);
       const above = pcts.filter((p) => p > 110).length;

@@ -7,7 +7,7 @@ const L = window.L;
 // Esri's hillshade: just the mountains, no town names or roads to compete with the resorts, with a
 // matching dark version. Free, no key.
 const TILES = {
-  light: 'https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',
+  light: 'https://services.arcgisonline.com/arcgis/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',
   dark: 'https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade_Dark/MapServer/tile/{z}/{y}/{x}',
 };
 const isDark = () => document.documentElement.dataset.theme === 'dark';
@@ -101,7 +101,14 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, outli
     zoomControl: false, attributionControl: false, zoomSnap: 0, inertia: false,
     dragging: false, touchZoom: false, doubleClickZoom: false, scrollWheelZoom: false, boxZoom: false, keyboard: false,
   });
-  const base = L.tileLayer(isDark() ? TILES.dark : TILES.light, { maxZoom: 12 }).addTo(map);
+  // detectRetina: sharp relief on high-resolution phone screens (one zoom level more detail).
+  const base = L.tileLayer(isDark() ? TILES.dark : TILES.light, { maxZoom: 13, detectRetina: true }).addTo(map);
+  // A tile that fails to load (a mobile network blip) gets one more try instead of leaving a blank.
+  base.on('tileerror', ({ tile }) => {
+    if (tile.dataset.retried) return;
+    tile.dataset.retried = '1';
+    setTimeout(() => { tile.src = `${tile.src.split('?')[0]}?retry=1`; }, 1500);
+  });
   // The state stands out: everything outside its border is dimmed, and the border is a fine line.
   // [[lat, lon], …]
   if (outline) {
