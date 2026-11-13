@@ -106,10 +106,11 @@ function valueFor(r, metricKey = state.metric) {
     const { state: s, date } = r.status;
     const close = r.dates?.close;
     const daysOut = date ? (Date.parse(date) - Date.parse(state.data.today)) / 864e5 : 0;
-    if (s === 'open') return { text: r.status.pct != null ? `${r.status.pct}% open` : 'Open', level: 'open', sort: 1e5 + (r.status.pct ?? 0) };
-    if (s === 'likely') return { text: 'Probably', level: 'likely', sort: 9e4 };
+    // Short on the map; the list and details say how much is open.
+    if (s === 'open') return { text: 'Open', sub: r.status.pct != null ? `${r.status.pct}% of runs` : '', level: 'open', sort: 1e5 + (r.status.pct ?? 0) };
+    if (s === 'likely') return { text: 'Open?', level: 'likely', sort: 9e4 };
     if (s === 'soon') return { text: r.dates?.when ?? monthDay(date), level: 'soon', sort: 8e4 - daysOut };
-    if (s === 'late') return { text: 'Delayed', level: 'late', sort: 7e4 };
+    if (s === 'late') return { text: 'Late', level: 'late', sort: 7e4 };
     return { text: s === 'done' ? 'Closed' : 'TBA', level: 'tba', sort: 0 };
   }
   if (m.kind === 'season') {

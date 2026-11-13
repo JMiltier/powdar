@@ -300,41 +300,46 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 }
 .foot { margin: 18px 4px 0; font-size: 0.72rem; color: var(--muted); }
 
-/* ---------- Map bubbles ---------- */
+/* ---------- Map labels ---------- */
+/* A light label: a small colored chip with the number, then the name as outlined text (no box). */
+:root { --map-text: #111827; --map-halo: rgba(255, 255, 255, 0.95); }
+@media (prefers-color-scheme: dark) { :root { --map-text: #f3f6fa; --map-halo: rgba(8, 12, 20, 0.9); } }
 .pin-host { background: none; border: 0; }
 .pin { position: relative; width: 0; height: 0; }
 .pin-dot {
   position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; padding: 0; border-radius: 50%;
-  border: 1.5px solid #fff; background: #1b4f9c; cursor: pointer; pointer-events: auto;
+  border: 2px solid #fff; background: #1b4f9c; cursor: pointer; pointer-events: auto;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
+.pin-dot.is-empty { background: #9aa4b1; }
+.pin-dot.is-selected { background: #e8a400; transform: scale(1.3); }
 /* Bigger invisible tap target around the dot. */
 .pin-dot::after { content: ""; position: absolute; inset: -9px; }
-.pin.hidden .pin-bubble { display: none; }
+.pin.hidden .pin-bubble, .pin.hidden .pin-tail, .pin-bubble.is-empty { display: none; }
+.pin-tail { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.pin-tail line { stroke: var(--map-text); stroke-width: 1.2; stroke-opacity: 0.75; stroke-linecap: round; }
 .pin-bubble {
   position: absolute; left: 0; top: 0;
-  display: flex; align-items: baseline; gap: 5px;
-  padding: 2px 7px; border-radius: 999px;
-  border: 1.5px solid rgba(255, 255, 255, 0.9); background: #fff; color: #15202e;
-  line-height: 1.15; cursor: pointer; white-space: nowrap;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); pointer-events: auto;
+  display: flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none;
+  font: inherit; line-height: 1; white-space: nowrap; cursor: pointer; pointer-events: auto;
 }
-.pin-name { font-size: 0.66rem; font-weight: 650; }
-.pin-val { font-size: 0.8rem; font-weight: 800; }
-/* Phones: slimmer labels so the whole state fits without overlaps. */
+.pin-val {
+  padding: 2px 5px; border-radius: 6px; font-size: 0.74rem; font-weight: 800; letter-spacing: -0.1px;
+  background: #fff; color: #15202e; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.pin-name {
+  font-size: 0.7rem; font-weight: 700; color: var(--map-text);
+  text-shadow: 0 0 2px var(--map-halo), 0 0 2px var(--map-halo), 0 0 3px var(--map-halo), 0 0 4px var(--map-halo);
+}
+.pin-bubble.is-open .pin-val { box-shadow: 0 0 0 1.5px var(--open), 0 1px 3px rgba(0, 0, 0, 0.3); }
+.pin-bubble.is-selected .pin-val { outline: 2px solid #e8a400; outline-offset: 1px; }
+.pin-bubble.is-selected .pin-name { text-decoration: underline; text-decoration-color: #e8a400; text-underline-offset: 2px; }
+/* Phones: a touch smaller so crowded areas fit. */
 @media (max-width: 600px) {
-  .pin-bubble { padding: 1px 5px; gap: 3px; border-width: 1px; }
-  .pin-name { font-size: 0.6rem; letter-spacing: -0.1px; }
-  .pin-val { font-size: 0.72rem; }
+  .pin-val { font-size: 0.68rem; padding: 2px 4px; }
+  .pin-name { font-size: 0.64rem; }
+  .pin-bubble { gap: 3px; }
 }
-.pin-bubble.is-open { border-color: var(--open); }
-.pin-bubble.is-selected { outline: 3px solid #e8a400; outline-offset: 1px; }
-/* Pointer from a label to its dot, drawn in the label's own colors. */
-.pin-tail { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
-.pin-tail polygon { stroke-width: 1.5; stroke-linejoin: round; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.25)); }
-
-/* No number for this resort: a small grey dot you can still tap. */
-.pin-bubble.lvl-none { min-width: 0; width: 14px; height: 14px; padding: 0; border-radius: 50%; background: #c3cad3; border-color: #fff; }
-.pin-bubble.lvl-none > * { display: none; }
 
 /* Color levels, shared by bubbles and list values: white for nothing, deepening blues, purple for a foot+. */
 .lvl-0 { background: #fff; color: #5f6b7a; }
@@ -400,11 +405,6 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
   .legend { padding: 4px 10px; gap: 6px; }
   .legend-title { display: none; } /* the ❄ button already says what this is */
   .legend-keys { gap: 5px; }
-}
-@media (max-width: 360px) {
-  .pin-name { font-size: 0.56rem; }
-  .pin-val { font-size: 0.68rem; }
-  .pin-bubble { padding: 0 4px; }
 }
 @media (max-width: 340px) {
   .ribbon button { padding: 6px 7px; font-size: 0.8rem; }
