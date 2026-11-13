@@ -224,35 +224,19 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .pin.hidden .pin-bubble { display: none; }
 .pin-bubble {
   position: absolute; left: 0; top: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  min-width: 34px; padding: 2px 7px 3px; border-radius: 10px;
-  border: 2px solid rgba(255, 255, 255, 0.9); background: #fff; color: #15202e;
-  line-height: 1.05; cursor: pointer; white-space: nowrap;
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.3); pointer-events: auto;
+  display: flex; align-items: baseline; gap: 5px;
+  padding: 2px 7px; border-radius: 999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.9); background: #fff; color: #15202e;
+  line-height: 1.15; cursor: pointer; white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); pointer-events: auto;
 }
-.pin-name { font-size: 0.6rem; font-weight: 700; opacity: 0.85; }
-.pin-val { font-size: 0.95rem; font-weight: 800; }
+.pin-name { font-size: 0.68rem; font-weight: 650; }
+.pin-val { font-size: 0.82rem; font-weight: 800; }
 .pin-bubble.is-open { border-color: var(--open); }
 .pin-bubble.is-selected { outline: 3px solid #e8a400; outline-offset: 1px; }
 /* No number for this resort: a small grey dot you can still tap. */
 .pin-bubble.lvl-none { min-width: 0; width: 14px; height: 14px; padding: 0; border-radius: 50%; background: #c3cad3; border-color: #fff; }
 .pin-bubble.lvl-none > * { display: none; }
-
-/* Several resorts too close for separate bubbles: one card listing them all. */
-.pin.grouped .pin-bubble { display: none; }
-.group {
-  position: absolute; left: 0; top: 0; pointer-events: auto;
-  display: flex; flex-direction: column; padding: 3px; gap: 1px;
-  background: #fff; color: #15202e; border-radius: 11px; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
-}
-.group-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  border: 0; background: none; padding: 0 1px 0 4px; border-radius: 7px; cursor: pointer; white-space: nowrap; color: inherit;
-}
-.group-row.is-selected { outline: 2px solid #e8a400; }
-.group-name { font-size: 0.64rem; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
-.open-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--open); display: inline-block; }
-.group-val { font-size: 0.76rem; font-weight: 800; padding: 0 6px; border-radius: 6px; min-width: 30px; text-align: center; }
 
 /* Colour levels, shared by bubbles and list values: white for nothing, deepening blues, purple for a foot+. */
 .lvl-0 { background: #fff; color: #5f6b7a; }

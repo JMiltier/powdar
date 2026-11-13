@@ -1,6 +1,6 @@
 // The map view: one bubble per resort showing the chosen number, Snow Map style.
-// Every resort has a dot at its real spot. Its bubble sits on the dot or right beside it;
-// resorts too close together share one card that lists them all.
+// Every resort has a dot at its real spot and its own one-line label ("A-Basin 3″") on or next to
+// the dot. When there's truly no room a label waits for you to zoom in; the dot stays tappable.
 const L = window.L;
 
 // OpenTopoMap: free, no key, and its terrain shading suits mountains. Dark mode dims it in CSS.
@@ -13,8 +13,6 @@ export const CREDITS = 'Map data © <a href="https://www.openstreetmap.org/copyr
 const SNOW_DEPTH_WMS = 'https://mapservices.weather.noaa.gov/raster/services/snow/NOHRSC_Snow_Analysis/MapServer/WMSServer';
 const GAP = 2;
 const DOT_R = 4;
-// Widest a shared card's neighbourhood may be, in screen pixels.
-const MAX_SPAN = 85;
 // Room around the resorts when fitting them on screen, on top of what the app's panels cover.
 const EDGE = 58;
 
@@ -24,11 +22,13 @@ const SHORT = {
   'aspen-highlands': 'Highlands', 'crested-butte': 'Crested Butte', cooper: 'Cooper',
 };
 
-// Where a bubble may sit, as its centre relative to the dot: on it, then touching it on each side.
+// Where a label may sit, as its centre relative to the dot: on it, touching it on each side,
+// then one row further up or down (still clearly next to its dot, so no connector line needed).
 const spotsFor = (w, h) => {
   const x = w / 2 + DOT_R + 2;
-  const y = h / 2 + DOT_R + 2;
-  return [[0, 0], [0, -y], [x, 0], [0, y], [-x, 0], [x, -y], [x, y], [-x, y], [-x, -y]];
+  const y = h / 2 + DOT_R + 1;
+  const y2 = y + h + 2;
+  return [[0, 0], [x, 0], [-x, 0], [0, -y], [0, y], [x, -y], [x, y], [-x, -y], [-x, y], [0, -y2], [0, y2], [x, -y2], [x, y2], [-x, -y2], [-x, y2]];
 };
 
 // getPadding() → { top, right, bottom, left }: pixels covered by the app's buttons and sheet.
@@ -85,106 +85,35 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, home }) {
     return pin;
   }
 
-  // Resorts close enough that their bubbles would collide share one card listing each name and
-  // number, so every resort stays readable at any zoom. Zoom in and the cards split apart.
-  const groupLayer = L.layerGroup().addTo(map);
-
-  function groupCard(members, centre) {
-    const el = document.createElement('div');
-    el.className = 'group';
-    el.innerHTML = members.map((m) => `
-      <button type="button" class="group-row${m.selected ? ' is-selected' : ''}" data-id="${m.r.id}" aria-label="${m.r.name}: ${m.label}">
-        <span class="group-name">${m.open ? '<i class="open-dot"></i>' : ''}${SHORT[m.r.id] ?? m.r.name}</span>
-        <b class="group-val lvl-${m.level}">${m.text}</b>
-      </button>`).join('');
-    el.addEventListener('click', (e) => {
-      const row = e.target.closest('[data-id]');
-      if (!row) return;
-      L.DomEvent.stopPropagation(e);
-      onSelect(row.dataset.id);
-    });
-    const marker = L.marker(map.containerPointToLatLng(centre), {
-      icon: L.divIcon({ html: el, className: 'pin-host', iconSize: [0, 0] }), keyboard: false, zIndexOffset: 500,
-    }).addTo(groupLayer);
-    return { el, marker };
-  }
-
+  // Greedy, in priority order: each label takes the first free spot near its dot. A first pass
+  // keeps other resorts' dots uncovered; a second pass allows it rather than hiding the label.
   function layout() {
-    groupLayer.clearLayers();
-    for (const { pin } of order) pin.root.classList.remove('hidden', 'grouped');
+    for (const { pin } of order) pin.root.classList.remove('hidden');
     const items = order.map((o) => ({ ...o, p: map.latLngToContainerPoint(o.r.at), w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight }));
-    const named = items.filter((it) => !it.empty);
+    const size = map.getSize();
+    const placed = [];
+    const overlaps = (box) => placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]);
+    const hidesDot = (box, self) => items.some((o) => o !== self &&
+      o.p.x + DOT_R > box[0] && o.p.x - DOT_R < box[2] && o.p.y + DOT_R > box[1] && o.p.y - DOT_R < box[3]);
+    const offScreen = (box) => box[0] < 0 || box[2] > size.x || box[1] < 0 || box[3] > size.y;
 
-    // Group resorts whose bubbles would collide, nearest pairs first, but keep every group tight:
-    // no two members further apart than MAX_SPAN, so groups stay local (Summit County, Aspen…).
-    const group = new Map(named.map((it) => [it, [it]]));
-    const dist = (a, b) => Math.hypot(a.p.x - b.p.x, a.p.y - b.p.y);
-    const merge = (a, b) => {
-      const ga = group.get(a);
-      const gb = group.get(b);
-      if (ga === gb) return;
-      const both = ga.concat(gb);
-      for (const m of both) group.set(m, both);
-    };
-    const pairs = [];
-    for (let i = 0; i < named.length; i++) {
-      for (let j = i + 1; j < named.length; j++) {
-        const a = named[i];
-        const b = named[j];
-        if (Math.abs(a.p.x - b.p.x) < (a.w + b.w) / 2 + GAP && Math.abs(a.p.y - b.p.y) < (a.h + b.h) / 2 + GAP) pairs.push([dist(a, b), a, b]);
-      }
-    }
-    pairs.sort((x, y) => x[0] - y[0]);
-    for (const [, a, b] of pairs) {
-      const ga = group.get(a);
-      const gb = group.get(b);
-      if (ga !== gb && ga.every((x) => gb.every((y) => dist(x, y) <= MAX_SPAN))) merge(a, b);
-    }
-
-    // Place cards and single bubbles; anything that can't fit joins its nearest neighbour's group, then retry.
-    for (let attempt = 0; attempt < 6; attempt++) {
-      groupLayer.clearLayers();
-      const groups = new Set(named.map((it) => group.get(it)));
-      const placed = [];
-      const overlaps = (box) => placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]);
-      const tryPlace = (cx, cy, w, h, spots) => {
-        for (const [dx, dy] of spots) {
-          const box = [cx + dx - w / 2 - GAP, cy + dy - h / 2 - GAP, cx + dx + w / 2 + GAP, cy + dy + h / 2 + GAP];
-          if (!overlaps(box)) {
-            placed.push(box);
-            return [dx, dy];
-          }
-        }
-        return null;
+    for (const it of items) {
+      const spots = it.empty ? [[0, 0]] : spotsFor(it.w, it.h);
+      const boxAt = ([dx, dy]) => [it.p.x + dx - it.w / 2 - GAP, it.p.y + dy - it.h / 2 - GAP, it.p.x + dx + it.w / 2 + GAP, it.p.y + dy + it.h / 2 + GAP];
+      const ok = (spot, strict) => {
+        const box = boxAt(spot);
+        if (overlaps(box)) return false;
+        if (strict && (hidesDot(box, it) || offScreen(box))) return false;
+        return true;
       };
-      const failed = [];
-      // Bigger groups first: they need the most room.
-      const list = [...groups].sort((a, b) => b.length - a.length);
-      for (const members of list) {
-        if (members.length > 1) {
-          const cx = members.reduce((s, m) => s + m.p.x, 0) / members.length;
-          const cy = members.reduce((s, m) => s + m.p.y, 0) / members.length;
-          const card = groupCard(members, [cx, cy]);
-          const w = card.el.offsetWidth;
-          const h = card.el.offsetHeight;
-          const spot = tryPlace(cx, cy, w, h, [...spotsFor(w, h), ...spotsFor(w * 2, h * 2)]) ?? [0, 0];
-          card.el.style.transform = `translate(${spot[0] - w / 2}px, ${spot[1] - h / 2}px)`;
-          for (const m of members) m.pin.root.classList.add('grouped');
-        } else {
-          const [it] = members;
-          const spot = tryPlace(it.p.x, it.p.y, it.w, it.h, spotsFor(it.w, it.h));
-          if (!spot) {
-            failed.push(it);
-            continue;
-          }
-          it.pin.bubble.style.transform = `translate(${spot[0] - it.w / 2}px, ${spot[1] - it.h / 2}px)`;
-        }
+      // The selected resort always shows, even over a neighbour.
+      const spot = spots.find((sp) => ok(sp, true)) ?? spots.find((sp) => ok(sp, false)) ?? (it.selected ? [0, 0] : null);
+      if (!spot) {
+        it.pin.root.classList.add('hidden');
+        continue;
       }
-      if (!failed.length) break;
-      for (const it of failed) {
-        const nearest = named.filter((o) => o !== it).sort((a, b) => dist(a, it) - dist(b, it))[0];
-        if (nearest) merge(it, nearest);
-      }
+      placed.push(boxAt(spot));
+      it.pin.bubble.style.transform = `translate(${spot[0] - it.w / 2}px, ${spot[1] - it.h / 2}px)`;
     }
   }
 
