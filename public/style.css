@@ -137,7 +137,7 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 
 .sheet-body {
   flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
-  padding: 0 12px calc(16px + env(safe-area-inset-bottom));
+  padding: 0 12px calc(24px + env(safe-area-inset-bottom) + var(--sheet-hidden, 0px));
   border-top: 1px solid var(--line);
 }
 .notice { margin: 10px 4px 0; padding: 8px 12px; border-radius: 10px; background: #fbefd5; color: #7a4f00; font-size: 0.85rem; }
@@ -214,6 +214,31 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 }
 .meter i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--pct); background: var(--open); border-radius: 4px; }
 .message { margin: 4px 2px 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg); font-size: 0.82rem; color: var(--muted); white-space: pre-line; }
+.day-sky { font-size: 0.95rem; line-height: 1.2; min-height: 1.2rem; }
+.week2 { margin: -4px 2px 10px; font-size: 0.85rem; }
+.weather { list-style: none; margin: 0 0 6px; padding: 0; font-size: 0.86rem; }
+.weather li { display: flex; gap: 10px; padding: 6px 2px; border-top: 1px solid var(--line); }
+.w-day { flex: none; width: 46px; font-weight: 700; }
+.w-text { color: var(--text); }
+
+/* Season: snowpack vs normal */
+.season-head { margin: 0 2px 4px; font-size: 0.9rem; }
+.pct { font-size: 1.35rem; font-weight: 800; padding: 1px 8px; border-radius: 10px; margin-right: 4px; }
+.chart { display: block; width: 100%; height: auto; margin: 4px 0 2px; }
+.chart text { font-size: 9px; fill: var(--muted); }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .normal { fill: color-mix(in srgb, var(--muted) 18%, transparent); stroke: var(--muted); stroke-width: 1; stroke-opacity: 0.5; }
+.chart .now { fill: none; stroke: var(--snow); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.chart .proj { fill: none; stroke: var(--snow); stroke-width: 2; stroke-dasharray: 4 3; }
+.chart .now-dot { fill: var(--snow); stroke: var(--card); stroke-width: 1.5; }
+.chart .peak { font-size: 8.5px; text-anchor: middle; }
+.legend-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 2px 2px 4px; font-size: 0.74rem; color: var(--muted); }
+.legend-line i { display: inline-block; width: 16px; height: 0; margin-right: 4px; vertical-align: middle; }
+.k-now { border-top: 2.5px solid var(--snow); }
+.k-proj { border-top: 2px dashed var(--snow); }
+.k-normal { height: 9px !important; background: color-mix(in srgb, var(--muted) 25%, transparent); border-radius: 2px; }
+.avg { margin: 6px 2px 10px; font-size: 0.88rem; }
+
 .report { list-style: none; margin: 0 0 10px; padding: 0; font-size: 0.88rem; }
 .report li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 2px; border-top: 1px solid var(--line); }
 .report li span { color: var(--muted); }
@@ -263,6 +288,13 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .lvl-late { background: #fbe3d6; color: #8f3a0c; }
 .lvl-tba { background: #eceff3; color: #5f6b7a; }
 .val.lvl-open, .val.lvl-soon, .val.lvl-likely, .val.lvl-late, .val.lvl-tba { font-size: 0.85rem; }
+
+/* Snowpack % of normal */
+.lvl-pk-low { background: #f6c9a8; color: #6b2e07; }
+.lvl-pk-below { background: #fbe7b4; color: #6b4a00; }
+.lvl-pk-normal { background: #eceff3; color: #3c4653; }
+.lvl-pk-above { background: #c7ddfa; color: #143c78; }
+.lvl-pk-high { background: #4f8fe6; color: #fff; }
 
 /* ---------- Wide screens: the sheet becomes a side panel ---------- */
 @media (min-width: 900px) {

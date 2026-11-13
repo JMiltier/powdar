@@ -1,37 +1,55 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#2c6fd1"/>
-      <stop offset="1" stop-color="#123a75"/>
+      <stop offset="0" stop-color="#2f74d6"/>
+      <stop offset="1" stop-color="#16437f"/>
+    </linearGradient>
+    <linearGradient id="far" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9cc0ee"/>
+      <stop offset="1" stop-color="#6f9edb"/>
+    </linearGradient>
+    <linearGradient id="lit" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eef4fc"/>
+    </linearGradient>
+    <linearGradient id="shade" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#cfe0f6"/>
+      <stop offset="1" stop-color="#a9c5ec"/>
     </linearGradient>
     <filter id="lift" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#0a2550" flood-opacity="0.35"/>
     </filter>
   </defs>
-  <rect width="512" height="512" rx="112" fill="url(#sky)"/>
+  <defs><clipPath id="round"><rect width="512" height="512" rx="112"/></clipPath></defs>
+  <g clip-path="url(#round)">
+  <rect width="512" height="512" fill="url(#sky)"/>
   <!-- Faint radar rings: the "dar" in Powdar. -->
   <g fill="none" stroke="#ffffff" stroke-width="5" opacity="0.13">
-    <circle cx="384" cy="112" r="106"/>
-    <circle cx="384" cy="112" r="150"/>
+    <circle cx="132" cy="128" r="104"/>
+    <circle cx="132" cy="128" r="148"/>
   </g>
-  <path d="M28 430 L188 236 L246 304 L334 190 L484 430 Z" fill="#ffffff"/>
-  <path d="M188 236 L220 276 L204 296 L188 278 L171 298 L158 274 Z M334 190 L377 248 L355 270 L334 246 L311 268 L294 244 Z" fill="#d6e6fa"/>
-  <!-- Two sets of S-turn ski tracks carving down the big peak -->
-  <g fill="none" stroke="#8fb5e8" stroke-width="5" stroke-linecap="round" opacity="0.9">
-    <path d="M336 258 C 300 284, 372 306, 338 332 S 300 378, 344 412"/>
-    <path d="M348 258 C 312 284, 384 306, 350 332 S 312 378, 356 412"/>
-  </g>
-  <g fill="none" stroke="#a9c6ee" stroke-width="4" stroke-linecap="round" opacity="0.75">
-    <path d="M196 300 C 176 318, 214 334, 194 352 S 172 386, 204 414"/>
+  <!-- Far range: a soft blue silhouette for depth. -->
+  <path d="M0 356 L62 306 L108 332 L182 268 L238 312 L276 290 L320 318 V512 H0 Z" fill="url(#far)" opacity="0.9"/>
+  <!-- Main peak, split down its ridge: sunlit face left, shaded face right. -->
+  <path d="M350 140 L110 512 H384 Z" fill="url(#lit)"/>
+  <path d="M350 140 L384 512 H512 V332 Z" fill="url(#shade)"/>
+  <!-- Front peak, same lighting. -->
+  <path d="M182 300 L0 452 V512 H252 Z" fill="url(#lit)"/>
+  <path d="M182 300 L252 512 H318 Z" fill="url(#shade)"/>
+  <!-- Two S-turn ski tracks carving down the sunlit face. -->
+  <g fill="none" stroke="#8fb5e8" stroke-width="5" stroke-linecap="round" opacity="0.95">
+    <path d="M334 206 C 302 236, 350 262, 318 292 S 282 344, 322 376 S 330 430, 300 470"/>
+    <path d="M346 210 C 314 240, 362 266, 330 296 S 294 348, 334 380 S 342 434, 312 474"/>
   </g>
   <!-- Snowflake: six identical arms, each with two branch pairs, around a small hexagon. -->
-  <g transform="translate(384 112)" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" filter="url(#lift)">
-      <path transform="rotate(0)" d="M0 -12.2 V-76.0 M-22.4 -47.1 L0 -34.2 L22.4 -47.1 M-14.5 -63.1 L0 -54.7 L14.5 -63.1"/>
-      <path transform="rotate(60)" d="M0 -12.2 V-76.0 M-22.4 -47.1 L0 -34.2 L22.4 -47.1 M-14.5 -63.1 L0 -54.7 L14.5 -63.1"/>
-      <path transform="rotate(120)" d="M0 -12.2 V-76.0 M-22.4 -47.1 L0 -34.2 L22.4 -47.1 M-14.5 -63.1 L0 -54.7 L14.5 -63.1"/>
-      <path transform="rotate(180)" d="M0 -12.2 V-76.0 M-22.4 -47.1 L0 -34.2 L22.4 -47.1 M-14.5 -63.1 L0 -54.7 L14.5 -63.1"/>
-      <path transform="rotate(240)" d="M0 -12.2 V-76.0 M-22.4 -47.1 L0 -34.2 L22.4 -47.1 M-14.5 -63.1 L0 -54.7 L14.5 -63.1"/>
-      <path transform="rotate(300)" d="M0 -12.2 V-76.0 M-22.4 -47.1 L0 -34.2 L22.4 -47.1 M-14.5 -63.1 L0 -54.7 L14.5 -63.1"/>
-      <polygon points="0.0,-12.2 10.5,-6.1 10.5,6.1 0.0,12.2 -10.5,6.1 -10.5,-6.1"/>
+  <g transform="translate(132 128)" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" filter="url(#lift)">
+      <path transform="rotate(0)" d="M0 -11.8 V-74.0 M-21.8 -45.9 L0 -33.3 L21.8 -45.9 M-14.1 -61.4 L0 -53.3 L14.1 -61.4"/>
+      <path transform="rotate(60)" d="M0 -11.8 V-74.0 M-21.8 -45.9 L0 -33.3 L21.8 -45.9 M-14.1 -61.4 L0 -53.3 L14.1 -61.4"/>
+      <path transform="rotate(120)" d="M0 -11.8 V-74.0 M-21.8 -45.9 L0 -33.3 L21.8 -45.9 M-14.1 -61.4 L0 -53.3 L14.1 -61.4"/>
+      <path transform="rotate(180)" d="M0 -11.8 V-74.0 M-21.8 -45.9 L0 -33.3 L21.8 -45.9 M-14.1 -61.4 L0 -53.3 L14.1 -61.4"/>
+      <path transform="rotate(240)" d="M0 -11.8 V-74.0 M-21.8 -45.9 L0 -33.3 L21.8 -45.9 M-14.1 -61.4 L0 -53.3 L14.1 -61.4"/>
+      <path transform="rotate(300)" d="M0 -11.8 V-74.0 M-21.8 -45.9 L0 -33.3 L21.8 -45.9 M-14.1 -61.4 L0 -53.3 L14.1 -61.4"/>
+      <polygon points="0.0,-11.8 10.3,-5.9 10.3,5.9 0.0,11.8 -10.3,5.9 -10.3,-5.9"/>
+  </g>
   </g>
 </svg>

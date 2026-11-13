@@ -26,7 +26,8 @@ const METRICS = {
   },
   next72: { kind: 'snow', get: (r) => r.forecast?.next72, range: (r) => r.forecast?.next72Range, steps: [1, 3, 6, 12], top: 'Most snow, next 3 days' },
   next7: { kind: 'snow', get: (r) => r.forecast?.next7, range: (r) => r.forecast?.next7Range, steps: [1, 3, 6, 12], top: 'Most snow, next 7 days' },
-  depth: { kind: 'base', get: (r) => r.report?.depth, steps: [12, 24, 36, 60], top: 'Deepest base' },
+  // Snowpack at the nearest SNOTEL station as a % of normal for the date.
+  season: { kind: 'season', get: (r) => station(r)?.pct ?? null },
   dates: { kind: 'dates' },
 };
 
@@ -106,6 +107,10 @@ function valueFor(r, metricKey = state.metric) {
     if (s === 'late') return { text: 'Delayed', level: 'late', sort: 7e4 };
     return { text: s === 'done' ? 'Closed' : 'TBA', level: 'tba', sort: 0 };
   }
+  if (m.kind === 'season') {
+    const pct = m.get(r);
+    return { text: pct == null ? '–' : `${pct}%`, level: seasonLevel(pct), sort: pct ?? -1 };
+  }
   const v = m.get(r) ?? null;
   return {
     text: v == null ? '–' : m.kind === 'base' ? `${Math.round(v)}″` : inches(v),
@@ -113,6 +118,32 @@ function valueFor(r, metricKey = state.metric) {
     level: level(v, m.steps),
     sort: v ?? -1,
   };
+}
+
+const station = (r) => (r.station ? state.data.snowpack?.[r.station] : null);
+
+// Colour band for "% of normal": well below → below → normal → above → well above.
+function seasonLevel(pct) {
+  if (pct == null) return 'none';
+  if (pct < 70) return 'pk-low';
+  if (pct < 90) return 'pk-below';
+  if (pct <= 110) return 'pk-normal';
+  if (pct <= 130) return 'pk-above';
+  return 'pk-high';
+}
+
+// A plain-words sky icon from the Weather Service's short forecast.
+function skyIcon(text = '') {
+  const t = text.toLowerCase();
+  if (/thunder/.test(t)) return '⛈️';
+  if (/snow|flurr|blizzard/.test(t)) return '🌨️';
+  if (/rain|drizzle|showers/.test(t)) return '🌧️';
+  if (/fog|haze|smoke/.test(t)) return '🌫️';
+  if (/partly|mostly sunny|mostly clear/.test(t)) return '⛅';
+  if (/sunny|clear/.test(t)) return '☀️';
+  if (/cloud|overcast/.test(t)) return '☁️';
+  if (/wind|breezy/.test(t)) return '💨';
+  return '';
 }
 
 const isOpenish = (r) => r.status.state === 'open' || r.status.state === 'likely';
@@ -138,9 +169,13 @@ function renderHeadline() {
   } else {
     const best = [...data.resorts].sort((a, b) => (m.get(b) ?? -1) - (m.get(a) ?? -1))[0];
     const v = best && m.get(best);
-    if (m.kind === 'base') {
-      const n = data.resorts.filter((r) => m.get(r) != null).length;
-      text = v ? `${m.top}: <strong>${esc(best.name)} ${Math.round(v)}″</strong> · ${n} resorts reporting` : 'No base reports yet: resorts report once open';
+    if (m.kind === 'season') {
+      const pcts = data.resorts.map((r) => m.get(r)).filter((p) => p != null);
+      const above = pcts.filter((p) => p > 110).length;
+      const below = pcts.filter((p) => p < 90).length;
+      text = pcts.length
+        ? `<strong>${above} above normal</strong> · ${below} below · top: <strong>${esc(best.name)} ${v}%</strong>`
+        : 'Too early in the season to compare snowpack with normal';
     } else {
       const quiet = { new24: 'No new snow in the last 24 hrs', next72: 'No real snow in the next 3 days', next7: 'No real snow in the next 7 days' };
       text = v >= 1 ? `${m.top}: <strong>${esc(best.name)} ${inches(v)}</strong>` : quiet[state.metric];
@@ -184,9 +219,16 @@ function renderDetail(r) {
         <span class="day-snow">${d.snow >= 1 ? inches(d.snow) : d.snow > 0 ? '<1″' : ''}</span>
         <span class="day-bar" style="height:${d.snow > 0 ? Math.max(4, Math.round((d.snow / scale) * 44)) : 0}px"></span>
         <span class="day-name">${weekday(d.date, today)}</span>
+        <span class="day-sky" title="${esc(d.sky ?? d.night ?? '')}">${skyIcon(d.sky ?? d.night) || '&nbsp;'}</span>
         <span class="day-temp">${d.hi ?? '–'}°<i>${d.lo ?? '–'}°</i></span>
       </div>`).join('')}
-    </div>` : '<p class="muted">Forecast unavailable right now.</p>';
+    </div>
+    ${f.week2 ? `<p class="week2"><b>Days 8–14:</b> about ${inches(f.week2.mid)} more${rangeText(f.week2.range) ? ` (${rangeText(f.week2.range)})` : ''} <span class="muted">· further out, less certain</span></p>` : ''}` : '<p class="muted">Forecast unavailable right now.</p>';
+
+  // Plain-words weather for the next three days.
+  const weather = f?.days.filter((d) => d.sky || d.night).slice(0, 3).map((d) => `
+    <li><span class="w-day">${weekday(d.date, today)}</span>
+      <span class="w-text">${skyIcon(d.sky ?? d.night)} ${esc(d.sky ?? `Tonight: ${d.night}`)}${d.pop >= 20 ? ` · ${d.pop}% chance` : ''}${d.wind ? ` · wind ${esc(d.wind.replace(' to ', '–'))}` : ''}</span></li>`).join('') ?? '';
 
   // How much of the mountain is open, as simple bars.
   const meter = (label, open, total) => (total ? `
@@ -223,9 +265,63 @@ function renderDetail(r) {
       ${stat(inches(f?.next7), 'next 7 days', rangeText(f?.next7Range))}
     </div>
     ${bars}
+    ${weather ? `<h3 class="section">Weather</h3><ul class="weather">${weather}</ul>` : ''}
+    ${seasonSection(r)}
     ${report}
     ${sources.length > 1 ? `<p class="muted small">Forecast blends ${sources.length} sources: ${esc(sources.join(', '))}. Big number = middle forecast, small = likely range.</p>` : ''}
     <a class="site" href="${esc(r.url)}" target="_blank" rel="noopener">Official ${esc(r.name)} site ↗</a>`;
+}
+
+// ---------- season chart ----------
+// Snowpack (inches of water) this season vs the 1991–2020 normal, plus the next two weeks' forecast.
+
+const SEASON_DAYS = 273; // Oct 1 → Jun 30
+const MONTHS = ['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
+const MONTH_STARTS = [0, 31, 61, 92, 123, 151, 182, 212, 243];
+
+function seasonChart(st, ahead) {
+  const W = 320;
+  const H = 128;
+  const pad = { l: 4, r: 4, t: 14, b: 18 };
+  const last = st.season.at(-1);
+  const proj = last && ahead?.length ? [last, ...ahead.map((w, i) => [last[0] + i + 1, last[1] + w])] : [];
+  const maxY = Math.max(1, ...st.normal.map((p) => p[1]), ...st.season.map((p) => p[1]), ...proj.map((p) => p[1])) * 1.08;
+  const x = (d) => pad.l + (d / SEASON_DAYS) * (W - pad.l - pad.r);
+  const y = (v) => H - pad.b - (v / maxY) * (H - pad.t - pad.b);
+  const line = (pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p[0]).toFixed(1)} ${y(p[1]).toFixed(1)}`).join(' ');
+  const area = st.normal.length ? `${line(st.normal)} L${x(st.normal.at(-1)[0]).toFixed(1)} ${y(0)} L${x(st.normal[0][0]).toFixed(1)} ${y(0)} Z` : '';
+  const months = MONTHS.map((m, i) => `<text x="${x(MONTH_STARTS[i] + 2).toFixed(1)}" y="${H - 4}">${m}</text>`).join('');
+  return `
+    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Snowpack this season compared with normal">
+      ${MONTH_STARTS.slice(1).map((d) => `<line class="grid" x1="${x(d)}" x2="${x(d)}" y1="${pad.t}" y2="${H - pad.b}"/>`).join('')}
+      <path class="normal" d="${area}"/>
+      ${proj.length ? `<path class="proj" d="${line(proj)}"/>` : ''}
+      <path class="now" d="${line(st.season)}"/>
+      ${last ? `<circle class="now-dot" cx="${x(last[0])}" cy="${y(last[1])}" r="3.5"/>` : ''}
+      ${st.peak ? `<text class="peak" x="${x(dayOfSeason(st.peak.date)).toFixed(1)}" y="${(y(st.peak.swe) - 4).toFixed(1)}">normal peak ${st.peak.swe}″</text>` : ''}
+      ${months}
+    </svg>`;
+}
+
+function dayOfSeason(ymd) {
+  const [yr, m] = ymd.split('-').map(Number);
+  const start = Date.parse(`${m >= 10 ? yr : yr - 1}-10-01T12:00:00Z`);
+  return Math.round((Date.parse(`${ymd}T12:00:00Z`) - start) / 864e5);
+}
+
+function seasonSection(r) {
+  const st = station(r);
+  if (!st && !r.avgSnow) return '';
+  const pctLine = st?.pct != null
+    ? `<span class="pct lvl-${seasonLevel(st.pct)}">${st.pct}%</span> of normal snowpack for this date`
+    : st ? 'Too early in the season to compare with normal' : '';
+  return `
+    <h3 class="section">Season</h3>
+    ${st ? `<p class="season-head">${pctLine}</p>
+      ${seasonChart(st, r.forecast?.waterAhead)}
+      <p class="legend-line"><i class="k-now"></i>This season <i class="k-proj"></i>Next 2 weeks <i class="k-normal"></i>Normal</p>
+      <p class="muted small">Snow water at the ${esc(st.name)} snow station${st.latest.depth != null ? ` (${st.latest.depth}″ of snow on the ground)` : ''}.</p>` : ''}
+    ${r.avgSnow ? `<p class="avg">A typical season brings about <b>${r.avgSnow}″</b> of snow here.</p>` : ''}`;
 }
 
 function renderMap() {
@@ -236,7 +332,7 @@ function renderMap() {
     const open = r.status.state === 'open';
     return {
       r, text: v.text, label: v.text, level: v.level, selected,
-      open: open && METRICS[state.metric].kind !== 'dates',
+      open: open && !['dates', 'season'].includes(METRICS[state.metric].kind),
       important: selected || fav || open,
       rank: [selected, fav, open, v.sort],
     };
@@ -291,6 +387,9 @@ function setSheetY(y, animate) {
   sheetEl.style.transform = WIDE.matches ? '' : `translateY(${y}px)`;
   const visible = WIDE.matches ? 0 : sheetEl.offsetHeight - y;
   document.documentElement.style.setProperty('--sheet-visible', `${visible}px`);
+  // The part of the sheet below the screen edge: the list gets that much extra room at the end,
+  // so the last resorts can always be scrolled into view, whatever the sheet's height.
+  document.documentElement.style.setProperty('--sheet-hidden', `${WIDE.matches ? 0 : Math.max(0, y)}px`);
 }
 
 function setSheet(name, animate = true) {

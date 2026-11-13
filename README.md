@@ -11,6 +11,9 @@ closing days, and a pull-up list. Tap any resort for its 7-day forecast, live re
 |---|---|---|
 | Open/closed, lifts, runs, 24/48 hr snow, base | [Colorado Ski Country USA feed](https://snow.coloradoski.com/view/publicreport-feed) | 20 member resorts |
 | Snow forecast (7 days) | Blend of the [National Weather Service](https://www.weather.gov/documentation/services-web-api) and four models via [Open-Meteo](https://open-meteo.com) (ECMWF, GFS/HRRR, GEM, ICON) at mid-mountain elevation | All 26 resorts |
+| Season snowpack vs normal | [NRCS SNOTEL](https://www.nrcs.usda.gov/wps/portal/wcc/home/) station nearest each resort, 1991–2020 median | All 26 resorts |
+| Daily weather (sky, wind, chance of precipitation) | [National Weather Service](https://www.weather.gov/documentation/services-web-api) text forecast | All 26 resorts |
+| Typical season snowfall | [ZRankings](https://www.zrankings.com/articles/best-snow-in-colorado) "True Snow" (patrol and avalanche-center records) | 19 resorts |
 | Snow on the ground (map layer) | [NOAA NOHRSC snow analysis](https://www.nohrsc.noaa.gov/nsa/) | Everywhere, daily |
 | Planned opening dates | Hand-entered in `src/resorts.js` (`PLANNED`) | Vail, Beaver Creek, Breckenridge, Keystone, Crested Butte, Wolf Creek |
 
@@ -21,7 +24,8 @@ Vail Resorts' sites block automated requests, so those mountains show planned da
 Each model's hourly precipitation and temperature, adjusted to the resort's mid-mountain elevation, becomes snow using a
 temperature-based snow-to-liquid ratio (wet near freezing, fluffier in the cold). The app shows the middle of the five
 forecasts as the headline and the 2nd-lowest to 2nd-highest as the likely range. If the models are unreachable it
-falls back to the Weather Service alone.
+falls back to the Weather Service alone. Days 8–14 come from the models that reach that far (ECMWF, GFS), and
+the season chart's dashed line adds the models' forecast snow water to today's snowpack.
 
 ## How it runs
 
