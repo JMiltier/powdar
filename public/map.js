@@ -12,6 +12,8 @@ export const CREDITS = 'Map data © <a href="https://www.openstreetmap.org/copyr
 // NOAA's daily national snow analysis (NOHRSC): modelled snow depth on the ground, cloud-free.
 const SNOW_DEPTH_WMS = 'https://mapservices.weather.noaa.gov/raster/services/snow/NOHRSC_Snow_Analysis/MapServer/WMSServer';
 const GAP = 2;
+// Longest pointer allowed, in pixels: labels stay near their dots.
+const MAX_POINTER = 120;
 const DOT_R = 4;
 // Margin around the resorts when fitting them (labels stick out sideways more than up and down).
 const EDGE_X = 30;
@@ -154,9 +156,15 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
   // Hard rules: labels never overlap; a pointer never crosses another label, another pointer, or
   // passes over another resort's dot; everything stays in the visible map.
   // Cost: pointer length (squared, so one long pointer costs more than several short ones).
+  // Finished layouts are remembered (by screen size, padding and label texts), so switching back to
+  // a view or re-rendering the same data is instant.
+  const layoutCache = new Map();
   function layout() {
     const size = map.getSize();
     const pad = getPadding();
+    const key = JSON.stringify([size, pad, map.getZoom(), order.map((o) => [o.r.id, o.pin.bubble.textContent, o.pin.bubble.className])]);
+    const cached = layoutCache.get(key);
+    if (cached) return apply(cached);
     const area = [pad.left + 2, pad.top + 2, size.x - pad.right - 2, size.y - pad.bottom - 2];
     // Un-hide everything first: a label hidden by the last layout would measure as zero size.
     for (const o of order) o.pin.root.classList.remove('hidden');
@@ -176,6 +184,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
         const covers = dots.filter((d) => d !== it.p && d.x + DOT_R > box[0] && d.x - DOT_R < box[2] && d.y + DOT_R > box[1] && d.y - DOT_R < box[3]).length;
         const passes = tail ? dots.filter((d) => d !== it.p && segPointDist(tail.seg, d) < DOT_R + 3).length : 0;
         const len = tail ? Math.hypot(tail.seg[2] - tail.seg[0], tail.seg[3] - tail.seg[1]) : 0;
+        if (len > MAX_POINTER) continue;
         it.cands.push({ s, box, tail, cost: (tail ? 30 : 0) + len * len + 80000 * (covers + passes) });
       }
       it.cands.sort((a, b) => a.cost - b.cost);
@@ -204,7 +213,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
     let seed = 7;
     const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     let bestStart = null;
-    for (let t = 0; t < 40; t++) {
+    for (let t = 0; t < 16; t++) {
       pick.clear();
       const seq = [...labels].sort((a, b) => b.selected - a.selected || crowd(b) - crowd(a) + (t ? (rand() - 0.5) * 6 : 0));
       let hidden = 0;
@@ -229,14 +238,14 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
     // 2) Improve it: move one label at a time to another valid spot when that shortens things
     //    (sometimes accepting a worse move early on, to escape dead ends). Clashes are never allowed.
     let temp = 3000;
-    for (let k = 0; k < 30000 && labels.length; k++) {
+    for (let k = 0; k < 12000 && labels.length; k++) {
       const it = labels[Math.floor(rand() * labels.length)];
       const next = it.cands[Math.floor(rand() * it.cands.length)];
       const cur = pick.get(it);
       if (next === cur || !free(it, next)) continue;
       const delta = costOf(it, next) - costOf(it, cur); // placing a hidden label is a huge win
       if (delta < 0 || rand() < Math.exp(-delta / temp)) pick.set(it, next);
-      temp *= 0.9997;
+      temp *= 0.9993;
     }
 
     // 3) Repair: for a label still squeezed out, take a spot anyway and re-seat the (few) labels in
@@ -275,19 +284,65 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
       }
     }
 
-    for (const it of items) {
+    // 4) Untangle: move a label to a better spot even if 1–3 labels are in the way, re-seat those
+    //    elsewhere, and keep the change only if the labels involved end up closer overall.
+    const near = (it) => it.cands.slice(0, 40);
+    const reseat = (o) => {
+      let c = null;
+      let best = Infinity;
+      for (const x of near(o)) {
+        if (!free(o, x)) continue;
+        const v = costOf(o, x);
+        if (v < best) { best = v; c = x; }
+      }
+      return c;
+    };
+    for (let k = 0; k < 3500 && labels.length; k++) {
+      // Favour the labels that are furthest out.
+      const a = labels[Math.floor(rand() * labels.length)];
+      const b = labels[Math.floor(rand() * labels.length)];
+      const it = (pick.get(a)?.cost ?? 1e7) >= (pick.get(b)?.cost ?? 1e7) ? a : b;
+      const cur = pick.get(it);
+      const opts = near(it);
+      const c = opts[Math.floor(rand() * opts.length)];
+      if (!c || c === cur || (cur && c.cost >= cur.cost)) continue;
+      const blockers = labels.filter((o) => o !== it && pick.get(o) && clash(c, pick.get(o)));
+      if (blockers.length > 4) continue;
+      const group = [it, ...blockers];
+      const before = group.reduce((a, o) => a + costOf(o, pick.get(o)), 0);
+      const saved = group.map((o) => [o, pick.get(o)]);
+      for (const o of blockers) pick.set(o, null);
+      pick.set(it, c);
+      if (!free(it, c)) { for (const [o, v] of saved) pick.set(o, v); continue; }
+      for (const o of blockers) pick.set(o, reseat(o));
+      const after = group.reduce((a, o) => a + costOf(o, pick.get(o)), 0);
+      if (after >= before) for (const [o, v] of saved) pick.set(o, v);
+    }
+
+    const result = items.map((it) => {
       const c = pick.get(it);
-      it.pin.root.classList.toggle('hidden', !c);
-      it.pin.tail.setAttribute('points', '');
-      if (!c) continue;
-      const [dx, dy] = c.s;
-      it.pin.bubble.style.transform = `translate(${dx - it.w / 2}px, ${dy - it.h / 2}px)`;
-      if (!c.tail) continue;
-      // Draw the wedge in the label's own colours, from its edge to the rim of the dot.
-      const cs = getComputedStyle(it.pin.bubble);
-      it.pin.tail.setAttribute('points', c.tail.points.map(([x, y]) => `${(x - it.p.x).toFixed(1)},${(y - it.p.y).toFixed(1)}`).join(' '));
-      it.pin.tail.style.fill = cs.backgroundColor;
-      it.pin.tail.style.stroke = cs.borderTopColor;
+      return {
+        pin: it.pin,
+        transform: c ? `translate(${c.s[0] - it.w / 2}px, ${c.s[1] - it.h / 2}px)` : null,
+        tail: c?.tail ? c.tail.points.map(([x, y]) => `${(x - it.p.x).toFixed(1)},${(y - it.p.y).toFixed(1)}`).join(' ') : '',
+      };
+    });
+    if (layoutCache.size > 40) layoutCache.clear();
+    layoutCache.set(key, result);
+    apply(result);
+  }
+
+  function apply(result) {
+    for (const { pin, transform, tail } of result) {
+      pin.root.classList.toggle('hidden', !transform);
+      pin.tail.setAttribute('points', tail);
+      if (!transform) continue;
+      pin.bubble.style.transform = transform;
+      if (!tail) continue;
+      // The wedge takes the label's own colours.
+      const cs = getComputedStyle(pin.bubble);
+      pin.tail.style.fill = cs.backgroundColor;
+      pin.tail.style.stroke = cs.borderTopColor;
     }
   }
 
@@ -315,7 +370,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
     },
     // Screen size or panels changed: refit everything and lay the labels out again.
     refit() {
-      map.invalidateSize();
+      // No animated pan: the labels must be laid out from the map's final positions.
+      map.invalidateSize({ animate: false, pan: false });
       fit();
       layout();
     },

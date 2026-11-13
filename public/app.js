@@ -670,7 +670,12 @@ const onResize = () => {
   $('#panel-open').hidden = !WIDE.matches || state.panelOpen;
   state.map?.refit();
 };
-window.addEventListener('resize', onResize);
+// Laying labels out takes ~0.1 s, so while a window is being dragged to a new size, wait for a pause.
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(onResize, 120);
+});
 WIDE.addEventListener('change', onResize);
 
 $('#credits').innerHTML = CREDITS;
