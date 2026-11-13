@@ -339,7 +339,7 @@ const MONTH_STARTS = [0, 31, 61, 92, 123, 151, 182, 212, 243];
 function seasonChart(st, ahead, past, bands) {
   const W = 320;
   const H = 128;
-  const pad = { l: 4, r: 4, t: 14, b: 18 };
+  const pad = { l: 4, r: 4, t: 20, b: 18 }; // room above for the "normal peak" label
   const last = st.season.at(-1);
   const proj = !past && last && ahead?.length ? [last, ...ahead.map((w, i) => [last[0] + i + 1, last[1] + w])] : [];
   const shown = past ? past.points : st.season;
@@ -368,7 +368,8 @@ function seasonChart(st, ahead, past, bands) {
         return `<circle class="proj-dot" cx="${x(p[0])}" cy="${y(p[1])}" r="2.6"/>
           <text class="now-label" text-anchor="${flip ? 'end' : 'start'}" x="${(x(p[0]) + (flip ? -7 : 7)).toFixed(1)}" y="${(y(p[1]) - 6).toFixed(1)}">in 2 wks ${p[1].toFixed(1)}″</text>`;
       })() : ''}
-      ${st.peak ? `<text class="peak" x="${x(dayOfSeason(st.peak.date)).toFixed(1)}" y="${(y(st.peak.swe) - 4).toFixed(1)}">normal peak ${st.peak.swe}″</text>` : ''}
+      ${st.peak ? `<circle class="peak-dot" cx="${x(dayOfSeason(st.peak.date)).toFixed(1)}" cy="${y(st.peak.swe).toFixed(1)}" r="2.4"/>
+        <text class="peak" x="${x(dayOfSeason(st.peak.date)).toFixed(1)}" y="${(y(st.peak.swe) - 6).toFixed(1)}">normal peak ${st.peak.swe}″</text>` : ''}
       ${months}
     </svg>`;
 }
@@ -697,7 +698,7 @@ function renderPicker() {
     const states = list.states.filter((x) => x.region === region);
     if (!states.length) return '';
     return `<h3 class="picker-region">${esc(region)}</h3><div class="picker-grid">${states.map((x) => `
-      <button type="button" class="picker-state${x.code === state.code ? ' is-current' : ''}" data-state="${esc(x.code)}">
+      <button type="button" class="picker-state${x.code === state.code ? ' is-current' : ''}" data-pick-state="${esc(x.code)}">
         <b>${esc(x.name)}</b><small>${x.count} resort${x.count === 1 ? '' : 's'}${x.open ? ` · <span class="open-now">${x.open} open</span>` : ''}</small>
       </button>`).join('')}</div>`;
   }).join('');
@@ -737,8 +738,9 @@ document.addEventListener('click', (e) => {
   const t = e.target;
   if (t.closest('#state-btn')) return openPicker($('#picker').hidden);
   if (t.closest('#picker-close') || t.id === 'picker') return openPicker(false);
-  const pickState = t.closest('[data-state]');
-  if (pickState) return setState(pickState.dataset.state);
+  // (Not [data-state]: the sheet itself uses that attribute for its height.)
+  const pickState = t.closest('[data-pick-state]');
+  if (pickState) return setState(pickState.dataset.pickState);
   const metric = t.closest('[data-metric]');
   if (metric) {
     state.metric = metric.dataset.metric;

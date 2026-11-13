@@ -13,8 +13,6 @@ export const CREDITS = 'Map data © <a href="https://www.openstreetmap.org/copyr
 // NOAA's daily national snow analysis (NOHRSC): modelled snow depth on the ground, cloud-free.
 const SNOW_DEPTH_WMS = 'https://mapservices.weather.noaa.gov/raster/services/snow/NOHRSC_Snow_Analysis/MapServer/WMSServer';
 const GAP = 2;
-// Longest pointer allowed, in pixels: labels stay near their dots.
-const MAX_POINTER = 170;
 const DOT_R = 4;
 // Margin around the resorts when fitting them (labels stick out sideways more than up and down).
 const EDGE_X = 30;
@@ -147,23 +145,47 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
     return pin;
   }
 
-  // Label layout by simulated annealing. Each label sits on its dot or nearby; a label that isn't on
-  // its dot gets a pointer (a wedge in the label's color) running all the way to the dot.
-  // Hard rules: labels never overlap; a pointer never crosses another label, another pointer, or
-  // passes over another resort's dot; everything stays in the visible map.
-  // Cost: pointer length (squared, so one long pointer costs more than several short ones).
+  // Label layout. Each label sits right beside its dot when there's room; otherwise it steps out a
+  // little with a hairline back to the dot.
+  // Hard rules: labels never overlap or cover any resort's point; hairlines never cross a label, each
+  // other, or pass over another point; everything stays in the visible map.
+  // Distances scale with the map you can see: a hairline may be at most ~10% of the visible map's
+  // smaller side (28–90 px), so a small window never gets long, sprawling lines. If labels still don't
+  // fit, the whole set is retried at 88% and then 78% size; a label that can't fit even then shows just
+  // its number, and only failing that, hides (its dot stays).
   // Finished layouts are remembered (by screen size, padding and label texts), so switching back to
   // a view or re-rendering the same data is instant.
+  const LABEL_SCALES = [1, 0.88, 0.78];
   const layoutCache = new Map();
   function layout() {
     const size = map.getSize();
     const pad = getPadding();
-    const key = JSON.stringify([size, pad, map.getZoom(), order.map((o) => [o.r.id, o.pin.bubble.textContent, o.pin.bubble.className])]);
+    const key = JSON.stringify([size, pad, map.getZoom(), order.map((o) => [o.r.id, o.pin.bubble.textContent, o.pin.bubble.className.replace(/ compact/g, '')])]);
     const cached = layoutCache.get(key);
-    if (cached) return apply(cached);
+    if (cached) {
+      el.style.setProperty('--label-scale', cached.scale);
+      return apply(cached.result);
+    }
+    let best = null;
+    for (const scale of LABEL_SCALES) {
+      el.style.setProperty('--label-scale', scale);
+      const attempt = computeLayout(size, pad);
+      if (!best || attempt.misses < best.misses) best = { ...attempt, scale };
+      if (attempt.misses === 0) break;
+    }
+    el.style.setProperty('--label-scale', best.scale);
+    if (layoutCache.size > 40) layoutCache.clear();
+    layoutCache.set(key, best);
+    apply(best.result);
+  }
+
+  // One layout at the current label size → { result, misses } (misses: labels shown number-only or hidden).
+  function computeLayout(size, pad) {
     const area = [pad.left + 2, pad.top + 2, size.x - pad.right - 2, size.y - pad.bottom - 2];
+    const maxLead = Math.max(28, Math.min(90, 0.1 * Math.min(area[2] - area[0], area[3] - area[1])));
     // Un-hide everything first: a label hidden by the last layout would measure as zero size.
     for (const o of order) o.pin.root.classList.remove('hidden');
+    for (const o of order) o.pin.bubble.classList.remove('compact');
     const items = order.map((o) => ({ ...o, p: map.latLngToContainerPoint(o.r.at), w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight }));
     const dots = items.map((it) => it.p);
     const boxOf = (it, [dx, dy]) => [it.p.x + dx - it.w / 2 - GAP, it.p.y + dy - it.h / 2 - GAP, it.p.x + dx + it.w / 2 + GAP, it.p.y + dy + it.h / 2 + GAP];
@@ -181,7 +203,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
         const tail = lead.seg ? { seg: lead.seg } : null;
         // (Relaxed, for the number-only fallback: a hairline may pass beside other points, and reach further.)
         if (!relaxed && tail && dots.some((d) => d !== it.p && segPointDist(tail.seg, d) < DOT_R + 3)) continue;
-        if (lead.len > (relaxed ? MAX_POINTER * 1.6 : MAX_POINTER)) continue;
+        if (lead.len > (relaxed ? maxLead * 1.5 : maxLead)) continue;
         // Distance from the dot (squared), plus a small preference for the classic spots.
         it.cands.push({ s, box, tail, cost: lead.len * lead.len + (s[2] ?? 60) + (tail ? 40 : 0) });
       }
@@ -194,16 +216,12 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
 
     const hit = (a, b) => a.box[0] < b.box[2] && a.box[2] > b.box[0] && a.box[1] < b.box[3] && a.box[3] > b.box[1];
     // Hard: labels overlapping, or a pointer running under another label.
+    // Hard: labels overlapping, a hairline running under another label, or two hairlines crossing.
     const clash = (a, b) => hit(a, b)
       || (a.tail && segRect(a.tail.seg, b.box))
-      || (b.tail && segRect(b.tail.seg, a.box));
-    // Soft but expensive: two pointers crossing (better than hiding a label).
-    const CROSS = 50000;
-    const crossings = (it, c) => (c.tail ? labels.reduce((n, o) => {
-      const oc = o !== it && pick.get(o);
-      return n + (oc && oc.tail && segSeg(c.tail.seg, oc.tail.seg) ? 1 : 0);
-    }, 0) : 0);
-    const costOf = (it, c) => (c ? c.cost + CROSS * crossings(it, c) : 1e7);
+      || (b.tail && segRect(b.tail.seg, a.box))
+      || (a.tail && b.tail && segSeg(a.tail.seg, b.tail.seg));
+    const costOf = (it, c) => (c ? c.cost : 1e7);
     // "No data" dots take part too (on their dot only), so labels keep clear of them.
     const labels = items.filter((it) => it.cands.length);
     const pick = new Map();
@@ -331,6 +349,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
       if (c) pick.set(it, c);
     }
 
+    const misses = items.filter((it) => !it.empty && (it.compact || !pick.get(it))).length;
     const result = items.map((it) => {
       const c = pick.get(it);
       return {
@@ -340,9 +359,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
         tail: c?.tail ? c.tail.seg.map((v, k) => (v - (k % 2 ? it.p.y : it.p.x)).toFixed(1)) : null,
       };
     });
-    if (layoutCache.size > 40) layoutCache.clear();
-    layoutCache.set(key, result);
-    apply(result);
+    return { result, misses };
   }
 
   function apply(result) {
