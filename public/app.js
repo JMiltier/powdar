@@ -630,6 +630,7 @@ function render() {
   $('#detail').hidden = !r;
   $('.foot').hidden = Boolean(r); // a resort's own sources sit at the bottom of its details
   grabEl.classList.toggle('has-detail', Boolean(r));
+  if (!r) $('#grab-detail').innerHTML = '';
   if (r) renderDetail(r);
   else renderList();
   renderHeadline();
@@ -727,15 +728,101 @@ grabEl.addEventListener('pointerup', (e) => {
   // Let go of the finger explicitly so the next tap goes wherever it lands.
   if (grabEl.hasPointerCapture?.(e.pointerId)) grabEl.releasePointerCapture(e.pointerId);
   if (!d.moved) return setSheet(state.sheet === 'peek' ? 'half' : 'peek');
+  snapSheet((e.clientY - d.y) / (performance.now() - d.t)); // px per ms, + is down
+});
+// Let go of a sheet drag: settle on the nearest height (peek, half, full), or one step on in the
+// direction of a quick flick.
+function snapSheet(velocity) {
   const { h, visible } = sheetSizes();
-  const velocity = (e.clientY - d.y) / (performance.now() - d.t); // px per ms, + is down
   const shown = h - sheetY;
   const names = ['peek', 'half', 'full'];
   let i = names.reduce((best, n, k) => (Math.abs(visible[n] - shown) < Math.abs(visible[names[best]] - shown) ? k : best), 0);
   if (velocity < -0.5) i = Math.min(2, names.indexOf(state.sheet) + 1);
   if (velocity > 0.5) i = Math.max(0, names.indexOf(state.sheet) - 1);
   setSheet(names[i]);
-});
+}
+
+// Swipes on the sheet's content (phones):
+//  - up while the sheet isn't full: pulls the sheet up first (then the content scrolls as usual);
+//  - down while the content is at its top: pulls the sheet down instead of bouncing;
+//  - left/right: next/previous resort when one is open, else the next/previous map view.
+const bodyEl = $('#sheet-body');
+let swipe = null;
+const sideTarget = () => (state.selected ? $('#detail') : $('#list'));
+bodyEl.addEventListener('touchstart', (e) => {
+  if (e.touches.length !== 1) { swipe = null; return; }
+  const t = e.touches[0];
+  const now = performance.now();
+  swipe = { x: t.clientX, y: t.clientY, start: sheetY, mode: null, lastY: t.clientY, lastT: now, vy: 0 };
+}, { passive: true });
+bodyEl.addEventListener('touchmove', (e) => {
+  if (!swipe) return;
+  const t = e.touches[0];
+  const dx = t.clientX - swipe.x;
+  const dy = t.clientY - swipe.y;
+  if (!swipe.mode) {
+    if (Math.hypot(dx, dy) < 7) return;
+    if (Math.abs(dx) > Math.abs(dy) * 1.4 && !e.target.closest('select, input, .chart')) swipe.mode = 'side';
+    else if (!WIDE.matches && ((dy > 0 && bodyEl.scrollTop <= 0) || (dy < 0 && state.sheet !== 'full'))) swipe.mode = 'sheet';
+    else swipe.mode = 'scroll';
+  }
+  // Scrolling back up hits the top mid-swipe: from there the same swipe pulls the sheet down.
+  if (swipe.mode === 'scroll' && !WIDE.matches && t.clientY > swipe.lastY && bodyEl.scrollTop <= 0) {
+    Object.assign(swipe, { mode: 'sheet', y: t.clientY, start: sheetY });
+  }
+  if (swipe.mode === 'scroll') { swipe.lastY = t.clientY; swipe.lastT = performance.now(); return; }
+  if (e.cancelable) e.preventDefault();
+  if (swipe.mode === 'sheet') {
+    const { h, visible } = sheetSizes();
+    setSheetY(Math.min(h - visible.peek, Math.max(0, swipe.start + (t.clientY - swipe.y))), false);
+    const now = performance.now();
+    swipe.vy = (t.clientY - swipe.lastY) / Math.max(1, now - swipe.lastT);
+    swipe.lastY = t.clientY;
+    swipe.lastT = now;
+  } else {
+    // A hint of the content following the finger.
+    sideTarget().style.transform = `translateX(${Math.max(-60, Math.min(60, dx * 0.35))}px)`;
+  }
+}, { passive: false });
+const endSwipe = (e, cancelled) => {
+  const s = swipe;
+  swipe = null;
+  if (!s) return;
+  if (s.mode === 'sheet') return cancelled ? setSheet(state.sheet) : snapSheet(s.vy);
+  if (s.mode !== 'side') return;
+  const el = sideTarget();
+  el.style.transform = '';
+  const dx = (e.changedTouches?.[0]?.clientX ?? s.x) - s.x;
+  if (!cancelled && Math.abs(dx) > 70) sideSwipe(dx < 0 ? 1 : -1);
+};
+bodyEl.addEventListener('touchend', (e) => endSwipe(e, false));
+bodyEl.addEventListener('touchcancel', (e) => endSwipe(e, true));
+
+// dir: +1 next, -1 previous (wraps around).
+function sideSwipe(dir) {
+  if (state.selected) {
+    const ids = ordered().map((o) => o.r.id);
+    const i = ids.indexOf(state.selected);
+    if (i < 0 || ids.length < 2) return;
+    state.selected = ids[(i + dir + ids.length) % ids.length];
+    render();
+    bodyEl.scrollTop = 0;
+    slideIn($('#detail'), dir);
+    $('#grab-detail').firstElementChild && slideIn($('#grab-detail'), dir);
+  } else {
+    const views = availableMetrics();
+    state.metric = views[(views.indexOf(state.metric) + dir + views.length) % views.length];
+    write(STORE.metric, state.metric);
+    render();
+    slideIn($('#list'), dir);
+  }
+}
+// New content slides in from the side it came from.
+function slideIn(el, dir) {
+  el.classList.remove('slide-next', 'slide-prev');
+  void el.offsetWidth; // restart the animation
+  el.classList.add(dir > 0 ? 'slide-next' : 'slide-prev');
+}
 grabEl.addEventListener('pointercancel', (e) => {
   if (grabEl.hasPointerCapture?.(e.pointerId)) grabEl.releasePointerCapture(e.pointerId);
   drag = null;
