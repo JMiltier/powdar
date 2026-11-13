@@ -782,3 +782,11 @@ button, .row, summary { -webkit-tap-highlight-color: transparent; }
 .dot-alert { width: 8px; height: 8px; border-radius: 50%; background: #3b82e0; flex: none; box-shadow: 0 0 0 3px color-mix(in srgb, #3b82e0 25%, transparent); }
 .overview-line { display: block !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .overview-line .dot-alert { display: inline-block; margin-right: 6px; vertical-align: 1px; }
+
+/* The snow key's style button: tap to cycle Shaded → Volume → Contours → Color. */
+.snow-style {
+  display: inline-flex; align-items: center; gap: 4px; border: 0; cursor: pointer; flex: none;
+  background: var(--accent-soft); color: var(--accent); font-size: 0.72rem; font-weight: 750; padding: 4px 8px; border-radius: 999px;
+}
+.snow-style svg { width: 12px; height: 12px; }
+@media (max-width: 370px) { .depth-step:nth-child(2), .depth-step:nth-child(5) { display: none; } }

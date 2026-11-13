@@ -1,4 +1,4 @@
-import { createSnowMap, CREDITS, satTile } from './map.js?v=__V__';
+import { createSnowMap, CREDITS, satTile, SNOW_RAMP, SNOW_COLOR } from './map.js?v=__V__';
 import { weatherIcon, UI } from './icons.js?v=__V__';
 
 // One data file per state (data/co.json, data/ut.json…), plus an index of states for the picker.
@@ -11,7 +11,7 @@ const ALL_STATES = false;
 const STATE_CODES = !ALL_STATES ? new Set(['CO']) : new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
 const validCode = (c) => (c && STATE_CODES.has(String(c).toUpperCase()) ? String(c).toUpperCase() : null);
 const STORE = {
-  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', sort: 'cs:sort', unit: 'cs:unit', panel: 'cs:panel',
+  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', sort: 'cs:sort', unit: 'cs:unit', snowStyle: 'cs:snowStyle', panel: 'cs:panel',
   state: 'cs:state', states: 'cs:states', theme: 'cs:theme',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
@@ -79,6 +79,7 @@ const state = {
   openOnly: read(STORE.openOnly, false),
   favsOnly: read(STORE.favsOnly, false),
   pass: read(STORE.pass, 'all'), // 'all', 'epic', 'ikon', 'indy' or 'other'
+  snowStyle: read(STORE.snowStyle, 'shaded'), // how snow on the ground is drawn (tap its key to cycle)
   unit: read(STORE.unit, 'F'), // temperatures in 'F' or 'C' (the data is always °F)
   sort: read(STORE.sort, 'name'), // the list: 'name' (A–Z), 'value' (the map view's number) or 'open'
   // The map overlay: 'snow' (on the ground; the default), 'radar', 'outlook' or 'none'.
@@ -206,6 +207,7 @@ async function applyLayer() {
     state.map.setBase(state.layer, state.satDate);
   } else {
     state.map.setBase('terrain');
+    state.map.setSnowStyle(state.snowStyle);
     state.map.setLayer(state.layer);
   }
 }
@@ -266,6 +268,9 @@ function seasonSpan(valid) {
   return i < 0 ? 'next 3 months' : `${MONTH_NAMES[i]}–${MONTH_NAMES[(i + 2) % 12]}`;
 }
 
+const SNOW_STYLES = ['shaded', 'volume', 'contours', 'color'];
+const SNOW_STYLE_NAMES = { shaded: 'Shaded', volume: 'Volume', contours: 'Contours', color: 'Color' };
+
 // The key along the bottom of the map, for whichever overlay is showing.
 function legendFor(layer) {
   if (SAT_VIEWS.includes(layer)) {
@@ -283,14 +288,15 @@ function legendFor(layer) {
   if (layer === 'outlook') {
     return `<span class="legend-title">${esc(seasonSpan(state.outlookSeason))} outlook</span><span class="legend-keys"><span>Drier</span><i class="ramp ramp-outlook" aria-hidden="true"></i><span>Wetter</span><span class="muted">· ${esc(seasonSpan(state.outlookSeason))}</span></span>`;
   }
-  // Labeled steps, shaded like the map (depth class → brightness and opacity, over the map's grey).
+  // The style's name (tap to cycle), then labeled depth steps colored as the map draws them.
+  const ramp = state.snowStyle === 'color' ? SNOW_COLOR : SNOW_RAMP;
   const step = (cls, label) => {
-    const v = Math.min(1, (cls + 0.5) / 7.5);
-    const c = Math.round(168 + 87 * Math.sqrt(v));
-    const a = ((125 + 130 * Math.sqrt(v)) / 255).toFixed(2);
-    return `<span class="depth-step"><i style="background:linear-gradient(rgba(${c - 6},${c - 2},${Math.min(255, c + 6)},${a}),rgba(${c - 6},${c - 2},${Math.min(255, c + 6)},${a})),#6f7886"></i>${label}</span>`;
+    const [r, g, b, a] = ramp[cls];
+    return `<span class="depth-step"><i style="background:linear-gradient(rgba(${r},${g},${b},${(a / 255).toFixed(2)}),rgba(${r},${g},${b},${(a / 255).toFixed(2)})),#6f7886"></i>${label}</span>`;
   };
-  return `<span class="legend-title">Snow depth</span><span class="legend-keys depth-steps">${step(0, '1″')}${step(2, '4″')}${step(3, '1′')}${step(4, '2′')}${step(6, '5′')}${step(7, '8′+')}</span>`;
+  const next = SNOW_STYLES[(SNOW_STYLES.indexOf(state.snowStyle) + 1) % SNOW_STYLES.length];
+  return `<button type="button" class="snow-style" data-snow-cycle aria-label="Snow drawn as: ${SNOW_STYLE_NAMES[state.snowStyle]}. Tap for ${SNOW_STYLE_NAMES[next]}.">${SNOW_STYLE_NAMES[state.snowStyle]}<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 0 1 8.6-3.5M13 8a5 5 0 0 1-8.6 3.5M11.5 2v2.7H8.8M4.5 14v-2.7h2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <span class="legend-keys depth-steps">${step(0, '1″')}${step(2, '4″')}${step(3, '1′')}${step(4, '2′')}${step(6, '5′')}${step(7, '8′+')}</span>`;
 }
 
 function seasonText(r, today) {
@@ -1522,6 +1528,12 @@ document.addEventListener('click', (e) => {
     return render();
   }
   if (!t.closest('#filters')) openFilters(false);
+  if (t.closest('[data-snow-cycle]')) {
+    state.snowStyle = SNOW_STYLES[(SNOW_STYLES.indexOf(state.snowStyle) + 1) % SNOW_STYLES.length];
+    write(STORE.snowStyle, state.snowStyle);
+    state.map?.setSnowStyle(state.snowStyle);
+    return render();
+  }
   const satStep = t.closest('[data-sat-step]');
   if (satStep) return stepSatDay(Number(satStep.dataset.satStep));
   if (t.closest('#radar-play')) return state.map?.playRadar(!state.radar.playing);
