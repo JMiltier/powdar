@@ -156,7 +156,7 @@ function legendFor(layer) {
   if (layer === 'outlook') {
     return `<span class="legend-title">${esc(seasonSpan(state.outlookSeason))} outlook</span><span class="legend-keys"><span>Drier</span><i class="ramp ramp-outlook" aria-hidden="true"></i><span>Wetter</span><span class="muted">· ${esc(seasonSpan(state.outlookSeason))}</span></span>`;
   }
-  return '<span class="legend-title">Snow on the ground</span><span class="legend-keys"><span>1″</span><i class="ramp" aria-hidden="true"></i><span>2 ft+</span></span>';
+  return '<span class="legend-title">Snow on the ground</span><span class="legend-keys"><span>1″</span><i class="ramp" aria-hidden="true"></i><span>8 ft+</span></span>';
 }
 
 function seasonText(r, today) {

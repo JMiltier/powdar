@@ -125,7 +125,7 @@ body.sheet-up .legend, .legend.off { visibility: hidden; }
 /* The snow ramp drawn on the map (SNOW_RAMP in map.js), thin to deep. */
 .ramp {
   display: inline-block; width: 120px; height: 8px; border-radius: 4px;
-  background: linear-gradient(90deg, rgba(214, 236, 255, 0.47), rgba(160, 205, 252, 0.65), rgba(92, 152, 240, 0.76), rgba(46, 98, 212, 0.84), rgba(26, 58, 160, 0.91));
+  background: linear-gradient(90deg, rgba(214, 236, 255, 0.49), rgba(150, 200, 252, 0.67), rgba(72, 136, 236, 0.79), rgba(34, 76, 192, 0.88), rgba(28, 54, 160, 0.91));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 12%, transparent);
 }
 

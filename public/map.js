@@ -17,20 +17,30 @@ export const CREDITS = 'Hillshade © <a href="https://www.esri.com">Esri</a> and
   + 'snow cover: <a href="https://www.nohrsc.noaa.gov/nsa/">NOAA NOHRSC</a> · radar: <a href="https://www.nssl.noaa.gov/projects/mrms/">NOAA MRMS</a> · '
   + 'season outlook: <a href="https://www.cpc.ncep.noaa.gov/products/predictions/long_range/seasonal.php">NOAA Climate Prediction Center</a> · <a href="https://leafletjs.com">Leaflet</a>';
 // NOAA's daily national snow analysis (NOHRSC): modelled snow depth on the ground, cloud-free.
-const SNOW_DEPTH_WMS = 'https://mapservices.weather.noaa.gov/raster/services/snow/NOHRSC_Snow_Analysis/MapServer/WMSServer';
-// NOAA draws snow depth in purples and magentas, as coarse squares. We read each pixel's depth class
+// NOAA's snow depth as an image in its official legend colors, one per depth class (inches):
+// <2, 2–4, 4–10, 10–20, 20–39, 39–59, 59–98, 98–197, 197–295, 295–394, 394+. We read each pixel's class
 // back from its color and repaint it as snow: icy white-blue where it's thin, deep blue where it's
-// deep, then let the browser smooth it. NOAA's colors, shallowest first (matched to depths with
-// NOAA's own point lookup), then its darker classes for very deep snow.
+// deep. (The REST export of layer 3 gives these exact colors all season; the WMS blends them.)
+const SNOW_DEPTH_EXPORT = 'https://mapservices.weather.noaa.gov/raster/rest/services/snow/NOHRSC_Snow_Analysis/MapServer/export';
 const NOAA_CLASSES = [
-  [128, 165, 192], [95, 126, 181], [68, 72, 171], [70, 44, 167], [80, 20, 144], [135, 34, 164], [155, 51, 148], [189, 88, 154],
-  [180, 4, 177], [169, 19, 119], [153, 43, 80], [139, 69, 69],
+  [171, 193, 191], [102, 193, 196], [99, 169, 203], [80, 121, 200], [60, 63, 194], [87, 32, 195],
+  [125, 1, 187], [180, 4, 177], [169, 19, 119], [153, 43, 80], [139, 69, 69],
 ];
-// Our ramp, one entry per class: [r, g, b, alpha 0–255]. Also drawn as the key (see SNOW_KEY).
+// Our ramp, one entry per class: [r, g, b, alpha 0–255]. The key's gradient (.ramp) matches it.
 export const SNOW_RAMP = [
-  [214, 236, 255, 120], [190, 224, 255, 145], [160, 205, 252, 165], [124, 180, 248, 180], [92, 152, 240, 195],
-  [64, 122, 228, 205], [46, 98, 212, 215], [34, 76, 190, 225], [26, 58, 160, 232], [26, 58, 160, 232], [26, 58, 160, 232], [26, 58, 160, 232],
+  [214, 236, 255, 125], [186, 222, 255, 150], [150, 200, 252, 170], [108, 170, 246, 188], [72, 136, 236, 202],
+  [48, 104, 218, 214], [34, 76, 192, 224], [28, 54, 160, 232], [40, 40, 140, 236], [40, 40, 140, 236], [40, 40, 140, 236],
 ];
+const classOf = (r, g, b) => {
+  let best = 0;
+  let bestD = Infinity;
+  NOAA_CLASSES.forEach(([R, G, B], i) => {
+    const d = (r - R) ** 2 + (g - G) ** 2 + (b - B) ** 2;
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  return best;
+};
+
 // NOAA's live radar (MRMS base reflectivity, refreshed every few minutes), in the usual radar colors:
 // blue-grey for light, then teal, green, yellow, red, magenta for heavier. Repainted for snow: a soft
 // white-cyan glow for light snow, brighter blue, then violet for heavy.
@@ -57,15 +67,6 @@ const OUTLOOK_SHADES = {
   Below: ['#f1dcb6', '#e3bd7f', '#cf9548', '#a96a24'],
 };
 
-const classOf = (r, g, b) => {
-  let best = 0;
-  let bestD = Infinity;
-  NOAA_CLASSES.forEach(([R, G, B], i) => {
-    const d = (r - R) ** 2 + (g - G) ** 2 + (b - B) ** 2;
-    if (d < bestD) { bestD = d; best = i; }
-  });
-  return best;
-};
 const GAP = 2;
 const DOT_R = 4;
 // Margin around the resorts when fitting them (labels stick out sideways more than up and down).
@@ -171,7 +172,16 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   let job = 0;
   let radarTimer = null;
   let outlookData = null;
-  async function picture(url, layers, recolor) {
+  // src(w, h, sw, ne) → image URL for the visible map in Web Mercator.
+  const wms = (url) => (w, h, sw, ne) => `${url}?${new URLSearchParams({
+    service: 'WMS', request: 'GetMap', version: '1.3.0', layers: '0', styles: '', format: 'image/png', transparent: 'true',
+    crs: 'EPSG:3857', width: w, height: h, bbox: [sw.x, sw.y, ne.x, ne.y].join(','), t: Math.floor(Date.now() / 120000),
+  })}`;
+  const snowExport = (w, h, sw, ne) => `${SNOW_DEPTH_EXPORT}?${new URLSearchParams({
+    bbox: [sw.x, sw.y, ne.x, ne.y].join(','), bboxSR: '3857', imageSR: '3857', size: `${w},${h}`, format: 'png32',
+    transparent: 'true', layers: 'show:3', f: 'image', t: Math.floor(Date.now() / 3600000),
+  })}`;
+  async function picture(src, recolor) {
     const size = map.getSize();
     const b = map.getPixelBounds();
     const sw = map.options.crs.project(map.unproject(L.point(b.min.x, b.max.y)));
@@ -179,13 +189,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     // Half resolution is about NOAA's own 1 km grid at this zoom; smoothing does the rest.
     const w = Math.max(1, Math.round(size.x / 2));
     const h = Math.max(1, Math.round(size.y / 2));
-    const q = new URLSearchParams({
-      service: 'WMS', request: 'GetMap', version: '1.3.0', layers, styles: '', format: 'image/png', transparent: 'true',
-      crs: 'EPSG:3857', width: w, height: h, bbox: [sw.x, sw.y, ne.x, ne.y].join(','), t: Math.floor(Date.now() / 120000),
-    });
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.src = `${url}?${q}`;
+    img.src = src(w, h, sw, ne);
     await img.decode();
     const small = document.createElement('canvas');
     small.width = w;
@@ -235,8 +241,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     clearInterval(radarTimer);
     let next = null;
     try {
-      if (layerName === 'snow') next = await picture(SNOW_DEPTH_WMS, '0', (r, g, b) => SNOW_RAMP[classOf(r, g, b)]);
-      else if (layerName === 'radar') next = await picture(RADAR_WMS, '0', radarColor);
+      if (layerName === 'snow') next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)]);
+      else if (layerName === 'radar') next = await picture(wms(RADAR_WMS), radarColor);
       else if (layerName === 'outlook') next = await outlookLayer();
     } catch { next = null; }
     if (mine !== job) return;
