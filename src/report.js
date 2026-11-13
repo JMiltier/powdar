@@ -230,7 +230,7 @@ export function statusFor({ live, isOpen, open, close, when, opened, note, repor
   // Planned date has passed but we can't read this resort's site to confirm it.
   if (open) return { state: 'likely', label: 'Probably open', date: open, detail: `Set to open ${when ?? shortDate(open)} · can't confirm live` };
   if (note && /asap/i.test(note)) return { state: 'tba', label: 'Opening ASAP', detail: null };
-  return { state: 'tba', label: 'Opening date TBA', detail: null };
+  return { state: 'tba', label: 'Opening TBA', detail: null };
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
