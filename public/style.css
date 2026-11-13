@@ -937,3 +937,18 @@ body.reordering, body.reordering * { user-select: none; cursor: grabbing; }
 .best-note { margin: 2px 2px 8px; font-size: 0.7rem; color: var(--muted); }
 .best-star { color: #e8a400; margin-right: 5px; }
 @media (max-width: 360px) { .best-bets { grid-template-columns: 1fr; } }
+
+/* Layers button: two radar rings spread out from the snowflake to the button's edge and fade, one
+   after the other, like a sweep. Held still (one inside the other) for anyone who prefers less motion. */
+.ribbon .snow-toggle .ic-radar { width: 34px; height: 34px; margin: -4px; }
+.ic-radar .ring { transform-box: view-box; transform-origin: 12px 12px; animation: radar-ring 3.6s cubic-bezier(0.25, 0.6, 0.45, 1) infinite; }
+.ic-radar .ring-2 { animation-delay: -1.8s; }
+@keyframes radar-ring {
+  0% { transform: scale(0.5); opacity: 0; }
+  15% { opacity: 0.85; }
+  100% { transform: scale(1); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ic-radar .ring { animation: none; }
+  .ic-radar .ring-1 { transform: scale(0.72); }
+}
