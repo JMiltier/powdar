@@ -494,7 +494,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   function layout() {
     const size = map.getSize();
     const pad = getPadding();
-    const key = JSON.stringify([size, pad, map.getZoom(), order.map((o) => [o.r.id, o.pin.bubble.textContent, o.pin.bubble.className.replace(/ (compact|is-selected)/g, '')]).sort()]);
+    const key = JSON.stringify([size, pad, map.getZoom(), order.map((o) => [o.r.id, o.pin.bubble.textContent, o.pin.bubble.className.replace(/ (compact|is-selected)/g, ''), o.prio ?? 0]).sort()]);
     const cached = layoutCache.get(key);
     if (cached) {
       el.style.setProperty('--label-scale', cached.scale);
@@ -544,7 +544,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         if (tail && reserved.some((r) => segRect(tail.seg, r))) continue;
         // (Relaxed, for the number-only fallback: a hairline may pass beside other points, and reach further.)
         if (!relaxed && tail && dots.some((d) => d !== it.p && segPointDist(tail.seg, d) < DOT_R + 3)) continue;
-        if (lead.len > (relaxed ? maxLead * 1.5 : maxLead)) continue;
+        // Labels that matter (open, favorite, filter match) may reach further when they must.
+        if (lead.len > ((it.prio ?? 0) > 0 ? maxLead * 2.6 : relaxed ? maxLead * 1.5 : maxLead)) continue;
         // Distance from the dot (squared), a small preference for the classic spots, and a big one for
         // touching the dot: a hairline is only worth it when there's no room right beside it.
         it.cands.push({ s, box, tail, cost: lead.len * lead.len + (s[2] ?? 60) + (tail ? 1200 : 0) });
@@ -743,13 +744,45 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     swapPass();
     settle();
 
+    // 4b) Priority: a label that matters more (filter match, favorite, open) still without a spot takes
+    //     one from labels that matter less; they're re-seated elsewhere if possible, else go below.
+    const prio = (it) => it.prio ?? 0;
+    for (const it of labels.filter((x) => !pick.get(x) && prio(x) > 0).sort((a, b) => prio(b) - prio(a))) {
+      // (A neighbor that matters as much may be moved too, but only if it keeps a full label.)
+      for (const c of it.cands) {
+        const blockers = labels.filter((o) => o !== it && pick.get(o) && clash(c, pick.get(o)));
+        if (blockers.some((o) => prio(o) > prio(it)) || blockers.length > 8) continue;
+        const saved = blockers.map((o) => [o, pick.get(o)]);
+        for (const o of blockers) pick.set(o, null);
+        pick.set(it, c);
+        for (const o of blockers) pick.set(o, bestFree(o));
+        if (blockers.every((o) => pick.get(o) || prio(o) < prio(it))) break;
+        pick.set(it, null);
+        for (const [o, v] of saved) pick.set(o, v);
+      }
+    }
+
     // 5) Still no room for name and number: show just the number chip (tap it for the resort).
-    for (const it of items.filter((x) => !x.empty && !pick.get(x))) {
-      it.compact = true;
-      it.w = it.pin.val.offsetWidth;
-      buildCands(it, true);
-      if (!labels.includes(it)) labels.push(it);
-      const c = it.cands.find((x) => free(it, x));
+    //    Most important first; one that matters (open, favorite, filter match) and still has no spot
+    //    pushes less important labels down to number-only (they're placed again after it).
+    const pending = items.filter((x) => !x.empty && !pick.get(x)).sort((a, b) => prio(b) - prio(a));
+    for (const it of pending) {
+      if (!it.compact) {
+        it.compact = true;
+        it.w = it.pin.val.offsetWidth;
+        buildCands(it, true);
+        if (!labels.includes(it)) labels.push(it);
+      }
+      let c = it.cands.find((x) => free(it, x));
+      if (!c && prio(it) > 0) {
+        for (const x of it.cands) {
+          const blockers = labels.filter((o) => o !== it && pick.get(o) && clash(x, pick.get(o)));
+          if (blockers.length > 3 || blockers.some((o) => prio(o) >= prio(it))) continue;
+          for (const o of blockers) { pick.set(o, null); pending.push(o); }
+          c = x;
+          break;
+        }
+      }
       if (c) pick.set(it, c);
     }
 
