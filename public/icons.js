@@ -53,17 +53,14 @@ export const UI = {
   starFilled: svg('<path d="M12 3.6l2.6 5.3 5.8.85-4.2 4.1 1 5.8L12 16.9l-5.2 2.75 1-5.8-4.2-4.1 5.8-.85z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>', 'ic ic-ui'),
   info: svg('<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v5.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="7.6" r="1.35" fill="currentColor"/>', 'ic ic-ui'),
   // (index.html carries copies of info and layers, so they show before the script runs.)
-  // Map layers: Powdar's snowflake (the logo's, one branch pair per arm) with two radar arcs off its
-  // top right, as in the logo.
+  // Map layers: Powdar's snowflake (the logo's, one branch pair per arm) inside full radar rings that
+  // spread out from it (style.css animates them; still, they sit as two rings).
   layers: (() => {
-    const [cx, cy] = [9.6, 14.4];
-    const arc = (r) => {
-      const p = (deg) => `${(cx + r * Math.cos((deg * Math.PI) / 180)).toFixed(2)} ${(cy + r * Math.sin((deg * Math.PI) / 180)).toFixed(2)}`;
-      return `M${p(-84)}A${r} ${r} 0 0 1 ${p(-6)}`;
-    };
-    const arms = [0, 60, 120, 180, 240, 300].map((a) => `<path transform="rotate(${a} ${cx} ${cy})" d="M${cx} ${cy - 1.5}V${cy - 7.2}M${cx - 2.2} ${cy - 5.6}l2.2 1.3 2.2-1.3"/>`).join('');
+    const c = 12;
+    const arms = [0, 60, 120, 180, 240, 300].map((a) => `<path transform="rotate(${a} ${c} ${c})" d="M${c} ${c - 0.95}V${c - 4.5}M${c - 1.45} ${c - 3.55}l1.45.85 1.45-.85"/>`).join('');
     return svg(`<g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-      <path d="${arc(10)}" stroke-width="1.8" opacity="0.75"/><path d="${arc(13.4)}" stroke-width="1.8" opacity="0.45"/>
-      <g stroke-width="1.9">${arms}</g></g>`, 'ic ic-ui');
+      <circle class="ring ring-1" cx="${c}" cy="${c}" r="11.2" stroke-width="1" opacity="0.6"/>
+      <circle class="ring ring-2" cx="${c}" cy="${c}" r="11.2" stroke-width="1" opacity="0.32"/>
+      <g stroke-width="1.4">${arms}</g></g>`, 'ic ic-ui ic-radar');
   })(),
 };
