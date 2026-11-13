@@ -557,7 +557,8 @@ function render() {
   document.querySelectorAll('[data-metric]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.metric === state.metric)));
   $('#open-only').checked = state.openOnly;
   $('#snow-btn').setAttribute('aria-pressed', String(state.snowDepth));
-  $('#legend').hidden = !state.snowDepth;
+  // Hidden but still taking its space, so turning snow cover off or on never shifts the map.
+  $('#legend').classList.toggle('off', !state.snowDepth);
   $('#map').classList.toggle('snow-on', state.snowDepth);
   $('#updated').textContent = `Updated ${timeAgo(state.data.generated)}`;
 
@@ -595,9 +596,10 @@ let legendHeight = 0;
 function coveredPadding() {
   const top = $('.ribbon').getBoundingClientRect().bottom; // (not .top: a toast there would shift the map)
   // The snow-cover key sits along the bottom of the map: keep resorts and labels clear of it.
-  // (Measured while shown: it hides while the sheet is pulled up, and the map mustn't shift for that.)
+  // Its space is kept whether or not it's showing (snow cover off, sheet pulled up), so the map never
+  // shifts when it comes and goes.
   legendHeight = $('#legend').offsetHeight || legendHeight;
-  const legend = state.snowDepth ? legendHeight + 12 : 0;
+  const legend = legendHeight + 12;
   if (WIDE.matches) return { top, left: state.panelOpen ? sheetEl.offsetWidth + 24 : 0, right: 0, bottom: legend };
   return { top, left: 0, right: 0, bottom: sheetSizes().visible.peek + legend };
 }
@@ -830,8 +832,7 @@ document.addEventListener('click', (e) => {
     state.snowDepth = !state.snowDepth;
     write(STORE.snowDepth, state.snowDepth);
     state.map?.setSnowDepth(state.snowDepth);
-    render();
-    return state.map?.refit();
+    return render();
   }
   if (t.closest('#panel-close')) return setPanel(false);
   if (t.closest('#panel-open')) return setPanel(true);

@@ -81,7 +81,9 @@ button { font: inherit; color: inherit; }
   border-radius: 12px; padding: 8px 12px; font-size: 0.85rem; font-weight: 600;
 }
 [hidden] { display: none !important; }
-body.sheet-full .info-btn, body.sheet-full .credits, body.sheet-up .legend { display: none; }
+body.sheet-full .info-btn, body.sheet-full .credits { display: none; }
+/* Hidden, not removed: the map keeps the key's space, so nothing moves when it comes and goes. */
+body.sheet-up .legend, .legend.off { visibility: hidden; }
 
 /* Map credits: a small ⓘ in the bottom right, just above the sheet. */
 .info-btn {
