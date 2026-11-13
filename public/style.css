@@ -53,7 +53,7 @@ button { font: inherit; color: inherit; }
 .leaflet-tile-pane { filter: grayscale(0.7) contrast(1.15) brightness(1.08); }
 :root[data-theme="dark"] .leaflet-tile-pane { opacity: 0.9; filter: contrast(1.6) brightness(1.15); }
 /* NOAA's snow cover comes as coarse squares: a slight blur turns them into soft cover. */
-.leaflet-snow-pane { filter: blur(1.5px); }
+.leaflet-snow-pane { filter: blur(1px); }
 
 
 /* ---------- Floating controls along the top ---------- */
@@ -121,7 +121,13 @@ body.sheet-up .legend, .legend.off { visibility: hidden; }
 .legend-title { font-weight: 700; }
 .legend-keys { display: inline-flex; gap: 7px; }
 .legend-keys span { display: inline-flex; align-items: center; gap: 2px; }
-.legend-keys img { width: 10px; height: 10px; border-radius: 2px; }
+.legend-keys { align-items: center; }
+/* The snow ramp drawn on the map (SNOW_RAMP in map.js), thin to deep. */
+.ramp {
+  display: inline-block; width: 120px; height: 8px; border-radius: 4px;
+  background: linear-gradient(90deg, rgba(214, 236, 255, 0.47), rgba(160, 205, 252, 0.65), rgba(92, 152, 240, 0.76), rgba(46, 98, 212, 0.84), rgba(26, 58, 160, 0.91));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 12%, transparent);
+}
 
 /* ---------- Bottom sheet (side panel on wide screens) ---------- */
 .sheet {
@@ -203,7 +209,8 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .star { font-size: 1.25rem; color: var(--muted); }
 .star[aria-pressed="true"] { color: #e8a400; }
 .detail-title { flex: 1; min-width: 0; }
-.detail-title h2 { margin: 2px 0 2px; font-size: 1.3rem; }
+.detail-title h2 { margin: 2px 0 2px; font-size: 1.3rem; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.detail-title h2 .pill { font-size: 0.72rem; letter-spacing: 0; }
 .detail-title p { margin: 0; font-size: 0.82rem; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .pill { font-size: 0.75rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; color: #fff; background: var(--tba); }
 .pill-open { background: var(--open); }
@@ -216,15 +223,16 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); margin: 12px 0 8px; }
 .stat { padding: 2px 6px; text-align: center; }
 .stat + .stat { border-left: 1px solid var(--line); }
-.stat b { display: block; font-size: 1.6rem; line-height: 1.1; }
+.stat b { display: block; font-size: 1.45rem; line-height: 1.1; }
 .stat span { display: block; font-size: 0.74rem; color: var(--muted); }
-.stat small { display: block; font-size: 0.72rem; font-weight: 650; color: var(--snow); margin-top: 2px; }
+.stat small { display: block; font-size: 0.7rem; font-weight: 600; color: var(--muted); margin-top: 1px; }
 
-.days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; align-items: end; margin: 6px 0 12px; }
-.day { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; min-height: 96px; }
-.day-snow { font-size: 0.72rem; font-weight: 800; color: var(--snow); min-height: 1rem; }
-.day-bar { width: 60%; max-width: 24px; background: var(--snow); border-radius: 5px 5px 2px 2px; }
-.day-name { font-size: 0.72rem; font-weight: 650; margin-top: 4px; border-top: 1px solid var(--line); width: 100%; text-align: center; padding-top: 3px; }
+/* Seven days: name, sky, high/low, and the snow (a soft blue chip on snowy days). */
+.days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 4px 0 10px; }
+.day { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; border-radius: 12px; }
+.day.has-snow { background: color-mix(in srgb, var(--snow) 10%, transparent); }
+.day-snow { font-size: 0.74rem; font-weight: 800; color: var(--snow); min-height: 1.05rem; }
+.day-name { font-size: 0.72rem; font-weight: 650; }
 .day-temp { font-size: 0.68rem; color: var(--muted); }
 .day-temp i { font-style: normal; opacity: 0.7; margin-left: 2px; }
 
@@ -240,7 +248,8 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .meter i::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--pct); background: var(--open); border-radius: 4px; }
 .message { margin: 4px 2px 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg); font-size: 0.82rem; color: var(--muted); white-space: pre-line; }
 .day-sky { font-size: 0.95rem; line-height: 1.2; min-height: 1.2rem; }
-.week2 { margin: -4px 2px 10px; font-size: 0.85rem; }
+.week2 { margin: 0 2px 12px; font-size: 0.82rem; color: var(--muted); }
+.week2 b { color: var(--text); }
 .weather { list-style: none; margin: 0 0 6px; padding: 0; font-size: 0.86rem; }
 .weather li { display: flex; gap: 10px; padding: 6px 2px; border-top: 1px solid var(--line); }
 .w-day { flex: none; width: 46px; font-weight: 700; }
@@ -479,3 +488,17 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
   .grab .updated { align-self: flex-start; }
   .grab .grab-detail { order: 9; margin-top: 12px; }
 }
+
+/* Towns: quiet orientation, never competing with the resort pills. */
+.place-host { overflow: visible; }
+.place {
+  position: absolute; left: -2.5px; top: -6px; white-space: nowrap; pointer-events: none;
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.64rem; font-weight: 600; letter-spacing: 0.2px; color: var(--muted);
+  text-shadow: 0 0 2px var(--bg), 0 0 3px var(--bg), 0 0 4px var(--bg);
+}
+.place::before { content: ''; width: 5px; height: 5px; flex: none; border-radius: 1px; background: var(--muted); opacity: 0.8; }
+.place[data-side="left"] { flex-direction: row-reverse; left: auto; right: -2.5px; }
+.place[data-side="below"], .place[data-side="above"] { flex-direction: column; gap: 1px; left: 0; transform: translateX(-50%); top: -2.5px; }
+.place[data-side="above"] { flex-direction: column-reverse; top: auto; bottom: -2.5px; }
+.place[hidden] { display: none; }

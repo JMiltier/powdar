@@ -278,17 +278,15 @@ function renderDetail(r) {
   const f = r.forecast;
   const rep = r.report;
   const fav = state.favs.has(r.id);
-  const scale = Math.max(4, ...(f?.days.map((d) => d.snow) ?? [0]));
   const stat = (num, label, sub = '') => `<div class="stat"><b>${num}</b><span>${label}</span>${sub ? `<small>${sub}</small>` : ''}</div>`;
 
   const bars = f ? `
     <div class="days">${f.days.map((d) => `
-      <div class="day">
-        <span class="day-snow">${d.snow >= 1 ? inches(d.snow) : d.snow > 0 ? '<1″' : ''}</span>
-        <span class="day-bar" style="height:${d.snow > 0 ? Math.max(4, Math.round((d.snow / scale) * 44)) : 0}px"></span>
+      <div class="day${d.snow >= 1 ? ' has-snow' : ''}">
         <span class="day-name">${weekday(d.date, today)}</span>
         <span class="day-sky" title="${esc(d.sky ?? d.night ?? '')}">${skyIcon(d.sky ?? d.night) || '&nbsp;'}</span>
         <span class="day-temp">${d.hi ?? '–'}°<i>${d.lo ?? '–'}°</i></span>
+        <span class="day-snow">${d.snow >= 1 ? inches(d.snow) : d.snow > 0 ? '<1″' : ''}</span>
       </div>`).join('')}
     </div>
     ${f.week2 ? `<p class="week2"><b>Days 8–14:</b> about ${inches(f.week2.mid)} more${rangeText(f.week2.range) ? ` (${rangeText(f.week2.range)})` : ''}</p>` : ''}` : '<p class="muted">Forecast unavailable right now.</p>';
@@ -335,8 +333,9 @@ function renderDetail(r) {
     <div class="detail-head">
       <button type="button" class="icon" data-back aria-label="Back to all resorts">‹</button>
       <div class="detail-title">
-        <h2><a href="${esc(r.url)}" target="_blank" rel="noopener" title="Official ${esc(r.name)} website">${esc(r.name)}<span class="ext" aria-hidden="true">↗</span></a></h2>
-        <p><span class="pill pill-${esc(r.status.state)}">${esc(r.status.label)}</span> ${esc(seasonText(r, today))}</p>
+        <h2><a href="${esc(r.url)}" target="_blank" rel="noopener" title="Official ${esc(r.name)} website">${esc(r.name)}<span class="ext" aria-hidden="true">↗</span></a>
+          <span class="pill pill-${esc(r.status.state)}">${esc(r.status.label)}</span></h2>
+        ${seasonText(r, today) ? `<p>${esc(seasonText(r, today))}</p>` : ''}
       </div>
       <button type="button" class="icon star" data-fav="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Unpin' : 'Pin'} ${esc(r.name)}">${fav ? '★' : '☆'}</button>
     </div>`;
@@ -585,14 +584,30 @@ function render() {
 
 const sheetEl = $('#sheet');
 const grabEl = $('#grab');
+// The list header's height decides how much the collapsed sheet shows. It can change after the first
+// layout (data arriving, fonts loading, the headline wrapping): re-measure then, so the sheet never
+// rides up over the snow key or the map's lowest resorts.
+new ResizeObserver(() => {
+  if (grabEl.classList.contains('has-detail')) return;
+  const before = peekHeight;
+  peekHeight = 0;
+  if (!before || sheetSizes().visible.peek === before) return;
+  setSheet(state.sheet, false);
+  state.map?.refit();
+}).observe(grabEl);
 let sheetY = 0;
 
 let peekHeight = 0;
+// env(safe-area-inset-bottom) in pixels (0 on phones without a gesture bar, and on laptops).
+const safeProbe = Object.assign(document.createElement('div'), { style: 'position:fixed;bottom:0;height:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none' });
+document.body.append(safeProbe);
+const safeBottom = () => safeProbe.offsetHeight;
 function sheetSizes() {
   const h = sheetEl.offsetHeight;
   // The collapsed sheet's height comes from the list header, so opening a resort (whose header is
   // a little different) never shifts the map.
-  if (!grabEl.classList.contains('has-detail') || !peekHeight) peekHeight = grabEl.offsetHeight + 12;
+  // Plus the phone's gesture bar, which Chrome now draws the page underneath.
+  if (!grabEl.classList.contains('has-detail') || !peekHeight) peekHeight = grabEl.offsetHeight + 12 + safeBottom();
   const peek = peekHeight;
   return { h, visible: { peek, half: Math.round(window.innerHeight * 0.5), full: h } };
 }
@@ -703,6 +718,16 @@ function showNotice(text) {
   $('#notice').textContent = text ?? '';
 }
 
+// Towns for orientation on the Colorado map, most important first. `true`: always shown (the
+// resort labels make room for it); the rest show where there's space.
+const CO_TOWNS = [
+  ['Denver', 39.7392, -104.9903, true], ['Colorado Springs', 38.8339, -104.8214, true], ['Fort Collins', 40.5853, -105.0844, true],
+  ['Durango', 37.2753, -107.8801, true], ['Grand Junction', 39.0639, -108.5506],
+  ['Boulder', 40.015, -105.2705], ['Pueblo', 38.2544, -104.6091], ['Glenwood Springs', 39.5505, -107.3248], ['Gunnison', 38.5458, -106.9253],
+  ['Montrose', 38.4783, -107.8762], ['Alamosa', 37.4695, -105.87], ['Salida', 38.5347, -105.9989],
+  ['Leadville', 39.2508, -106.2925], ['Craig', 40.5153, -107.5464],
+];
+
 function startMap() {
   if (state.map || !state.data) return;
   state.map = createSnowMap($('#map'), {
@@ -710,6 +735,7 @@ function startMap() {
     getPadding: coveredPadding,
     onSelect: (id) => select(id),
     extend: state.code === 'CO' ? [39.8, -105.1] : null,
+    places: state.code === 'CO' ? CO_TOWNS : [],
   });
   state.map.setSnowDepth(state.snowDepth);
 }
