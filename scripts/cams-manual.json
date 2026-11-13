@@ -1,0 +1,337 @@
+{
+ "arapahoe-basin": {
+  "page": "https://www.arapahoebasin.com/mountain-cams/",
+  "cams": [
+   {
+    "name": "Snow Stake",
+    "image": "https://watch.hdrelay.io/api/public/poster/cam_arapahoe_basin_snow_stake_camera_1790623452872"
+   },
+   {
+    "name": "Black Mountain Lodge",
+    "image": "https://watch.hdrelay.io/api/public/poster/cam_arapahoe_basin_black_mountain_lodge_1790623952319"
+   },
+   {
+    "name": "Pali",
+    "image": "https://watch.hdrelay.io/api/public/poster/cam_arapahoe_basin_pali_cam_1790623627806"
+   },
+   {
+    "name": "Patrol HQ",
+    "image": "https://watch.hdrelay.io/api/public/poster/cam_arapahoe_basin_patrol_headquarters_1790624063379"
+   }
+  ]
+ },
+ "loveland": {
+  "page": "https://skiloveland.com/webcams/",
+  "cams": [
+   {
+    "name": "Snow Stake",
+    "image": "https://cams.skiloveland.com/snowcam/snowcam.jpg"
+   },
+   {
+    "name": "Ptarmigan Roost",
+    "image": "https://cams.skiloveland.com/lsacams/ptarmroost/ptarmroost.jpg"
+   },
+   {
+    "name": "Chet's Stop",
+    "image": "https://cams.skiloveland.com/lsacams/chetstop/chetstop.jpg"
+   },
+   {
+    "name": "Lift 9",
+    "image": "https://cams.skiloveland.com/lsacams/lift9/lift9.jpg"
+   }
+  ]
+ },
+ "copper-mountain": {
+  "page": "https://www.coppercolorado.com/the-mountain/webcams/",
+  "cams": [
+   {
+    "name": "Snow Stake",
+    "image": "https://img.hdrelay.com/frames/fb469125-f1f3-459f-aeb4-98cb674e395f/default/last.jpg"
+   },
+   {
+    "name": "Union Peak",
+    "image": "https://watch.hdrelay.io/api/public/poster/cam_copper_mountain___union_1790871057199"
+   },
+   {
+    "name": "Aerie",
+    "image": "https://img.hdrelay.com/frames/671bcfb507697ecebbaffc13/default/last.jpg"
+   },
+   {
+    "name": "Center Village",
+    "image": "https://watch.hdrelay.io/api/public/poster/cam_copper_mountain___center_village_1791904709663"
+   }
+  ]
+ },
+ "cooper": {
+  "page": "https://www.skicooper.com/weather-webcams/",
+  "cams": [],
+  "video": [
+   {
+    "name": "Snow Stake",
+    "live": "https://skicooper.com:8443/stake/"
+   },
+   {
+    "name": "Top of the Mountain",
+    "live": "https://skicooper.com:8443/top_mtn/"
+   },
+   {
+    "name": "Ridge",
+    "live": "https://skicooper.com:8443/ridge/"
+   }
+  ]
+ },
+ "winter-park": {
+  "page": "https://www.winterparkresort.com/the-mountain/mountain-cams",
+  "cams": [],
+  "video": [
+   {
+    "name": "Cam 1",
+    "live": "https://camstreamer.com/embed/mXhcYGDptt4PPiSEJVwxPNmUZjj1CNAjSkrBdj3s"
+   },
+   {
+    "name": "Cam 2",
+    "live": "https://camstreamer.com/embed/c909b9be0f94f0d/S-50783"
+   },
+   {
+    "name": "Cam 3",
+    "live": "https://camstreamer.com/embed/FkuQtJjEJaLOpalZiTsiVrZUw5IG3fCjMS3Vcc8h"
+   },
+   {
+    "name": "Cam 4",
+    "live": "https://camstreamer.com/embed/e6H5OSc0NDBQR7KCR0zZnKCV0qqX1YF1b8egwy8x"
+   },
+   {
+    "name": "Cam 5",
+    "live": "https://camstreamer.com/embed/8v334V7UDYwodQScLzh63Y6BaqoAQNmj5qhEjsjF"
+   }
+  ]
+ },
+ "eldora": {
+  "page": "https://www.eldora.com/the-mountain/current-conditions/webcams/",
+  "cams": [
+   {
+    "name": "Snow Stake",
+    "image": "https://watch.hdrelay.io/api/public/poster/cam_eldora___snow_stake_1792456287972"
+   },
+   {
+    "name": "Alpenglow",
+    "image": "https://watch.hdrelay.io/api/public/poster/cam_eldora___alpenglow_1792456287847"
+   },
+   {
+    "name": "Lower Mountain",
+    "image": "https://watch.hdrelay.io/api/public/poster/cam_ipela_snc_wr630_1792456288119"
+   }
+  ]
+ },
+ "echo-mountain": {
+  "page": "https://echomtn.com/mountain-conditions",
+  "cams": [],
+  "video": [
+   {
+    "name": "Snow Stake",
+    "live": "https://www.youtube.com/embed/gFSvN0XiQlM"
+   }
+  ]
+ },
+ "granby-ranch": {
+  "page": "https://granbyranch.com/live-web-cams/",
+  "cams": [
+   {
+    "name": "Granby Ranch",
+    "image": "https://player.brownrice.com/snapshot/granby2",
+    "live": "https://player.brownrice.com/embed/granby2"
+   }
+  ]
+ },
+ "steamboat": {
+  "page": "https://www.steamboat.com/the-mountain/mountain-cams",
+  "cams": []
+ },
+ "aspen-mountain": {
+  "page": "https://www.aspensnowmass.com/four-mountains/mountain-cams",
+  "cams": [
+   {
+    "name": "Snow Stake",
+    "image": "https://g1.ipcamlive.com/player/snapshot.php?alias=5c8193f8ba576",
+    "live": "https://www.aspensnowmass.com/four-mountains/aspen-mountain/mountain-cams/aspen-mountain-snow-stake"
+   },
+   {
+    "name": "Summit Panorama",
+    "image": "https://backend.roundshot.com/cams/91/medium",
+    "live": "https://aspen.roundshot.com/aspen/"
+   }
+  ]
+ },
+ "aspen-highlands": {
+  "page": "https://www.aspensnowmass.com/four-mountains/mountain-cams",
+  "cams": [
+   {
+    "name": "Snow Stake",
+    "image": "https://g3.ipcamlive.com/player/snapshot.php?alias=5fb419457d74f",
+    "live": "https://www.aspensnowmass.com/four-mountains/aspen-highlands/mountain-cams/highlands-snow-stake"
+   },
+   {
+    "name": "Panorama",
+    "image": "https://backend.roundshot.com/cams/89/medium",
+    "live": "https://aspen.roundshot.com/highlands/"
+   }
+  ]
+ },
+ "buttermilk": {
+  "page": "https://www.aspensnowmass.com/four-mountains/mountain-cams",
+  "cams": [
+   {
+    "name": "Snow Stake",
+    "image": "https://g1.ipcamlive.com/player/snapshot.php?alias=613a4e47724d8",
+    "live": "https://www.aspensnowmass.com/four-mountains/buttermilk/mountain-cams/buttermilk-snow-stake"
+   },
+   {
+    "name": "Panorama",
+    "image": "https://backend.roundshot.com/cams/87/medium",
+    "live": "https://aspen.roundshot.com/buttermilk/"
+   }
+  ]
+ },
+ "snowmass": {
+  "page": "https://www.aspensnowmass.com/four-mountains/mountain-cams",
+  "cams": [
+   {
+    "name": "Snow Stake",
+    "image": "https://g1.ipcamlive.com/player/snapshot.php?alias=5c6d8ba5a8388",
+    "live": "https://www.aspensnowmass.com/four-mountains/snowmass/mountain-cams/snow-stake-time-lapse"
+   },
+   {
+    "name": "Sam's Knob Panorama",
+    "image": "https://backend.roundshot.com/cams/d06c2257c923777ee36fee23722ea2c2/medium",
+    "live": "https://aspen.roundshot.com/snowmass-samsknob"
+   },
+   {
+    "name": "Elk Camp Panorama",
+    "image": "https://backend.roundshot.com/cams/88/medium",
+    "live": "https://aspen.roundshot.com/snowmass"
+   }
+  ]
+ },
+ "sunlight": {
+  "page": "https://sunlightmtn.com/explore/mountain-status/#cams",
+  "cams": [
+   {
+    "name": "Snow Stake",
+    "image": "https://g1.ipcamlive.com/player/snapshot.php?alias=sunlightsnowstake",
+    "live": "https://g1.ipcamlive.com/player/player.php?alias=sunlightsnowstake"
+   },
+   {
+    "name": "Compass Peak",
+    "image": "https://g0.ipcamlive.com/player/snapshot.php?alias=compasspeak",
+    "live": "https://g0.ipcamlive.com/player/player.php?alias=compasspeak"
+   },
+   {
+    "name": "Mt. Sopris View",
+    "image": "https://g0.ipcamlive.com/player/snapshot.php?alias=sopris",
+    "live": "https://g0.ipcamlive.com/player/player.php?alias=sopris"
+   }
+  ]
+ },
+ "powderhorn": {
+  "page": "https://www.powderhorn.com/webcams/",
+  "cams": [
+   {
+    "name": "Snow Stake",
+    "image": "https://b16.hdrelay.com/camera/635ff973ec60cc4e98eca6ec/snapshot"
+   },
+   {
+    "name": "Lift Line",
+    "image": "https://b16.hdrelay.com/camera/635ff7a4ec60cc4e98eca6ea/snapshot"
+   },
+   {
+    "name": "Base Area",
+    "image": "https://b16.hdrelay.com/camera/6376ac116db11e6bbdca2564/snapshot"
+   }
+  ]
+ },
+ "monarch": {
+  "page": "https://skimonarch.com/conditions/cams/",
+  "cams": [
+   {
+    "name": "Sundeck",
+    "image": "https://player.brownrice.com/snapshot/skimonarchsundeck",
+    "live": "https://player.brownrice.com/embed/skimonarchsundeck"
+   },
+   {
+    "name": "Pano Flats",
+    "image": "https://player.brownrice.com/snapshot/skimonarchpanoflats",
+    "live": "https://player.brownrice.com/embed/skimonarchpanoflats/live"
+   }
+  ]
+ },
+ "telluride": {
+  "page": "https://tellurideskiresort.com/webcams/",
+  "cams": [
+   {
+    "name": "Snow Stake",
+    "image": "https://g1.ipcamlive.com/player/snapshot.php?alias=powcam",
+    "live": "https://g1.ipcamlive.com/player/player.php?alias=powcam"
+   },
+   {
+    "name": "Village Plaza",
+    "image": "https://g1.ipcamlive.com/player/snapshot.php?alias=plazacam",
+    "live": "https://tellurideskiresort.com/webcams/village-cam/"
+   },
+   {
+    "name": "Bon Vivant",
+    "image": "https://g1.ipcamlive.com/player/snapshot.php?alias=bonvivant",
+    "live": "https://tellurideskiresort.com/webcams/bon-vivant-cam/"
+   },
+   {
+    "name": "See Forever",
+    "image": "https://g1.ipcamlive.com/player/snapshot.php?alias=jointpoint",
+    "live": "https://tellurideskiresort.com/webcams/see-forever-webcam/"
+   }
+  ]
+ },
+ "purgatory": {
+  "page": "https://www.purgatory.ski/mountain/weather-conditions-webcams/webcams/",
+  "cams": [
+   {
+    "name": "Snow Stake",
+    "image": "https://player.brownrice.com/snapshot/purgatorysnowstake1",
+    "live": "https://player.brownrice.com/embed/purgatorysnowstake1/live"
+   },
+   {
+    "name": "Purgatory Express Summit",
+    "image": "https://player.brownrice.com/snapshot/purgatoryparadise",
+    "live": "https://player.brownrice.com/embed/purgatoryparadise"
+   },
+   {
+    "name": "Legends Summit",
+    "image": "https://player.brownrice.com/snapshot/purgatoryraysridge",
+    "live": "https://player.brownrice.com/embed/purgatoryraysridge"
+   },
+   {
+    "name": "Village Plaza",
+    "image": "https://player.brownrice.com/snapshot/purgatoryplaza",
+    "live": "https://player.brownrice.com/embed/purgatoryplaza"
+   }
+  ]
+ },
+ "wolf-creek": {
+  "page": "https://wolfcreekski.com/webcams/",
+  "cams": [
+   {
+    "name": "Base Area",
+    "image": "https://player.brownrice.com/snapshot/wolfcreektreasure",
+    "live": "https://live2.brownrice.com/embed/wolfcreektreasure"
+   },
+   {
+    "name": "Summit",
+    "image": "https://player.brownrice.com/snapshot/wolfcreeksummit",
+    "live": "https://live2.brownrice.com/embed/wolfcreeksummit"
+   },
+   {
+    "name": "Treasure Stoke",
+    "image": "https://player.brownrice.com/snapshot/wolfcreektresurlift",
+    "live": "https://live2.brownrice.com/embed/wolfcreektresurlift"
+   }
+  ]
+ }
+}

@@ -147,7 +147,7 @@ body.sheet-up .legend, .legend.off { visibility: hidden; }
   will-change: transform;
 }
 .sheet.dragging { transition: none; }
-.grab { flex: none; padding: 6px 16px 10px; cursor: grab; touch-action: none; user-select: none; }
+.grab { flex: none; padding: 5px 16px 8px; cursor: grab; touch-action: none; user-select: none; }
 .handle { display: block; width: 38px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 8px; }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -157,7 +157,7 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
   border: 0; background: var(--accent-soft); color: var(--accent); cursor: pointer;
   font-size: 0.85rem; font-weight: 750; padding: 5px 11px; border-radius: 999px; white-space: nowrap;
 }
-.headline + .updated { display: block; margin-top: 2px; }
+.headline + .updated { display: none; } /* (its time shows at the end of the headline's line) */
 .updated { border: 0; background: none; padding: 0; color: var(--muted); font-size: 0.78rem; cursor: pointer; white-space: nowrap; }
 .head-actions { display: flex; align-items: center; gap: 6px; flex: none; }
 .panel-close { display: none; }
@@ -825,3 +825,15 @@ button, .row, summary { -webkit-tap-highlight-color: transparent; }
 
 /* The cams strip scrolls sideways inside the vertically-scrolling panel. */
 .cams { touch-action: pan-x pan-y; overscroll-behavior-x: contain; }
+
+/* The collapsed panel: one line under the name (headline · updated), compact. */
+.headline .when { color: var(--muted); font-weight: 400; }
+.handle { margin-bottom: 6px; }
+.headline { margin-top: 4px; }
+/* Resorts outside the filters are faded on the map, and not tappable. */
+#map.filtering .pin.filtered-out, #map.filtering .pin-dot.filtered-out,
+#map.filtering .pin.filtered-out .pin-bubble { pointer-events: none !important; }
+
+.cam-links { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
+.cam-link { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 0.82rem; font-weight: 700; text-decoration: none; }
+.cam-link svg { width: 14px; height: 14px; }
