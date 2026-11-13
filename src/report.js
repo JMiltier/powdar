@@ -5,6 +5,7 @@ import { MODELS, modelUrl, snowHours } from './models.js';
 import { parseSnotel, snotelUrl, stationSeason, waterYear } from './snotel.js';
 import { LIFT_SOURCES, summarizeLifts } from './lifts.js';
 import { liftsDue } from './lift-hours.js';
+import { VAIL_SITES, snowPage, liftPage, parseVailSnow, parseVailTerrain } from './vail.js';
 import { nohrscUrl, parseNohrsc } from './noaa.js';
 
 export const CSC_FEED = 'https://snow.coloradoski.com/view/publicreport-feed';
@@ -369,6 +370,31 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     }),
   ]);
   const liftsById = Object.fromEntries(liftIds.map((id, i) => [id, liftData[i]]));
+
+  // Vail Resorts' mountains: their own snow reports (every update) and lift/run status (ski hours,
+  // like the other lift feeds; otherwise the last reading stands). See vail.js.
+  const vailIds = Object.keys(VAIL_SITES);
+  const vail = Object.fromEntries(await pool(vailIds, 2, async (id) => {
+    const site = VAIL_SITES[id];
+    let snow = null;
+    let terrain = null;
+    try {
+      snow = parseVailSnow(await getText(fetchFn, snowPage(site), { backoff }));
+    } catch (err) {
+      log(`Snow report failed for ${id}: ${err.message}`);
+    }
+    const prev = prevLifts[id];
+    if (liftsDue('CO', now, prev?.checked)) {
+      try {
+        const t = parseVailTerrain(await getText(fetchFn, liftPage(site), { backoff }));
+        if (t?.lifts.length) terrain = { ...summarizeLifts(t.lifts, liftPage(site), now.toISOString()), runs: t.trails };
+      } catch (err) {
+        log(`Lift status failed for ${id}: ${err.message}`);
+      }
+    } else if (prev?.runs) terrain = prev;
+    return [id, { snow, terrain }];
+  }).then((rows) => rows));
+  for (const [id, v] of Object.entries(vail)) if (v.terrain) liftsById[id] = v.terrain;
   const snowpack = Object.fromEntries(stations.map((t) => {
     const name = RESORTS.find((r) => r.snotel[0] === t).snotel[1];
     const s = snowNow && stationSeason({ current: snowNow.get(t), normals: snowNormal?.get(t), today });
@@ -384,14 +410,24 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
   }, now));
 
   const resorts = RESORTS.map((r, i) => {
-    const c = r.csc ? csc.get(r.csc) : undefined;
+    let c = r.csc ? csc.get(r.csc) : undefined;
+    // A Vail Resorts mountain: its own report, shaped like Colorado Ski Country's.
+    const v = vail[r.id];
+    if (!c && v && (v.snow || v.terrain)) {
+      const t = v.terrain;
+      const report = { ...(v.snow ?? {}), lifts: t ? { open: t.open, total: t.total } : undefined, trails: t?.runs, source: snowPage(VAIL_SITES[r.id]) };
+      c = { isOpen: Boolean(t && (t.runs?.open > 0 || t.open > 0)), report, vail: true };
+    }
     const live = Boolean(c);
     const p = planned[r.id] ?? {};
     const facts = live
       ? { live, isOpen: c.isOpen, open: c.open, close: c.close, note: c.note, report: withLiveLifts(c.report, liftsById[r.id]) }
       : { live, isOpen: false, open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when, opened: p.opened, note: p.note };
+    // Vail's pages say what's open but not their season dates: keep the announced ones.
+    if (c?.vail) Object.assign(facts, { open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when });
     // A report from a closed resort is usually last season's leftovers.
-    const report = live && c.isOpen ? withLiveLifts(c.report, liftsById[r.id]) : null;
+    // (Vail Resorts' own reports are current even before opening day: keep those.)
+    const report = live && (c.isOpen || c.vail) ? withLiveLifts(c.report, liftsById[r.id]) : null;
     return {
       id: r.id,
       name: r.name,
@@ -401,7 +437,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       live,
       status: statusFor(facts, today),
       // Opening and closing days for this season; null when unknown.
-      dates: { open: facts.open ?? null, close: facts.close ?? null, when: facts.when ?? null, planned: !live },
+      dates: { open: facts.open ?? null, close: facts.close ?? null, when: facts.when ?? null, planned: !live || Boolean(c?.vail) },
       report,
       forecast: forecasts[i],
       lifts: liftsById[r.id] ?? null,
