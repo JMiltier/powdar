@@ -3,84 +3,68 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Colorado Snow</title>
-  <meta name="description" content="Every Colorado ski resort: what's open, opening days, fresh snow and snow on the way.">
-  <meta name="theme-color" content="#1b4f9c">
+  <title>PowScout</title>
+  <meta name="description" content="Colorado ski resorts on one map: snow on the way, base depth, and opening and closing days.">
+  <!-- Status and navigation bars match the app instead of a blue band (installed app). -->
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#161e29">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=__V__">
 </head>
 <body>
-  <header class="top">
-    <div class="top-row">
-      <h1><span aria-hidden="true">❄</span> Colorado Snow</h1>
-      <div class="top-actions">
-        <div class="view-switch" role="group" aria-label="View">
-          <button type="button" data-view="map" aria-pressed="false">Map</button>
-          <button type="button" data-view="list" aria-pressed="true">List</button>
+  <div id="map" aria-label="Snow map"></div>
+
+  <div class="top">
+    <div class="metrics" role="group" aria-label="Show on map">
+      <button type="button" data-metric="next72" aria-pressed="true">3-day snow</button>
+      <button type="button" data-metric="next7" aria-pressed="false">7-day</button>
+      <button type="button" data-metric="depth" aria-pressed="false">Base</button>
+      <button type="button" data-metric="dates" aria-pressed="false">Dates</button>
+    </div>
+    <div class="tools">
+      <button id="snow-btn" class="tool" type="button" aria-pressed="false">❄ Snow cover</button>
+      <button id="home-btn" class="tool" type="button" title="Set this as my default map view">⌂ Set default</button>
+      <button id="info-btn" class="tool tool-round" type="button" aria-label="Map credits" aria-expanded="false">i</button>
+    </div>
+    <p id="credits" class="credits" hidden></p>
+    <p id="toast" class="toast" hidden></p>
+  </div>
+
+  <div id="legend" class="legend" hidden>
+    <span class="legend-title">Snow on the ground</span>
+    <span class="legend-keys"><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBqw/u/0+JQaH2jowoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAAD5FwUnUj+h+wAAAABJRU5ErkJggg==" alt="">1″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmByStP/6fEoLnhpowoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAAAWWgV7xtUzQAAAAABJRU5ErkJggg==" alt="">4″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBAZUn/lNi0IZ2C0YUA6kFWEYNpBiwUG4EKhg1kHLAQgUzUMCogZQDeBjCyjOqGUgtAAAuegXB6J66owAAAABJRU5ErkJggg==" alt="">10″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBNvaH/lNi0JGDdowoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAABLaAYVAQvwcAAAAABJRU5ErkJggg==" alt="">20″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmB4QqH/1Ni0MoHtowoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAABMVgYYSfe//gAAAABJRU5ErkJggg==" alt="">40″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBtYy7/1NiUPN/V0YUA6kFWEYNpBiwUG4EKhg1kHLAQgUzUMCogZQDeBjCyjOqGUgtAABMgAYZ9VqjPQAAAABJRU5ErkJggg==" alt="">60″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBW1g2/qfEIJ8//owoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAAA7vwXpWDxieAAAAABJRU5ErkJggg==" alt="">100″+</span></span>
+  </div>
+
+  <section id="sheet" class="sheet" aria-label="Resorts" data-state="peek">
+    <div id="grab" class="grab">
+      <span class="handle" aria-hidden="true"></span>
+      <div class="sheet-head">
+        <div class="brand">
+          <h1>PowScout</h1>
+          <button id="updated" class="updated" type="button" title="Refresh">Loading…</button>
         </div>
-        <button id="refresh" class="icon-btn" type="button" aria-label="Refresh">↻</button>
-    </div>
-    </div>
-    <p id="notice" class="notice" hidden></p>
-  </header>
-
-  <main>
-    <p id="updated" class="updated">Loading…</p>
-    <section id="summary" class="summary" aria-live="polite"></section>
-
-    <nav class="controls" aria-label="Sort and filter">
-      <div class="seg" role="group" aria-label="Sort by">
-        <button type="button" data-sort="snow" aria-pressed="true">Most snow</button>
-        <button type="button" data-sort="opening" aria-pressed="false">Opening</button>
-        <button type="button" data-sort="name" aria-pressed="false">A–Z</button>
-    </div>
-      <label class="toggle"><input id="open-only" type="checkbox"> Open only</label>
-    </nav>
-
-    <section id="favorites" hidden>
-      <h2 class="list-title">★ Your mountains</h2>
-      <div class="list" id="fav-list"></div>
-    </section>
-    <section>
-      <h2 class="list-title" id="all-title">All resorts</h2>
-      <div class="list" id="list"></div>
-    </section>
-  </main>
-
-  <section id="map-view" class="map-view" hidden aria-label="Snow map">
-    <div id="map"></div>
-    <div class="map-top">
-      <div class="map-metrics seg" role="group" aria-label="Show on map">
-        <button type="button" data-metric="next72" aria-pressed="true">3 days</button>
-        <button type="button" data-metric="next7" aria-pressed="false">7 days</button>
-        <button type="button" data-metric="new24" aria-pressed="false">24 hrs</button>
-        <button type="button" data-metric="depth" aria-pressed="false">Base</button>
-        <button type="button" data-metric="dates" aria-pressed="false">Dates</button>
+        <label class="chip"><input id="open-only" type="checkbox"> Open now</label>
       </div>
-      <p id="map-hint" class="map-hint"></p>
+      <p id="headline" class="headline"></p>
     </div>
-    <button id="snow-toggle" class="snow-toggle" type="button" aria-pressed="false" aria-label="Snow on the ground">❄ Snow<br>cover</button>
-    <div id="snow-legend" class="snow-legend" hidden>
-      <div class="snow-legend-title">Snow depth today (NOAA)</div>
-      <div class="snow-legend-keys"><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBqw/u/0+JQaH2jowoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAAD5FwUnUj+h+wAAAABJRU5ErkJggg==" alt="">1″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmByStP/6fEoLnhpowoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAAAWWgV7xtUzQAAAAABJRU5ErkJggg==" alt="">4″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBAZUn/lNi0IZ2C0YUA6kFWEYNpBiwUG4EKhg1kHLAQgUzUMCogZQDeBjCyjOqGUgtAAAuegXB6J66owAAAABJRU5ErkJggg==" alt="">10″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBNvaH/lNi0JGDdowoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAABLaAYVAQvwcAAAAABJRU5ErkJggg==" alt="">20″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmB4QqH/1Ni0MoHtowoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAABMVgYYSfe//gAAAABJRU5ErkJggg==" alt="">40″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBtYy7/1NiUPN/V0YUA6kFWEYNpBiwUG4EKhg1kHLAQgUzUMCogZQDeBjCyjOqGUgtAABMgAYZ9VqjPQAAAABJRU5ErkJggg==" alt="">60″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBW1g2/qfEIJ8//owoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAAA7vwXpWDxieAAAAABJRU5ErkJggg==" alt="">100″+</span></div>
-    </div>
-    <div id="sheet" class="sheet" hidden>
-      <button id="sheet-close" class="sheet-close" type="button" aria-label="Close">×</button>
-      <div id="sheet-body"></div>
+    <div id="sheet-body" class="sheet-body">
+      <p id="notice" class="notice" hidden></p>
+      <div id="list" class="list"></div>
+      <div id="detail" class="detail" hidden></div>
+      <footer class="foot">
+        Forecast: a blend of the National Weather Service and the European, American, Canadian and German weather models,
+        run for each resort's mid-mountain elevation. Open status, lifts and snow totals: Colorado Ski Country USA.
+        Vail, Beaver Creek, Breckenridge, Keystone, Crested Butte and Wolf Creek show announced dates only.
+      </footer>
     </div>
   </section>
 
-  <footer class="foot">
-    <p>Tap ☆ to pin a resort to the top. Tap a resort for its day-by-day forecast.</p>
-    <p>Map © OpenStreetMap contributors, style © OpenTopoMap (CC-BY-SA).</p>
-    <p>Snow forecast: National Weather Service. Open status, lifts and snow totals: Colorado Ski Country USA.
-      Vail, Beaver Creek, Breckenridge, Keystone, Crested Butte and Wolf Creek show planned dates only, so check their sites to be sure.</p>
-  </footer>
-
   <script src="vendor/leaflet/leaflet.js"></script>
-  <script src="app.js" type="module"></script>
+  <script src="app.js?v=__V__" type="module"></script>
 </body>
 </html>

@@ -29,6 +29,8 @@ jobs:
           node-version: 22
       - run: npm test
       - run: npm run build
+      # Stamp file URLs with this commit so phones and installed apps load fresh code after each change.
+      - run: sed -i "s/__V__/${GITHUB_SHA::8}/g" public/index.html public/app.js
       - uses: actions/upload-pages-artifact@v3
         with:
           path: public

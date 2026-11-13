@@ -1,20 +1,22 @@
 // The map view: one bubble per resort showing the chosen number, Snow Map style.
 // Every resort has a dot at its real spot. Its bubble sits on the dot or right beside it;
-// when there's no room the bubble hides (the dot stays tappable) until you zoom in.
+// resorts too close together share one card that lists them all.
 const L = window.L;
 
 // OpenTopoMap: free, no key, and its terrain shading suits mountains. Dark mode dims it in CSS.
 const TILES = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
-const ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)';
+// Shown behind the ⓘ button instead of a permanent banner.
+export const CREDITS = 'Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM · '
+  + 'map style © <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA) · '
+  + 'snow cover: <a href="https://www.nohrsc.noaa.gov/nsa/">NOAA NOHRSC</a> · <a href="https://leafletjs.com">Leaflet</a>';
 // NOAA's daily national snow analysis (NOHRSC): modelled snow depth on the ground, cloud-free.
 const SNOW_DEPTH_WMS = 'https://mapservices.weather.noaa.gov/raster/services/snow/NOHRSC_Snow_Analysis/MapServer/WMSServer';
 const GAP = 2;
 const DOT_R = 4;
-// First visit fits every resort; after that we remember where you left the map.
-// Extra top padding keeps resorts out from under the floating buttons.
-const FIT_PADDING = { paddingTopLeft: [34, 84], paddingBottomRight: [40, 28] };
-// Names always show; crowded bubbles hide instead (see layout). Kept as a knob.
-export const NAMES_FROM_ZOOM = 0;
+// Widest a shared card's neighbourhood may be, in screen pixels.
+const MAX_SPAN = 85;
+// Room around the resorts when fitting them on screen, on top of what the app's panels cover.
+const EDGE = 58;
 
 const SHORT = {
   'arapahoe-basin': 'A-Basin', 'copper-mountain': 'Copper', breckenridge: 'Breck', 'beaver-creek': 'Beaver Creek',
@@ -29,26 +31,40 @@ const spotsFor = (w, h) => {
   return [[0, 0], [0, -y], [x, 0], [0, y], [-x, 0], [x, -y], [x, y], [-x, y], [-x, -y]];
 };
 
-export function createSnowMap(el, { onSelect, saved, onMove, onZoom }) {
-  const map = L.map(el, { zoomControl: false, minZoom: 6, maxZoom: 12, zoomSnap: 0.25, zoomDelta: 0.5, maxBounds: [[35.5, -111], [42.5, -100]] });
-  L.control.zoom({ position: 'bottomright' }).addTo(map);
-  map.attributionControl.setPrefix(false);
-  L.tileLayer(TILES, { attribution: ATTRIBUTION, subdomains: 'abc', maxZoom: 12 }).addTo(map);
+// getPadding() → { top, right, bottom, left }: pixels covered by the app's buttons and sheet.
+export function createSnowMap(el, { resorts, onSelect, getPadding, home }) {
+  const bounds = L.latLngBounds(resorts.map((r) => r.at));
+  const map = L.map(el, {
+    zoomControl: false, attributionControl: false, maxZoom: 12, zoomSnap: 0.25, zoomDelta: 0.5,
+    maxBounds: bounds.pad(0.4), maxBoundsViscosity: 0.8,
+  });
+  // Pinch zoom covers phones; mouse users get +/- buttons.
+  if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) L.control.zoom({ position: 'bottomright' }).addTo(map);
+  L.tileLayer(TILES, { subdomains: 'abc', maxZoom: 12 }).addTo(map);
 
   // Its own pane so the colour-muting filter on the base map doesn't wash it out.
   map.createPane('snow').style.zIndex = 250;
   const snowDepth = L.tileLayer.wms(SNOW_DEPTH_WMS, {
     pane: 'snow', layers: '0', format: 'image/png', transparent: true, version: '1.3.0', opacity: 0.75,
-    attribution: 'Snow: <a href="https://www.nohrsc.noaa.gov/nsa/">NOAA</a>',
   });
+
+  const fitOptions = () => {
+    const p = getPadding();
+    return { paddingTopLeft: [p.left + EDGE, p.top + EDGE / 2], paddingBottomRight: [p.right + EDGE, p.bottom + EDGE / 2] };
+  };
+  // You can't zoom out past "every resort fits": no more drifting out to New Mexico.
+  function lockZoom() {
+    const o = fitOptions();
+    const pad = L.point(o.paddingTopLeft).add(o.paddingBottomRight);
+    map.setMinZoom(Math.max(5, map.getBoundsZoom(bounds, false, pad) - 0.25));
+  }
+  const fitAll = () => map.fitBounds(bounds, fitOptions());
+  const showHome = (view) => (view ? map.setView([view.lat, view.lng], Math.max(view.zoom, map.getMinZoom())) : fitAll());
 
   const pins = new Map();
   let order = [];
-  let fitted = false;
-  if (saved) {
-    map.setView([saved.lat, saved.lng], saved.zoom);
-    fitted = true;
-  }
+  lockZoom();
+  showHome(home);
 
   function pinFor(r) {
     let pin = pins.get(r.id);
@@ -69,47 +85,112 @@ export function createSnowMap(el, { onSelect, saved, onMove, onZoom }) {
     return pin;
   }
 
-  // Greedy, in priority order: each bubble takes the first free spot by its dot, or hides.
-  function layout() {
-    el.classList.toggle('show-names', map.getZoom() >= NAMES_FROM_ZOOM);
-    for (const { pin } of order) pin.root.classList.remove('hidden');
-    const items = order.map(({ r, pin, empty, important }) => ({
-      r, pin, empty, important, p: map.latLngToContainerPoint(r.at), w: pin.bubble.offsetWidth, h: pin.bubble.offsetHeight,
-    }));
-    const placed = [];
-    const overlaps = (box) => placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]);
-    const hidesDot = (box, self) => items.some((o) => o !== self &&
-      o.p.x + DOT_R > box[0] && o.p.x - DOT_R < box[2] && o.p.y + DOT_R > box[1] && o.p.y - DOT_R < box[3]);
+  // Resorts close enough that their bubbles would collide share one card listing each name and
+  // number, so every resort stays readable at any zoom. Zoom in and the cards split apart.
+  const groupLayer = L.layerGroup().addTo(map);
 
-    for (const it of items) {
-      let spot = null;
-      for (const [dx, dy] of it.empty ? [[0, 0]] : spotsFor(it.w, it.h)) {
-        const cx = it.p.x + dx;
-        const cy = it.p.y + dy;
-        const box = [cx - it.w / 2 - GAP, cy - it.h / 2 - GAP, cx + it.w / 2 + GAP, cy + it.h / 2 + GAP];
-        // Open, pinned and selected resorts may sit over a neighbour's dot rather than hide.
-        if (overlaps(box) || (!it.important && hidesDot(box, it))) continue;
-        spot = [dx, dy, box];
-        break;
-      }
-      if (!spot) {
-        it.pin.root.classList.add('hidden');
-        continue;
-      }
-      const [dx, dy, box] = spot;
-      placed.push(box);
-      it.pin.bubble.style.transform = `translate(${dx - it.w / 2}px, ${dy - it.h / 2}px)`;
-      it.pin.root.classList.toggle('moved', dx !== 0 || dy !== 0);
-    }
-    return items.filter((it) => !it.empty && it.pin.root.classList.contains('hidden')).length;
+  function groupCard(members, centre) {
+    const el = document.createElement('div');
+    el.className = 'group';
+    el.innerHTML = members.map((m) => `
+      <button type="button" class="group-row${m.selected ? ' is-selected' : ''}" data-id="${m.r.id}" aria-label="${m.r.name}: ${m.label}">
+        <span class="group-name">${m.open ? '<i class="open-dot"></i>' : ''}${SHORT[m.r.id] ?? m.r.name}</span>
+        <b class="group-val lvl-${m.level}">${m.text}</b>
+      </button>`).join('');
+    el.addEventListener('click', (e) => {
+      const row = e.target.closest('[data-id]');
+      if (!row) return;
+      L.DomEvent.stopPropagation(e);
+      onSelect(row.dataset.id);
+    });
+    const marker = L.marker(map.containerPointToLatLng(centre), {
+      icon: L.divIcon({ html: el, className: 'pin-host', iconSize: [0, 0] }), keyboard: false, zIndexOffset: 500,
+    }).addTo(groupLayer);
+    return { el, marker };
   }
 
-  let hiddenCount = 0;
-  const relayout = () => {
-    hiddenCount = layout();
-  };
+  function layout() {
+    groupLayer.clearLayers();
+    for (const { pin } of order) pin.root.classList.remove('hidden', 'grouped');
+    const items = order.map((o) => ({ ...o, p: map.latLngToContainerPoint(o.r.at), w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight }));
+    const named = items.filter((it) => !it.empty);
 
-  // items: [{ r, text, label, level, open, selected, important }] in priority order (most important first).
+    // Group resorts whose bubbles would collide, nearest pairs first, but keep every group tight:
+    // no two members further apart than MAX_SPAN, so groups stay local (Summit County, Aspen…).
+    const group = new Map(named.map((it) => [it, [it]]));
+    const dist = (a, b) => Math.hypot(a.p.x - b.p.x, a.p.y - b.p.y);
+    const merge = (a, b) => {
+      const ga = group.get(a);
+      const gb = group.get(b);
+      if (ga === gb) return;
+      const both = ga.concat(gb);
+      for (const m of both) group.set(m, both);
+    };
+    const pairs = [];
+    for (let i = 0; i < named.length; i++) {
+      for (let j = i + 1; j < named.length; j++) {
+        const a = named[i];
+        const b = named[j];
+        if (Math.abs(a.p.x - b.p.x) < (a.w + b.w) / 2 + GAP && Math.abs(a.p.y - b.p.y) < (a.h + b.h) / 2 + GAP) pairs.push([dist(a, b), a, b]);
+      }
+    }
+    pairs.sort((x, y) => x[0] - y[0]);
+    for (const [, a, b] of pairs) {
+      const ga = group.get(a);
+      const gb = group.get(b);
+      if (ga !== gb && ga.every((x) => gb.every((y) => dist(x, y) <= MAX_SPAN))) merge(a, b);
+    }
+
+    // Place cards and single bubbles; anything that can't fit joins its nearest neighbour's group, then retry.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      groupLayer.clearLayers();
+      const groups = new Set(named.map((it) => group.get(it)));
+      const placed = [];
+      const overlaps = (box) => placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]);
+      const tryPlace = (cx, cy, w, h, spots) => {
+        for (const [dx, dy] of spots) {
+          const box = [cx + dx - w / 2 - GAP, cy + dy - h / 2 - GAP, cx + dx + w / 2 + GAP, cy + dy + h / 2 + GAP];
+          if (!overlaps(box)) {
+            placed.push(box);
+            return [dx, dy];
+          }
+        }
+        return null;
+      };
+      const failed = [];
+      // Bigger groups first: they need the most room.
+      const list = [...groups].sort((a, b) => b.length - a.length);
+      for (const members of list) {
+        if (members.length > 1) {
+          const cx = members.reduce((s, m) => s + m.p.x, 0) / members.length;
+          const cy = members.reduce((s, m) => s + m.p.y, 0) / members.length;
+          const card = groupCard(members, [cx, cy]);
+          const w = card.el.offsetWidth;
+          const h = card.el.offsetHeight;
+          const spot = tryPlace(cx, cy, w, h, [...spotsFor(w, h), ...spotsFor(w * 2, h * 2)]) ?? [0, 0];
+          card.el.style.transform = `translate(${spot[0] - w / 2}px, ${spot[1] - h / 2}px)`;
+          for (const m of members) m.pin.root.classList.add('grouped');
+        } else {
+          const [it] = members;
+          const spot = tryPlace(it.p.x, it.p.y, it.w, it.h, spotsFor(it.w, it.h));
+          if (!spot) {
+            failed.push(it);
+            continue;
+          }
+          it.pin.bubble.style.transform = `translate(${spot[0] - it.w / 2}px, ${spot[1] - it.h / 2}px)`;
+        }
+      }
+      if (!failed.length) break;
+      for (const it of failed) {
+        const nearest = named.filter((o) => o !== it).sort((a, b) => dist(a, it) - dist(b, it))[0];
+        if (nearest) merge(it, nearest);
+      }
+    }
+  }
+
+  const relayout = () => layout();
+
+  // items: [{ r, text, label, level, open, selected }] in priority order (most important first).
   function update(items) {
     order = items.map((item, i) => {
       const pin = pinFor(item.r);
@@ -118,35 +199,32 @@ export function createSnowMap(el, { onSelect, saved, onMove, onZoom }) {
       pin.bubble.className = `pin-bubble lvl-${item.level}${item.open ? ' is-open' : ''}${item.selected ? ' is-selected' : ''}`;
       pin.bubble.setAttribute('aria-label', `${item.r.name}: ${item.label}`);
       pin.marker.setZIndexOffset(item.selected ? 1000 : -i);
-      return { r: item.r, pin, empty: item.level === 'none', important: item.important };
+      return { ...item, pin, empty: item.level === 'none' };
     });
-    if (!fitted) {
-      map.fitBounds(items.map((i) => i.r.at), FIT_PADDING);
-      fitted = true;
-    }
     relayout();
   }
 
-  map.on('zoomend', () => {
-    relayout();
-    onZoom?.();
-  });
-  map.on('moveend', () => {
-    const c = map.getCenter();
-    onMove({ lat: c.lat, lng: c.lng, zoom: map.getZoom() });
-  });
+  map.on('zoomend', relayout);
   map.on('click', () => onSelect(null));
 
   return {
     update,
-    namesShown: () => map.getZoom() >= NAMES_FROM_ZOOM,
-    hiddenCount: () => hiddenCount,
+    getView: () => ({ lat: map.getCenter().lat, lng: map.getCenter().lng, zoom: map.getZoom() }),
+    showHome,
+    // Centre a resort in the part of the map you can see, zooming in if we're far out.
+    focus(r) {
+      const p = getPadding(true);
+      const z = Math.max(map.getZoom(), 8);
+      const pt = map.project(r.at, z).subtract([(p.left - p.right) / 2, (p.top - p.bottom) / 2]);
+      map.setView(map.unproject(pt, z), z, { animate: true });
+    },
     setSnowDepth(on) {
       if (on) snowDepth.addTo(map);
       else snowDepth.remove();
     },
     resize() {
       map.invalidateSize();
+      lockZoom();
       relayout();
     },
   };

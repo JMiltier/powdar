@@ -1,10 +1,11 @@
 // Builds the single data.json the app reads. Pure apart from the fetch you pass in,
 // so it runs the same in the GitHub Action, the local preview server and tests.
 import { RESORTS, PLANNED } from './resorts.js';
+import { MODELS, modelUrl, snowHours } from './models.js';
 
 export const CSC_FEED = 'https://snow.coloradoski.com/view/publicreport-feed';
 const NWS = 'https://api.weather.gov/gridpoints';
-const USER_AGENT = 'colorado-snow (github.com/JMiltier/colorado-snow)';
+const USER_AGENT = 'PowScout (github.com/JMiltier/powscout)';
 const TZ = 'America/Denver';
 const FORECAST_DAYS = 7;
 const MM_PER_INCH = 25.4;
@@ -47,31 +48,68 @@ function hourly(values) {
 const cToF = (c) => Math.round((c * 9) / 5 + 32);
 const round1 = (n) => Math.round(n * 10) / 10;
 
-export function parseForecast(props, now) {
-  const today = localDate(now);
-  const days = Array.from({ length: FORECAST_DAYS }, (_, i) => ({ date: addDays(today, i), snow: 0, hi: null, lo: null }));
-  const byDate = new Map(days.map((d) => [d.date, d]));
+// NWS gridpoint data → hourly snow in inches: [{ t, v }], or null if there's none.
+export function nwsSnowHours(props) {
+  const hours = hourly(props?.snowfallAmount?.values ?? []);
+  return hours.length ? hours.map(({ t, v }) => ({ t, v: v / MM_PER_INCH })) : null;
+}
 
-  const snowHours = hourly(props.snowfallAmount?.values ?? []);
-  let next72 = 0;
-  for (const { t, v } of snowHours) {
-    const day = byDate.get(localDate(new Date(t)));
-    if (day) day.snow += v;
-    if (t >= now.getTime() - 3_600_000 && t < now.getTime() + 72 * 3_600_000) next72 += v;
-  }
-  // Highs and lows are labelled by the local date they start on (a night's low counts for that evening).
+// Daily highs and lows (°F) from NWS, labelled by the local date they start on
+// (so a night's low counts for that evening).
+function nwsTemps(props, dates) {
+  const out = new Map(dates.map((d) => [d, { hi: null, lo: null }]));
   for (const [key, field] of [['maxTemperature', 'hi'], ['minTemperature', 'lo']]) {
-    for (const { validTime, value } of props[key]?.values ?? []) {
-      const day = byDate.get(localDate(new Date(Date.parse(validTime.split('/')[0]))));
+    for (const { validTime, value } of props?.[key]?.values ?? []) {
+      const day = out.get(localDate(new Date(Date.parse(validTime.split('/')[0]))));
       if (day && value != null && day[field] == null) day[field] = cToF(value);
     }
   }
-  for (const d of days) d.snow = round1(d.snow / MM_PER_INCH);
+  return out;
+}
+
+// The middle value and a likely range across forecasts. With five sources the range skips the
+// single highest and lowest, so one wild model can't stretch it.
+export function spread(values) {
+  const s = [...values].sort((a, b) => a - b);
+  const n = s.length;
+  if (!n) return null;
+  const mid = n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
+  return { mid: round1(mid), lo: round1(s[Math.floor((n - 1) / 4)]), hi: round1(s[Math.ceil((3 * (n - 1)) / 4)]) };
+}
+
+// sources: [{ id, hours: [{ t, v (inches) }] | null }]; nws: raw NWS properties for temperatures.
+export function blendForecast({ sources, nws }, now) {
+  const today = localDate(now);
+  const dates = Array.from({ length: FORECAST_DAYS }, (_, i) => addDays(today, i));
+  const usable = sources.filter((s) => s.hours);
+  if (!usable.length) return null;
+  const nowMs = now.getTime();
+
+  const totals = usable.map(({ hours }) => {
+    const daily = new Map(dates.map((d) => [d, 0]));
+    let next72 = 0;
+    for (const { t, v } of hours) {
+      const d = localDate(new Date(t));
+      if (daily.has(d)) daily.set(d, daily.get(d) + v);
+      if (t >= nowMs - 3_600_000 && t < nowMs + 72 * 3_600_000) next72 += v;
+    }
+    return { daily, next72, next7: [...daily.values()].reduce((a, b) => a + b, 0) };
+  });
+
+  const temps = nwsTemps(nws, dates);
+  const days = dates.map((date) => {
+    const s = spread(totals.map((x) => x.daily.get(date)));
+    return { date, snow: s.mid, snowLo: s.lo, snowHi: s.hi, ...temps.get(date) };
+  });
+  const n72 = spread(totals.map((x) => x.next72));
+  const n7 = spread(totals.map((x) => x.next7));
   return {
     days,
-    next72: round1(next72 / MM_PER_INCH),
-    next7: round1(days.reduce((s, d) => s + d.snow, 0)),
-    updated: props.updateTime ?? null,
+    next72: n72.mid,
+    next72Range: [n72.lo, n72.hi],
+    next7: n7.mid,
+    next7Range: [n7.lo, n7.hi],
+    sources: usable.map((s) => s.id),
   };
 }
 
@@ -168,15 +206,33 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     log(`Colorado Ski Country feed failed: ${err.message}`);
   }
 
-  const forecasts = await pool(RESORTS, 4, async (r) => {
-    try {
-      const data = await getJson(fetchFn, `${NWS}/${r.nws[0]}/${r.nws[1]},${r.nws[2]}`);
-      return parseForecast(data.properties, now);
-    } catch (err) {
-      log(`Forecast failed for ${r.name}: ${err.message}`);
-      return null;
-    }
-  });
+  // Each model is one request covering every resort; NWS is one request per resort.
+  const [modelData, nwsData] = await Promise.all([
+    Promise.all(MODELS.map(async (m) => {
+      try {
+        const data = await getJson(fetchFn, modelUrl(m.id, RESORTS, FORECAST_DAYS + 1));
+        return Array.isArray(data) ? data : [data];
+      } catch (err) {
+        log(`Model ${m.label} failed: ${err.message}`);
+        return null;
+      }
+    })),
+    pool(RESORTS, 4, async (r) => {
+      try {
+        return (await getJson(fetchFn, `${NWS}/${r.nws[0]}/${r.nws[1]},${r.nws[2]}`)).properties;
+      } catch (err) {
+        log(`NWS forecast failed for ${r.name}: ${err.message}`);
+        return null;
+      }
+    }),
+  ]);
+  const forecasts = RESORTS.map((r, i) => blendForecast({
+    nws: nwsData[i],
+    sources: [
+      { id: 'nws', hours: nwsSnowHours(nwsData[i]) },
+      ...MODELS.map((m, k) => ({ id: m.id, hours: snowHours(modelData[k]?.[i]) })),
+    ],
+  }, now));
 
   const resorts = RESORTS.map((r, i) => {
     const c = r.csc ? csc.get(r.csc) : undefined;
@@ -206,7 +262,13 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     generated: now.toISOString(),
     today,
     season: season.name,
-    sources: { coloradoSki: cscOk, forecasts: forecasts.filter(Boolean).length, resorts: RESORTS.length },
+    sources: {
+      coloradoSki: cscOk,
+      forecasts: forecasts.filter(Boolean).length,
+      resorts: RESORTS.length,
+      nws: nwsData.filter(Boolean).length,
+      models: Object.fromEntries(MODELS.map((m, k) => [m.id, Boolean(modelData[k])])),
+    },
     resorts,
   };
 }

@@ -1,28 +1,29 @@
-import { createSnowMap } from './map.js';
+import { createSnowMap, CREDITS } from './map.js?v=__V__';
 
 const DATA_URL = 'data.json';
 const STORE = {
-  data: 'cs:data', favs: 'cs:favs', sort: 'cs:sort', openOnly: 'cs:openOnly',
-  view: 'cs:view', metric: 'cs:metric', mapView: 'cs:mapView2', snowDepth: 'cs:snowDepth',
+  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', home: 'cs:home', snowDepth: 'cs:snowDepth', openOnly: 'cs:openOnly',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
 const STALE_AFTER_MS = 3 * 3_600_000;
+const WIDE = window.matchMedia('(min-width: 900px)');
 
 const SURFACE = {
   P: 'Powder', PDR: 'Powder', PP: 'Packed powder', 'P/PP': 'Powder & packed powder', MG: 'Machine groomed',
   MMS: 'Machine-made snow', HP: 'Hard pack', SC: 'Spring conditions', SPR: 'Spring conditions', WP: 'Wet packed',
   VC: 'Variable', LG: 'Loose granular', LSGR: 'Loose granular', FG: 'Frozen granular', WG: 'Wet granular', ICY: 'Icy',
 };
-// What the map can show. `steps` are the upper bounds of each colour level.
-const METRICS = {
-  next72: { get: (r) => r.forecast?.next72, steps: [1, 3, 6, 12], hint: '3-day snow forecast' },
-  next7: { get: (r) => r.forecast?.next7, steps: [1, 3, 6, 12], hint: '7-day snow forecast' },
-  new24: { get: (r) => r.report?.new24, steps: [1, 3, 6, 12], hint: 'New snow, last 24 hrs' },
-  depth: { get: (r) => r.report?.depth, steps: [12, 24, 36, 60], hint: 'Base depth', base: true },
-  dates: { hint: 'Green: open until · Blue: opens', dates: true },
+const SOURCE_NAMES = {
+  nws: 'National Weather Service', ecmwf_ifs025: 'European', gfs_seamless: 'American', gem_seamless: 'Canadian', icon_seamless: 'German',
 };
-// Lower comes first when sorting by opening day.
-const STATE_ORDER = { open: 0, likely: 1, soon: 2, late: 3, tba: 4, done: 5 };
+
+// What the map and list show. `steps` are the upper bounds of each colour level.
+const METRICS = {
+  next72: { kind: 'snow', get: (r) => r.forecast?.next72, range: (r) => r.forecast?.next72Range, steps: [1, 3, 6, 12], top: 'Most snow, next 3 days' },
+  next7: { kind: 'snow', get: (r) => r.forecast?.next7, range: (r) => r.forecast?.next7Range, steps: [1, 3, 6, 12], top: 'Most snow, next 7 days' },
+  depth: { kind: 'base', get: (r) => r.report?.depth, steps: [12, 24, 36, 60], top: 'Deepest base' },
+  dates: { kind: 'dates' },
+};
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -37,52 +38,31 @@ const state = {
   data: null,
   loadedAt: 0,
   favs: new Set(read(STORE.favs, [])),
-  sort: read(STORE.sort, 'snow'),
+  metric: METRICS[read(STORE.metric, 'next72')] ? read(STORE.metric, 'next72') : 'next72',
   openOnly: read(STORE.openOnly, false),
-  expanded: new Set(),
-  view: read(STORE.view, 'map'),
-  metric: read(STORE.metric, 'next72'),
-  selected: null,
-  map: null,
   snowDepth: read(STORE.snowDepth, false),
+  selected: null,
+  sheet: 'peek',
+  map: null,
 };
+
+// ---------- formatting ----------
 
 // 0 → 0″, a dusting → <1″, otherwise whole inches.
 function inches(v) {
-  if (v == null) return '—';
+  if (v == null) return '–';
   if (v === 0) return '0″';
   if (v < 1) return '<1″';
   return `${Math.round(v)}″`;
 }
-
+// "2–5″", or nothing when the forecasts agree (or it's all under an inch).
+function rangeText(range) {
+  if (!range) return '';
+  const [lo, hi] = range.map(Math.round);
+  return hi >= 1 && hi !== lo ? `${lo}–${hi}″` : '';
+}
 const monthDay = (ymd) => new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
-
-// "Season: Oct 28 – May 10", or as much of it as we know.
-function seasonText(r, today) {
-  const { open, close, when, planned } = r.dates ?? {};
-  if (open && close) return `Season: ${monthDay(open)} – ${monthDay(close)}`;
-  if (open) return `${open > today ? 'Opens' : 'Opened'} ${when ?? monthDay(open)}${planned ? ' (planned)' : ''} · closing day TBA`;
-  if (close) return `Opening day TBA · closes ${monthDay(close)}`;
-  return '';
-}
-
-// Map bubble for the Dates view.
-function dateBubble(r) {
-  const { state: s, date } = r.status;
-  const close = r.dates?.close;
-  if (s === 'open') return { text: close ? `til ${monthDay(close)}` : 'Open', level: 'open', rank: 0 };
-  if (s === 'likely') return { text: 'Probably', level: 'likely', rank: 1 };
-  if (s === 'soon') return { text: r.dates?.when ?? monthDay(date), level: 'soon', rank: 2 };
-  if (s === 'late') return { text: 'Delayed', level: 'late', rank: 3 };
-  if (s === 'done') return { text: 'Closed', level: 'tba', rank: 5 };
-  return { text: 'TBA', level: 'tba', rank: 4 };
-}
-
-const dayName = (ymd, today, style = 'short') =>
-  ymd === today ? 'Today' : new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: style });
-
-const longDay = (ymd, today) =>
-  `${dayName(ymd, today, 'long')}${ymd === today ? '' : `, ${new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' })}`}`;
+const weekday = (ymd, today) => (ymd === today ? 'Today' : new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short' }));
 
 function timeAgo(iso) {
   const mins = Math.round((Date.now() - Date.parse(iso)) / 60_000);
@@ -92,128 +72,6 @@ function timeAgo(iso) {
   return hrs < 48 ? `${hrs} hr ago` : `${Math.round(hrs / 24)} days ago`;
 }
 
-const isOpenish = (r) => r.status.state === 'open' || r.status.state === 'likely';
-const snowNext = (r) => r.forecast?.next72 ?? -1;
-
-function sorted(resorts) {
-  const list = [...resorts];
-  const byName = (a, b) => a.name.localeCompare(b.name);
-  if (state.sort === 'name') return list.sort(byName);
-  if (state.sort === 'opening') {
-    return list.sort((a, b) =>
-      STATE_ORDER[a.status.state] - STATE_ORDER[b.status.state] ||
-      (a.status.date ?? '9999').localeCompare(b.status.date ?? '9999') ||
-      byName(a, b));
-  }
-  return list.sort((a, b) => snowNext(b) - snowNext(a) || (b.forecast?.next7 ?? -1) - (a.forecast?.next7 ?? -1) || byName(a, b));
-}
-
-function renderSummary(data) {
-  const open = data.resorts.filter((r) => r.status.state === 'open');
-  const likely = data.resorts.filter((r) => r.status.state === 'likely');
-  const snowiest = [...data.resorts].sort((a, b) => snowNext(b) - snowNext(a))[0];
-  const nextUp = data.resorts
-    .filter((r) => r.status.state === 'soon')
-    .sort((a, b) => a.status.date.localeCompare(b.status.date))[0];
-
-  const openText = open.length
-    ? `<strong>${open.length}</strong> open${likely.length ? `<br><span class="muted">+${likely.length} probably</span>` : ''}`
-    : likely.length ? `<strong>${likely.length}</strong> probably open` : 'None open yet';
-  const snowText = snowiest && snowNext(snowiest) >= 1
-    ? `<strong>${inches(snowiest.forecast.next72)}</strong><br>${esc(snowiest.name)}`
-    : 'No big storms';
-
-  $('#summary').innerHTML = `
-    <div class="tile"><span class="tile-label">Open now</span><span class="tile-value">${openText}</span></div>
-    <div class="tile"><span class="tile-label">Most snow 3 days</span><span class="tile-value">${snowText}</span></div>
-    ${nextUp ? `<div class="tile"><span class="tile-label">Next to open</span><span class="tile-value"><strong>${esc(nextUp.name)}</strong><br><span class="muted">${esc(nextUp.status.label.replace('Opens ', ''))}</span></span></div>` : ''}`;
-}
-
-const BAR_MAX_PX = 36;
-
-// Bars share one scale across every resort, so a 10″ day always looks bigger than a 5″ one.
-function bars(r, today, scale) {
-  if (!r.forecast) return '<p class="muted small">Forecast unavailable right now.</p>';
-  return `<div class="bars" aria-hidden="true">${r.forecast.days.map((d) => `
-    <div class="bar-col">
-      <span class="bar-num">${d.snow >= 1 ? Math.round(d.snow) : d.snow > 0 ? '·' : ''}</span>
-      <span class="bar" style="height:${d.snow > 0 ? Math.max(3, Math.round((Math.min(d.snow, scale) / scale) * BAR_MAX_PX)) : 0}px"></span>
-      <span class="bar-day">${dayName(d.date, today)}</span>
-    </div>`).join('')}</div>`;
-}
-
-function details(r, today) {
-  const rows = r.forecast?.days.map((d) => `
-    <tr><th scope="row">${esc(longDay(d.date, today))}</th>
-      <td class="${d.snow >= 1 ? 'snowy' : ''}">${d.snow > 0 ? `❄ ${inches(d.snow)}` : '—'}</td>
-      <td>${d.hi ?? '–'}° / ${d.lo ?? '–'}°</td></tr>`).join('') ?? '';
-  const rep = r.report;
-  const repBits = rep ? [
-    `New snow: <strong>${inches(rep.new24)}</strong> in 24 hrs, <strong>${inches(rep.new48)}</strong> in 48 hrs`,
-    rep.depth != null ? `Base (mid-mountain): <strong>${rep.depth}″</strong>` : '',
-    rep.surface ? `Surface: ${esc(SURFACE[rep.surface] ?? rep.surface)}` : '',
-    rep.updated ? `<span class="muted">Resort report ${esc(timeAgo(rep.updated))}</span>` : '',
-  ].filter(Boolean).map((b) => `<li>${b}</li>`).join('') : '';
-  return `
-    <div class="details">
-      ${repBits ? `<ul class="report">${repBits}</ul>` : ''}
-      ${rows ? `<table class="days"><caption>7-day forecast (high / low °F)</caption><tbody>${rows}</tbody></table>` : ''}
-      <a class="site" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)} website ↗</a>
-    </div>`;
-}
-
-function card(r, today, scale) {
-  const fav = state.favs.has(r.id);
-  const n72 = r.forecast?.next72;
-  const third = r.report
-    ? `<div class="stat"><span class="stat-num">${inches(r.report.new24)}</span><span class="stat-label">last 24 hrs</span></div>`
-    : `<div class="stat"><span class="stat-num muted">—</span><span class="stat-label">${r.live ? 'not reporting' : 'no live report'}</span></div>`;
-  return `
-    <details class="card" data-id="${esc(r.id)}" ${state.expanded.has(r.id) ? 'open' : ''}>
-      <summary>
-        <div class="card-head">
-          <button type="button" class="star" data-fav="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Unpin' : 'Pin'} ${esc(r.name)}">${fav ? '★' : '☆'}</button>
-          <div class="names">
-            <h3>${esc(r.name)}</h3>
-            <p class="sub">${esc(r.region)}${r.status.detail ? ` · ${esc(r.status.detail)}` : ''}</p>
-            ${seasonText(r, today) ? `<p class="season">${esc(seasonText(r, today))}</p>` : ''}
-          </div>
-          <span class="pill pill-${esc(r.status.state)}">${esc(r.status.label)}</span>
-        </div>
-        <div class="stats">
-          <div class="stat ${n72 >= 3 ? 'stat-hot' : ''}"><span class="stat-num">${inches(n72)}</span><span class="stat-label">next 3 days</span></div>
-          <div class="stat"><span class="stat-num">${inches(r.forecast?.next7)}</span><span class="stat-label">next 7 days</span></div>
-          ${third}
-        </div>
-        ${bars(r, today, scale)}
-      </summary>
-      ${details(r, today)}
-    </details>`;
-}
-
-function render() {
-  const data = state.data;
-  if (!data) return;
-  const today = data.today;
-  const scale = Math.max(4, ...data.resorts.flatMap((r) => r.forecast?.days.map((d) => d.snow) ?? [0]));
-
-  renderSummary(data);
-  const visible = sorted(data.resorts).filter((r) => !state.openOnly || isOpenish(r));
-  const favs = visible.filter((r) => state.favs.has(r.id));
-  const rest = visible.filter((r) => !state.favs.has(r.id));
-
-  $('#favorites').hidden = favs.length === 0;
-  $('#fav-list').innerHTML = favs.map((r) => card(r, today, scale)).join('');
-  $('#all-title').textContent = favs.length ? 'Other resorts' : state.openOnly ? 'Open resorts' : 'All resorts';
-  $('#list').innerHTML = rest.map((r) => card(r, today, scale)).join('') ||
-    '<p class="empty">No resorts are open yet. Turn off “Open only” to see opening days.</p>';
-
-  document.querySelectorAll('[data-sort]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sort === state.sort)));
-  $('#open-only').checked = state.openOnly;
-  $('#updated').textContent = `Updated ${timeAgo(data.generated)}`;
-  renderMap();
-}
-
 function level(value, steps) {
   if (value == null) return 'none';
   if (value === 0) return 0;
@@ -221,98 +79,276 @@ function level(value, steps) {
   return i === -1 ? steps.length + 1 : i + 1;
 }
 
-function renderMap() {
+// "Season Oct 28 – May 10", or as much of it as we know.
+function seasonText(r, today) {
+  const { open, close, when, planned } = r.dates ?? {};
+  if (open && close) return `Season ${monthDay(open)} – ${monthDay(close)}`;
+  if (open) return `${open > today ? 'Opens' : 'Opened'} ${when ?? monthDay(open)}${planned ? ' (announced)' : ''} · closing day TBA`;
+  if (close) return `Opening day TBA · closes ${monthDay(close)}`;
+  return '';
+}
+
+// One resort's value for the current metric, as both the map bubble and the list show it.
+function valueFor(r, metricKey = state.metric) {
+  const m = METRICS[metricKey];
+  if (m.kind === 'dates') {
+    const { state: s, date } = r.status;
+    const close = r.dates?.close;
+    const daysOut = date ? (Date.parse(date) - Date.parse(state.data.today)) / 864e5 : 0;
+    if (s === 'open') return { text: close ? `til ${monthDay(close)}` : 'Open', level: 'open', sort: 1e5 };
+    if (s === 'likely') return { text: 'Probably', level: 'likely', sort: 9e4 };
+    if (s === 'soon') return { text: r.dates?.when ?? monthDay(date), level: 'soon', sort: 8e4 - daysOut };
+    if (s === 'late') return { text: 'Delayed', level: 'late', sort: 7e4 };
+    return { text: s === 'done' ? 'Closed' : 'TBA', level: 'tba', sort: 0 };
+  }
+  const v = m.get(r) ?? null;
+  return {
+    text: v == null ? '–' : m.kind === 'base' ? `${Math.round(v)}″` : inches(v),
+    sub: m.range ? rangeText(m.range(r)) : '',
+    level: level(v, m.steps),
+    sort: v ?? -1,
+  };
+}
+
+const isOpenish = (r) => r.status.state === 'open' || r.status.state === 'likely';
+
+// Pinned first, then by the current metric.
+function ordered() {
+  return state.data.resorts
+    .filter((r) => !state.openOnly || isOpenish(r))
+    .map((r) => ({ r, v: valueFor(r) }))
+    .sort((a, b) => state.favs.has(b.r.id) - state.favs.has(a.r.id) || b.v.sort - a.v.sort || a.r.name.localeCompare(b.r.name));
+}
+
+// ---------- rendering ----------
+
+function renderHeadline() {
   const data = state.data;
-  document.querySelectorAll('[data-metric]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.metric === state.metric)));
-  if (state.view !== 'map' || !data) return;
-  if (!state.map) {
-    state.map = createSnowMap($('#map'), {
-      saved: read(STORE.mapView, null),
-      onMove: (v) => write(STORE.mapView, v),
-      onZoom: () => renderHint(),
-      onSelect: (id) => {
-        state.selected = id;
-        renderMap();
-      },
-    });
-    state.map.setSnowDepth(state.snowDepth);
-  }
-  $('#snow-toggle').setAttribute('aria-pressed', String(state.snowDepth));
-  $('#snow-legend').hidden = !state.snowDepth;
-  $('#map').classList.toggle('snow-on', state.snowDepth);
-  const metric = METRICS[state.metric] ?? METRICS.next72;
-  const items = data.resorts.map((r) => {
-    const base = { r, open: r.status.state === 'open', selected: r.id === state.selected, fav: state.favs.has(r.id) };
-    base.important = base.open || base.selected || base.fav;
-    if (metric.dates) {
-      const b = dateBubble(r);
-      // Open resorts first, then the soonest opening days.
-      const daysOut = r.status.date ? (Date.parse(r.status.date) - Date.parse(data.today)) / 864e5 : 0;
-      return { ...base, text: b.text, label: b.text, level: b.level, sortKey: -b.rank * 1e4 - daysOut };
-    }
-    const value = metric.get(r) ?? null;
-    const text = value == null ? '–' : metric.base ? `${Math.round(value)}″` : inches(value);
-    return { ...base, text, label: value == null ? 'not reported' : text, level: level(value, metric.steps), sortKey: value ?? -1 };
-  });
-  // Most important first (pinned, then open resorts), so they win the space on a crowded map.
-  items.sort((a, b) => b.selected - a.selected || b.fav - a.fav || b.open - a.open || b.sortKey - a.sortKey);
-  state.map.update(items);
-  renderHint();
-
-  const r = data.resorts.find((x) => x.id === state.selected);
-  $('#sheet').hidden = !r;
-  if (r) {
-    const scale = Math.max(4, ...data.resorts.flatMap((x) => x.forecast?.days.map((d) => d.snow) ?? [0]));
-    $('#sheet-body').innerHTML = card(r, data.today, scale);
-  }
-}
-
-function renderHint() {
-  const data = state.data;
-  if (!data || !state.map) return;
-  const metric = METRICS[state.metric] ?? METRICS.next72;
-  const parts = [metric.hint];
-  if (metric.get) {
-    const reporting = data.resorts.filter((r) => metric.get(r) != null).length;
-    if (reporting < data.resorts.length) parts.push(`${reporting} reporting`);
-  }
-  const hidden = state.map.hiddenCount();
-  if (!state.map.namesShown()) parts.push('zoom in for names');
-  else if (hidden) parts.push(`zoom in for ${hidden} more`);
-  parts.push(timeAgo(data.generated));
-  $('#map-hint').textContent = parts.join(' · ');
-}
-
-// The map fills the screen under the header, whose height changes with the notice line.
-function sizeMap() {
-  document.documentElement.style.setProperty('--header-h', `${$('.top').offsetHeight}px`);
-  state.map?.resize();
-}
-
-function setView(view) {
-  state.view = view;
-  write(STORE.view, view);
-  document.body.classList.toggle('map-mode', view === 'map');
-  $('#map-view').hidden = view !== 'map';
-  document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === view)));
-  if (view === 'map') {
-    renderMap();
-    sizeMap();
+  const m = METRICS[state.metric];
+  let text;
+  if (m.kind === 'dates') {
+    const open = data.resorts.filter((r) => r.status.state === 'open').length;
+    const next = data.resorts.filter((r) => r.status.state === 'soon').sort((a, b) => a.status.date.localeCompare(b.status.date))[0];
+    text = `<strong>${open} open</strong>${next ? ` · next: <strong>${esc(next.name)}</strong> ${esc(next.status.label.replace('Opens ', ''))}` : ''}`;
   } else {
-    window.scrollTo(0, 0);
+    const best = [...data.resorts].sort((a, b) => (m.get(b) ?? -1) - (m.get(a) ?? -1))[0];
+    const v = best && m.get(best);
+    if (m.kind === 'base') {
+      const n = data.resorts.filter((r) => m.get(r) != null).length;
+      text = v ? `${m.top}: <strong>${esc(best.name)} ${Math.round(v)}″</strong> · ${n} resorts reporting` : 'No base reports yet: resorts report once open';
+    } else {
+      text = v >= 1 ? `${m.top}: <strong>${esc(best.name)} ${inches(v)}</strong>` : `No real snow in the forecast for the next ${state.metric === 'next7' ? '7' : '3'} days`;
+    }
   }
+  $('#headline').innerHTML = text;
+}
+
+function renderList() {
+  const rows = ordered().map(({ r, v }) => `
+    <button type="button" class="row" data-open="${esc(r.id)}">
+      <span class="dot dot-${esc(r.status.state)}" aria-hidden="true"></span>
+      <span class="row-main">
+        <span class="row-name">${state.favs.has(r.id) ? '<span class="fav">★</span> ' : ''}${esc(r.name)}</span>
+        <span class="row-sub">${esc(r.status.label)}${r.status.state === 'open' && r.status.detail ? ` · ${esc(r.status.detail.split(' · ')[0])}` : ''}</span>
+      </span>
+      <span class="val lvl-${v.level}">${esc(v.text)}${v.sub ? `<small>${esc(v.sub)}</small>` : ''}</span>
+    </button>`).join('');
+  $('#list').innerHTML = rows || '<p class="empty">Nothing open yet. Turn off “Open now” to see opening days.</p>';
+}
+
+function renderDetail(r) {
+  const today = state.data.today;
+  const f = r.forecast;
+  const rep = r.report;
+  const fav = state.favs.has(r.id);
+  const scale = Math.max(4, ...(f?.days.map((d) => d.snow) ?? [0]));
+  const stat = (num, label, sub = '') => `<div class="stat"><b>${num}</b><span>${label}</span>${sub ? `<small>${sub}</small>` : ''}</div>`;
+
+  const bars = f ? `
+    <div class="days">${f.days.map((d) => `
+      <div class="day">
+        <span class="day-snow">${d.snow >= 1 ? inches(d.snow) : d.snow > 0 ? '<1″' : ''}</span>
+        <span class="day-bar" style="height:${d.snow > 0 ? Math.max(4, Math.round((d.snow / scale) * 44)) : 0}px"></span>
+        <span class="day-name">${weekday(d.date, today)}</span>
+        <span class="day-temp">${d.hi ?? '–'}°<i>${d.lo ?? '–'}°</i></span>
+      </div>`).join('')}
+    </div>` : '<p class="muted">Forecast unavailable right now.</p>';
+
+  const report = rep ? `
+    <ul class="report">
+      ${rep.lifts?.total ? `<li><span>Lifts</span><b>${rep.lifts.open} of ${rep.lifts.total}</b></li>` : ''}
+      ${rep.trails?.total ? `<li><span>Runs</span><b>${rep.trails.open} of ${rep.trails.total}</b></li>` : ''}
+      <li><span>New snow</span><b>${inches(rep.new24)} 24 hr · ${inches(rep.new48)} 48 hr</b></li>
+      ${rep.surface ? `<li><span>Surface</span><b>${esc(SURFACE[rep.surface] ?? rep.surface)}</b></li>` : ''}
+      ${rep.updated ? `<li class="muted"><span>Resort report</span><b>${esc(timeAgo(rep.updated))}</b></li>` : ''}
+    </ul>` : '';
+
+  const sources = f?.sources?.map((s) => SOURCE_NAMES[s] ?? s) ?? [];
+  $('#detail').innerHTML = `
+    <div class="detail-head">
+      <button type="button" class="icon" data-back aria-label="Back to all resorts">‹</button>
+      <div class="detail-title">
+        <h2>${esc(r.name)}</h2>
+        <p><span class="pill pill-${esc(r.status.state)}">${esc(r.status.label)}</span> ${esc(seasonText(r, today))}</p>
+      </div>
+      <button type="button" class="icon star" data-fav="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Unpin' : 'Pin'} ${esc(r.name)}">${fav ? '★' : '☆'}</button>
+    </div>
+    ${r.status.detail && r.status.state !== 'open' ? `<p class="muted small">${esc(r.status.detail)}</p>` : ''}
+    <div class="stats">
+      ${stat(inches(f?.next72), 'next 3 days', rangeText(f?.next72Range))}
+      ${stat(inches(f?.next7), 'next 7 days', rangeText(f?.next7Range))}
+      ${rep?.depth != null ? stat(`${rep.depth}″`, 'base') : stat('–', r.live ? 'base (once open)' : 'no live report')}
+    </div>
+    ${bars}
+    ${report}
+    ${sources.length > 1 ? `<p class="muted small">Forecast blends ${sources.length} sources: ${esc(sources.join(', '))}. Big number = middle forecast, small = likely range.</p>` : ''}
+    <a class="site" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)} website ↗</a>`;
+}
+
+function renderMap() {
+  if (!state.map) return;
+  const items = ordered().map(({ r, v }) => {
+    const selected = r.id === state.selected;
+    const fav = state.favs.has(r.id);
+    const open = r.status.state === 'open';
+    return {
+      r, text: v.text, label: v.text, level: v.level, selected,
+      open: open && METRICS[state.metric].kind !== 'dates',
+      important: selected || fav || open,
+      rank: [selected, fav, open, v.sort],
+    };
+  });
+  // Most important first (selected, pinned, open), so they win the space on a crowded map.
+  items.sort((a, b) => b.rank[0] - a.rank[0] || b.rank[1] - a.rank[1] || b.rank[2] - a.rank[2] || b.rank[3] - a.rank[3]);
+  state.map.update(items);
+}
+
+function render() {
+  if (!state.data) return;
+  document.querySelectorAll('[data-metric]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.metric === state.metric)));
+  $('#open-only').checked = state.openOnly;
+  $('#snow-btn').setAttribute('aria-pressed', String(state.snowDepth));
+  $('#legend').hidden = !state.snowDepth;
+  $('#map').classList.toggle('snow-on', state.snowDepth);
+  $('#updated').textContent = `Updated ${timeAgo(state.data.generated)}`;
+
+  const r = state.data.resorts.find((x) => x.id === state.selected);
+  $('#list').hidden = Boolean(r);
+  $('#detail').hidden = !r;
+  if (r) renderDetail(r);
+  else renderList();
+  renderHeadline();
+  renderMap();
+}
+
+// ---------- bottom sheet ----------
+// Three heights on phones: a peek (header only), half, and full. On wide screens it's a side panel.
+
+const sheetEl = $('#sheet');
+const grabEl = $('#grab');
+let sheetY = 0;
+
+function sheetSizes() {
+  const h = sheetEl.offsetHeight;
+  const peek = grabEl.offsetHeight + 12;
+  return { h, visible: { peek, half: Math.round(window.innerHeight * 0.5), full: h } };
+}
+
+// Pixels of map the panels cover. Fitting plans for the collapsed sheet; centring a resort uses
+// the sheet's current height so the resort lands in the part of the map you can see.
+function coveredPadding(current = false) {
+  const top = $('.top').getBoundingClientRect().bottom;
+  if (WIDE.matches) return { top: 0, left: sheetEl.offsetWidth + 16, right: 0, bottom: 0 };
+  return { top, left: 0, right: 0, bottom: current ? sheetEl.offsetHeight - sheetY : sheetSizes().visible.peek };
+}
+
+function setSheetY(y, animate) {
+  sheetY = y;
+  sheetEl.classList.toggle('dragging', !animate);
+  sheetEl.style.transform = WIDE.matches ? '' : `translateY(${y}px)`;
+  const visible = WIDE.matches ? 0 : sheetEl.offsetHeight - y;
+  document.documentElement.style.setProperty('--sheet-visible', `${visible}px`);
+}
+
+function setSheet(name, animate = true) {
+  state.sheet = name;
+  sheetEl.dataset.state = name;
+  if (WIDE.matches) return setSheetY(0, false);
+  const { h, visible } = sheetSizes();
+  setSheetY(h - visible[name], animate);
+}
+
+let drag = null;
+grabEl.addEventListener('pointerdown', (e) => {
+  if (WIDE.matches || e.target.closest('input, label, button')) return;
+  drag = { y: e.clientY, t: performance.now(), start: sheetY, moved: false };
+  grabEl.setPointerCapture(e.pointerId);
+});
+grabEl.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const dy = e.clientY - drag.y;
+  if (Math.abs(dy) > 6) drag.moved = true;
+  if (!drag.moved) return;
+  const { h, visible } = sheetSizes();
+  setSheetY(Math.min(h - visible.peek, Math.max(0, drag.start + dy)), false);
+});
+grabEl.addEventListener('pointerup', (e) => {
+  if (!drag) return;
+  const d = drag;
+  drag = null;
+  if (!d.moved) return setSheet(state.sheet === 'peek' ? 'half' : 'peek');
+  const { h, visible } = sheetSizes();
+  const velocity = (e.clientY - d.y) / (performance.now() - d.t); // px per ms, + is down
+  const shown = h - sheetY;
+  const names = ['peek', 'half', 'full'];
+  let i = names.reduce((best, n, k) => (Math.abs(visible[n] - shown) < Math.abs(visible[names[best]] - shown) ? k : best), 0);
+  if (velocity < -0.5) i = Math.min(2, names.indexOf(state.sheet) + 1);
+  if (velocity > 0.5) i = Math.max(0, names.indexOf(state.sheet) - 1);
+  setSheet(names[i]);
+});
+grabEl.addEventListener('pointercancel', () => {
+  drag = null;
+  setSheet(state.sheet);
+});
+
+// ---------- actions ----------
+
+function select(id, { pan = true } = {}) {
+  state.selected = id;
+  render();
+  $('#sheet-body').scrollTop = 0;
+  if (!id) return;
+  if (state.sheet === 'peek' || state.sheet === 'full') setSheet('half');
+  const r = state.data.resorts.find((x) => x.id === id);
+  if (pan && r) requestAnimationFrame(() => state.map?.focus(r));
+}
+
+let toastTimer;
+function toast(text) {
+  const el = $('#toast');
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 2500);
 }
 
 function showNotice(text) {
-  const el = $('#notice');
-  el.hidden = !text;
-  el.textContent = text ?? '';
-  sizeMap();
+  $('#notice').hidden = !text;
+  $('#notice').textContent = text ?? '';
+}
+
+function startMap() {
+  if (state.map || !state.data) return;
+  state.map = createSnowMap($('#map'), {
+    resorts: state.data.resorts,
+    home: read(STORE.home, null),
+    getPadding: coveredPadding,
+    onSelect: (id) => select(id, { pan: false }),
+  });
+  state.map.setSnowDepth(state.snowDepth);
 }
 
 async function load() {
-  const btn = $('#refresh');
-  btn.classList.add('spinning');
   try {
     const res = await fetch(`${DATA_URL}?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(res.status);
@@ -320,88 +356,82 @@ async function load() {
     state.loadedAt = Date.now();
     write(STORE.data, state.data);
     const age = Date.now() - Date.parse(state.data.generated);
-    const partial = !state.data.sources.coloradoSki
-      ? 'Live open status is unavailable right now. Showing forecasts only.'
-      : null;
-    showNotice(age > STALE_AFTER_MS ? `Heads up: this data is ${timeAgo(state.data.generated).replace(' ago', '')} old.` : partial);
+    showNotice(age > STALE_AFTER_MS ? `Heads up: this data is ${timeAgo(state.data.generated).replace(' ago', '')} old.`
+      : !state.data.sources.coloradoSki ? 'Live open status is unavailable right now. Showing forecasts only.' : null);
   } catch {
     const saved = read(STORE.data, null);
     if (saved) {
       state.data = saved;
       showNotice(`You're offline. Showing data from ${timeAgo(saved.generated)}.`);
     } else {
-      showNotice("Couldn't load snow data. Check your connection and tap ↻.");
-      $('#updated').textContent = '';
+      showNotice("Couldn't load snow data. Check your connection, then tap “Updated” to retry.");
     }
-  } finally {
-    btn.classList.remove('spinning');
-    render();
   }
+  startMap();
+  render();
 }
 
 document.addEventListener('click', (e) => {
-  const star = e.target.closest('[data-fav]');
+  const t = e.target;
+  const metric = t.closest('[data-metric]');
+  if (metric) {
+    state.metric = metric.dataset.metric;
+    write(STORE.metric, state.metric);
+    return render();
+  }
+  const row = t.closest('[data-open]');
+  if (row) return select(row.dataset.open);
+  if (t.closest('[data-back]')) return select(null);
+  const star = t.closest('[data-fav]');
   if (star) {
-    e.preventDefault(); // don't also open/close the card
     const id = star.dataset.fav;
     state.favs.has(id) ? state.favs.delete(id) : state.favs.add(id);
     write(STORE.favs, [...state.favs]);
-    render();
-    return;
+    toast(state.favs.has(id) ? 'Pinned to the top of the list' : 'Unpinned');
+    return render();
   }
-  const sortBtn = e.target.closest('[data-sort]');
-  if (sortBtn) {
-    state.sort = sortBtn.dataset.sort;
-    write(STORE.sort, state.sort);
-    render();
-    return;
-  }
-  const viewBtn = e.target.closest('[data-view]');
-  if (viewBtn) {
-    setView(viewBtn.dataset.view);
-    return;
-  }
-  const metricBtn = e.target.closest('[data-metric]');
-  if (metricBtn) {
-    state.metric = metricBtn.dataset.metric;
-    write(STORE.metric, state.metric);
-    renderMap();
-    return;
-  }
-  if (e.target.closest('#snow-toggle')) {
+  if (t.closest('#snow-btn')) {
     state.snowDepth = !state.snowDepth;
     write(STORE.snowDepth, state.snowDepth);
     state.map?.setSnowDepth(state.snowDepth);
-    renderMap();
+    return render();
+  }
+  if (t.closest('#home-btn')) {
+    if (!state.map) return;
+    write(STORE.home, state.map.getView());
+    return toast('Saved: the map will open here from now on');
+  }
+  if (t.closest('#info-btn')) {
+    const c = $('#credits');
+    c.hidden = !c.hidden;
+    $('#info-btn').setAttribute('aria-expanded', String(!c.hidden));
     return;
   }
-  if (e.target.closest('#sheet-close')) {
-    state.selected = null;
-    renderMap();
-  }
+  if (t.closest('#updated')) return load();
 });
-
-// Remember which cards are open so a re-render doesn't collapse them.
-document.addEventListener('toggle', (e) => {
-  const id = e.target.dataset?.id;
-  if (!id) return;
-  e.target.open ? state.expanded.add(id) : state.expanded.delete(id);
-}, true);
 
 $('#open-only').addEventListener('change', (e) => {
   state.openOnly = e.target.checked;
   write(STORE.openOnly, state.openOnly);
   render();
 });
-$('#refresh').addEventListener('click', load);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && state.selected) select(null);
+});
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && Date.now() - state.loadedAt > RELOAD_AFTER_MS) load();
 });
+const onResize = () => {
+  setSheet(state.sheet, false);
+  state.map?.resize();
+};
+window.addEventListener('resize', onResize);
+WIDE.addEventListener('change', onResize);
 
-window.addEventListener('resize', sizeMap);
-
+$('#credits').innerHTML = CREDITS;
+setSheet('peek', false);
 // Show the last copy instantly, then fetch fresh data.
 state.data = read(STORE.data, null);
-setView(state.view === 'list' ? 'list' : 'map');
+startMap();
 render();
 load();
