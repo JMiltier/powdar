@@ -230,7 +230,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
         const data = await getJson(fetchFn, modelUrl(m.id, RESORTS, FORECAST_DAYS + 1), { backoff });
         return Array.isArray(data) ? data : [data];
       } catch (err) {
-        log(`Model ${m.label} failed: ${err.message}`);
+        log(`Model ${m.label} failed: ${err.message}${err.cause ? ` (${err.cause.code ?? err.cause.message})` : ''}`);
         return null;
       }
     })),
