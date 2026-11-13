@@ -45,6 +45,8 @@ const classOf = (r, g, b) => {
 // blue-grey for light, then teal, green, yellow, red, magenta for heavier. Repainted for snow: a soft
 // white-cyan glow for light snow, brighter blue, then violet for heavy.
 const RADAR_WMS = 'https://mapservices.weather.noaa.gov/eventdriven/services/radar/radar_base_reflectivity/MapServer/WMSServer';
+// The same radar with its past frames (about the last 2 hours), for the loop.
+const RADAR_TIME = 'https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity_time/ImageServer';
 const RADAR_STOPS = [[124, 137, 175], [80, 104, 163], [70, 170, 190], [40, 180, 80], [20, 130, 40], [230, 220, 40], [240, 140, 20], [220, 30, 30], [200, 40, 200]];
 export const RADAR_RAMP = [
   [235, 250, 255, 120], [205, 238, 255, 150], [160, 220, 255, 175], [110, 190, 255, 195], [70, 150, 250, 210],
@@ -143,7 +145,7 @@ function segRect(seg, box) {
 // getPadding() → { top, right, bottom, left }: pixels covered by the app's bars and panels.
 // extend: an extra [lat, lon] to frame in (Colorado adds open plains east of the Front Range so its
 // labels have room to spread instead of piling onto I-70).
-export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [], onOutlook }) {
+export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [], onOutlook, onRadar }) {
   const bounds = L.latLngBounds(resorts.map((r) => r.at));
   if (extend) bounds.extend(extend);
   // A state with a single resort still needs some area around it.
@@ -236,20 +238,88 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       },
     });
   }
+  // Radar loop: the last hour of NOAA's radar frames (about 5 minutes apart), each repainted once and
+  // kept; playing steps through them, holding a moment on the newest. Falls back to the single
+  // latest picture if the frames can't be listed.
+  let frames = []; // [{ t, layer }] oldest first
+  const frameCache = new Map(); // time → overlay (cleared when the map's size changes)
+  let frameAt = 0;
+  let playing = false;
+  let playTimer = null;
+  const radarSrc = (t) => (w, h, sw, ne) => `${RADAR_TIME}/exportImage?${new URLSearchParams({
+    bbox: [sw.x, sw.y, ne.x, ne.y].join(','), bboxSR: '3857', imageSR: '3857', size: `${w},${h}`, format: 'png32',
+    transparent: 'true', time: t, f: 'image',
+  })}`;
+  async function radarTimes() {
+    const q = new URLSearchParams({ where: '1=1', outFields: 'idp_validtime', returnGeometry: 'false', orderByFields: 'idp_validtime', f: 'json' });
+    const d = await (await fetch(`${RADAR_TIME}/query?${q}`)).json();
+    const all = [...new Set((d.features ?? []).map((f) => f.attributes.idp_validtime).filter(Boolean))].sort((a, b) => b - a);
+    const out = [];
+    for (const t of all) {
+      if (t < all[0] - 3600000) break;
+      if (!out.length || out.at(-1) - t >= 5 * 60000) out.push(t);
+    }
+    return out.reverse();
+  }
+  function showFrame(i) {
+    frameAt = i;
+    frames.forEach((f, k) => f.layer.setOpacity(k === i ? 1 : 0));
+    onRadar?.({ time: frames[i]?.t ?? null, playing, index: i, count: frames.length });
+  }
+  function step() {
+    if (!frames.length) return;
+    const next = (frameAt + 1) % frames.length;
+    showFrame(next);
+    // Hold on the newest frame before starting over.
+    playTimer = setTimeout(step, next === frames.length - 1 ? 1600 : 450);
+  }
+  function play(on) {
+    playing = on && frames.length > 1;
+    clearTimeout(playTimer);
+    if (playing) step();
+    else if (frames.length) showFrame(frames.length - 1);
+  }
+  async function radarLayer() {
+    const times = await radarTimes();
+    if (!times.length) throw new Error('no radar frames');
+    const built = await Promise.all(times.map(async (t) => {
+      if (!frameCache.has(t)) frameCache.set(t, await picture(radarSrc(t), radarColor));
+      return { t, layer: frameCache.get(t) };
+    }));
+    for (const t of frameCache.keys()) if (!times.includes(t)) frameCache.delete(t);
+    return built;
+  }
+
   async function drawLayer() {
     const mine = ++job;
     clearInterval(radarTimer);
+    clearTimeout(playTimer);
     let next = null;
+    let nextFrames = [];
     try {
       if (layerName === 'snow') next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)]);
-      else if (layerName === 'radar') next = await picture(wms(RADAR_WMS), radarColor);
-      else if (layerName === 'outlook') next = await outlookLayer();
+      else if (layerName === 'radar') {
+        try {
+          nextFrames = await radarLayer();
+          next = L.layerGroup(nextFrames.map((f) => f.layer.setOpacity(0)));
+        } catch {
+          next = await picture(wms(RADAR_WMS), radarColor); // just the latest
+        }
+      } else if (layerName === 'outlook') next = await outlookLayer();
     } catch { next = null; }
     if (mine !== job) return;
     overlay?.remove();
     overlay = next?.addTo(map) ?? null;
-    // Radar is live: a fresh picture every 3 minutes while it's showing.
-    if (layerName === 'radar') radarTimer = setInterval(() => { if (!document.hidden) drawLayer(); }, 180000);
+    frames = nextFrames;
+    if (layerName === 'radar') {
+      if (frames.length) {
+        if (playing) play(true); else showFrame(frames.length - 1);
+      } else onRadar?.({ time: null, playing: false, index: 0, count: 0 });
+      // Live: new frames every 3 minutes while it's showing.
+      radarTimer = setInterval(() => { if (!document.hidden) drawLayer(); }, 180000);
+    } else {
+      playing = false;
+    }
   }
 
   // Towns for orientation, quieter than the resorts: small muted text by a tiny square. Most important
@@ -733,6 +803,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       pin.bubble.setAttribute('aria-label', `${item.r.name}: ${item.label}`);
       pin.marker.setZIndexOffset(item.selected ? 1000 : -i);
       if (item.selected) selectedPin = pin;
+      // (Dimmed by CSS under "Open now"; not part of the layout, so nothing moves.)
+      pin.root.classList.toggle('closed-now', !item.openNow);
+      pin.dot.classList.toggle('closed-now', !item.openNow);
       return { ...item, pin, empty: item.level === 'none' };
     });
     layout();
@@ -746,6 +819,10 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     // Light or dark relief to match the theme.
     setTheme() {
       base.setUrl(isDark() ? TILES.dark : TILES.light);
+    },
+    // Radar loop: play or pause (paused shows the newest frame).
+    playRadar(on) {
+      play(on);
     },
     setLayer(name) {
       if (name === layerName && (overlay || name === 'none')) return;
@@ -762,6 +839,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       map.invalidateSize({ animate: false, pan: false });
       fit();
       layout();
+      frameCache.clear(); // pictures were for the old size
       if (layerName !== 'none') drawLayer();
     },
   };
