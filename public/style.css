@@ -837,3 +837,12 @@ button, .row, summary { -webkit-tap-highlight-color: transparent; }
 .cam-links { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
 .cam-link { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 0.82rem; font-weight: 700; text-decoration: none; }
 .cam-link svg { width: 14px; height: 14px; }
+
+/* When each cam's picture is from: "Live" (made fresh on request) or how long ago it was taken. */
+.cam-age:empty { display: none; }
+.cam-age {
+  position: absolute; right: 6px; top: 6px; padding: 2px 6px; border-radius: 999px; font-style: normal; font-size: 0.62rem; font-weight: 700;
+  color: #fff; background: rgba(10, 16, 24, 0.62); backdrop-filter: blur(4px); display: inline-flex; align-items: center; gap: 4px;
+}
+.cam-age i, .live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #34d058; box-shadow: 0 0 0 2px rgba(52, 208, 88, 0.3); }
+.live-dot { margin: 0 4px 1px 0; vertical-align: middle; }
