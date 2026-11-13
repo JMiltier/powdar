@@ -40,7 +40,8 @@ body {
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 16px/1.4 -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
 }
@@ -77,8 +78,9 @@ button { font: inherit; color: inherit; }
 .ribbon button[aria-pressed="true"] { background: var(--accent); color: #fff; }
 :root[data-theme="dark"] .ribbon button[aria-pressed="true"] { color: #0e141c; }
 .ribbon-sep { width: 1px; align-self: stretch; margin: 6px 3px; background: var(--line); }
-.ribbon .snow-toggle { font-size: 1.05rem; padding: 7px 11px; }
-.ribbon .snow-toggle[aria-pressed="true"] { background: #6a3fc1; color: #fff; }
+.ribbon .snow-toggle { display: grid; place-items: center; padding: 7px 10px; color: var(--accent); }
+.ribbon .snow-toggle[aria-expanded="true"] { background: var(--accent-soft); }
+.ribbon .snow-toggle .ic { width: 21px; height: 21px; }
 .toast {
   margin: 0; background: var(--card); color: var(--text); box-shadow: var(--shadow);
   border-radius: 12px; padding: 8px 12px; font-size: 0.85rem; font-weight: 600;
@@ -93,7 +95,7 @@ body.sheet-up .legend, .legend.off { visibility: hidden; }
   position: fixed; z-index: 900; right: 10px; bottom: calc(var(--sheet-visible) + 10px);
   width: 30px; height: 30px; border: 0; border-radius: 50%; cursor: pointer;
   background: var(--card); color: var(--text); box-shadow: var(--shadow);
-  font: italic 700 0.9rem Georgia, serif; transition: bottom 0.25s ease;
+  display: grid; place-items: center; padding: 0; transition: bottom 0.25s ease;
 }
 .credits {
   position: fixed; z-index: 900; right: 10px; bottom: calc(var(--sheet-visible) + 48px); margin: 0;
@@ -615,3 +617,65 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .sw-mini { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: middle; }
 .sw-cyan { background: #35d4ec; }
 .sw-white { background: #f5f7fa; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2); }
+
+/* ---------- Polish ---------- */
+:root { --sun: #f4b13a; --cloud: #b9c4d1; --precip: #3b82e0; --ease: cubic-bezier(0.2, 0.8, 0.2, 1); }
+:root[data-theme="dark"] { --cloud: #8794a6; --precip: #7cb4ff; }
+.ic { display: block; width: 24px; height: 24px; }
+.ic-ui { width: 20px; height: 20px; }
+.info-btn .ic { width: 19px; height: 19px; color: var(--muted); }
+.day-sky { display: grid; place-items: center; min-height: 26px; }
+.day-sky .ic { width: 26px; height: 26px; }
+.icon { display: grid; place-items: center; }
+.icon .ic { width: 21px; height: 21px; }
+.star[aria-pressed="true"] { color: #e8a400; }
+
+/* Numbers line up (snow totals, temperatures, percentages). */
+.val, .stat b, .pin-val, .day-temp, .day-snow, .report b, .section-count, .radar-time, .headline strong, .meter b { font-variant-numeric: tabular-nums; }
+h1, .detail-title h2 { letter-spacing: -0.015em; }
+.stat b { letter-spacing: -0.02em; font-weight: 750; }
+
+/* Keyboard focus is visible; taps give a little feedback. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+button, .row, summary { -webkit-tap-highlight-color: transparent; }
+.ribbon button, .row, .chip, .icon, .day-step, .radar-play, .layers button, .f-passes button, .info-btn { transition: transform 0.12s var(--ease), background-color 0.15s ease, color 0.15s ease; }
+.ribbon button:active, .chip:active, .icon:active, .day-step:active, .radar-play:active, .info-btn:active, .f-passes button:active { transform: scale(0.94); }
+.row:active, .layers button:active { transform: scale(0.985); }
+@media (hover: hover) {
+  .row:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+  .ribbon button:not([aria-pressed="true"]):hover { color: var(--text); }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* "17 closed" and the like: a real disclosure chevron instead of the browser's triangle. */
+.more-lifts summary { list-style: none; display: flex; align-items: center; gap: 6px; }
+.more-lifts summary::-webkit-details-marker { display: none; }
+.more-lifts summary::before {
+  content: ''; width: 7px; height: 7px; border: solid currentColor; border-width: 0 2px 2px 0;
+  transform: rotate(-45deg); transition: transform 0.18s var(--ease); margin: 0 3px 0 1px;
+}
+.more-lifts[open] summary::before { transform: rotate(45deg); }
+
+/* Placeholder rows until the first data arrives. */
+.skeleton { padding: 4px 0; }
+.skeleton div { display: flex; align-items: center; gap: 12px; padding: 12px 2px; border-bottom: 1px solid var(--line); }
+.skeleton i, .skeleton b, .skeleton em { display: block; border-radius: 6px; background: linear-gradient(90deg, var(--line) 0 40%, color-mix(in srgb, var(--line) 40%, var(--card)) 50%, var(--line) 60% 100%); background-size: 300% 100%; animation: shimmer 1.3s linear infinite; }
+.skeleton i { width: 10px; height: 10px; border-radius: 50%; }
+.skeleton b { flex: 1; height: 14px; max-width: 55%; }
+.skeleton em { width: 52px; height: 26px; margin-left: auto; border-radius: 999px; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+
+/* Cards and sheets share one elevation and one set of corner radii. */
+.sheet { box-shadow: 0 -6px 24px rgba(16, 24, 40, 0.14), 0 -1px 0 rgba(16, 24, 40, 0.04); }
+:root[data-theme="dark"] .sheet { box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.5), 0 -1px 0 rgba(255, 255, 255, 0.04); }
+.handle { width: 36px; height: 5px; opacity: 0.9; }
+.section { font-weight: 700; letter-spacing: 0.06em; }
+/* Chart key: crisp line samples (dashed borders render as uneven dots on phones). */
+.legend-line i { width: 18px; height: 2px; border: 0 !important; border-radius: 1px; }
+.k-now { background: var(--text); height: 2.5px !important; }
+.k-proj { background: repeating-linear-gradient(90deg, var(--text) 0 4px, transparent 4px 7px); }
+.k-median { background: repeating-linear-gradient(90deg, var(--text) 0 3px, transparent 3px 6px); opacity: 0.6; }
+.k-faint { background: color-mix(in srgb, var(--text) 40%, transparent); height: 2.5px !important; }
+/* The layers button is a menu, not a view: a soft tint (not the solid "selected" fill) when a layer is on. */
+.ribbon .snow-toggle[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.ribbon .snow-toggle[aria-expanded="true"] { background: var(--accent); color: var(--card); }
