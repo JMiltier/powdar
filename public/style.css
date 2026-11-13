@@ -510,11 +510,14 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .place[data-side="above"] { flex-direction: column-reverse; top: auto; bottom: -2.5px; }
 .place[hidden] { display: none; }
 
-/* Major highways: present but quiet. */
-.road { fill: none; stroke: #8b7f70; stroke-opacity: 0.75; stroke-linecap: round; stroke-linejoin: round; }
-:root[data-theme="dark"] .road { stroke: #b9c3cf; stroke-opacity: 0.45; }
-.road-I { stroke: #6e6357; stroke-opacity: 0.85; }
-:root[data-theme="dark"] .road-I { stroke: #d5dde6; stroke-opacity: 0.6; }
+/* Major highways, styled like a road map: amber interstates with a light outline, tan US routes. */
+.road { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.road-US { stroke: #c98d3a; stroke-opacity: 0.8; }
+.road-I { stroke: #e8892a; stroke-opacity: 1; }
+.road-casing { fill: none; stroke: #fff; stroke-opacity: 0.85; stroke-linecap: round; stroke-linejoin: round; }
+:root[data-theme="dark"] .road-US { stroke: #d6aa6c; stroke-opacity: 0.7; }
+:root[data-theme="dark"] .road-I { stroke: #f2a640; }
+:root[data-theme="dark"] .road-casing { stroke: #0e141c; stroke-opacity: 0.8; }
 /* Route shields: interstate blue, US route white. */
 .shield {
   position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); white-space: nowrap; pointer-events: none;

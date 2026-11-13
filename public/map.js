@@ -283,7 +283,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   function setRoads(data) {
     shields = [];
     for (const { ref, kind, lines } of data.routes) {
-      L.polyline(lines, { pane: 'roads', className: `road road-${kind}`, interactive: false, weight: kind === 'I' ? 1.8 : 1.1 }).addTo(map);
+      // Interstates get an outline (casing) under them, like any road map.
+      if (kind === 'I') L.polyline(lines, { pane: 'roads', className: 'road-casing', interactive: false, weight: 5 }).addTo(map);
+      L.polyline(lines, { pane: 'roads', className: `road road-${kind}`, interactive: false, weight: kind === 'I' ? 2.6 : 1.6 }).addTo(map);
       // Spots for its shield: along its longest stretches, middle first.
       const spots = [...lines].sort((a, b) => b.length - a.length).slice(0, 4)
         .flatMap((l) => [0.5, 0.3, 0.7].map((f) => l[Math.floor((l.length - 1) * f)]));
