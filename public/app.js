@@ -15,7 +15,6 @@ const STORE = {
   state: 'cs:state', states: 'cs:states', theme: 'cs:theme',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
-const STALE_AFTER_MS = 3 * 3_600_000;
 const WIDE = window.matchMedia('(min-width: 900px)');
 const DARK = window.matchMedia('(prefers-color-scheme: dark)');
 
@@ -1040,9 +1039,8 @@ async function load() {
     state.data = data;
     state.loadedAt = Date.now();
     write(`${STORE.data}:${code}`, state.data);
-    const age = Date.now() - Date.parse(state.data.generated);
-    showNotice(age > STALE_AFTER_MS ? `Heads up: this data is ${timeAgo(state.data.generated).replace(' ago', '')} old.`
-      : code === 'CO' && !state.data.sources.coloradoSki ? 'Live open status is unavailable right now. Showing forecasts only.' : null);
+    // (How old the data is already shows as "Updated … ago" under the headline.)
+    showNotice(code === 'CO' && !state.data.sources.coloradoSki ? 'Live open status is unavailable right now. Showing forecasts only.' : null);
   } catch {
     if (code !== state.code) return;
     const saved = read(`${STORE.data}:${code}`, null);
