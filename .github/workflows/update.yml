@@ -28,11 +28,19 @@ jobs:
         with:
           node-version: 22
       - run: npm test
-      - run: npm run build
+      - id: build
+        run: npm run build
+        env:
+          LIVE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+          # Only the scheduled refreshes may keep the old forecast; code pushes always publish.
+          KEEP_IF_MODELS_DOWN: ${{ github.event_name == 'schedule' }}
       # Stamp file URLs with this commit so phones and installed apps load fresh code after each change.
-      - run: sed -i "s/__V__/${GITHUB_SHA::8}/g" public/index.html public/app.js
-      - uses: actions/upload-pages-artifact@v3
+      - if: steps.build.outputs.skip != 'true'
+        run: sed -i "s/__V__/${GITHUB_SHA::8}/g" public/index.html public/app.js
+      - if: steps.build.outputs.skip != 'true'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: public
       - id: deploy
+        if: steps.build.outputs.skip != 'true'
         uses: actions/deploy-pages@v4
