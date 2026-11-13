@@ -13,6 +13,7 @@ closing days, and a pull-up list. Tap any resort for its 7-day forecast, live re
 | Snow forecast (7 days) | Blend of the [National Weather Service](https://www.weather.gov/documentation/services-web-api) and four models via [Open-Meteo](https://open-meteo.com) (ECMWF, GFS/HRRR, GEM, ICON) at mid-mountain elevation | All 26 resorts |
 | Season snowpack vs normal | [NRCS SNOTEL](https://www.nrcs.usda.gov/wps/portal/wcc/home/) station nearest each resort, 1991–2020 median | All 26 resorts |
 | Daily weather (sky, wind, chance of precipitation) | [National Weather Service](https://www.weather.gov/documentation/services-web-api) text forecast | All 26 resorts |
+| Live lift-by-lift status | Each resort's own lift data: MtnPowder (A-Basin, Steamboat, Winter Park), Powdr (Copper, Eldora), Aspen Snowmass feed (4 mountains), and the Loveland, Monarch and Telluride lift pages. Endpoints as tracked by [Liftie](https://github.com/pirxpilot/liftie) (BSD-3). | 12 resorts |
 | Typical season snowfall | [ZRankings](https://www.zrankings.com/articles/best-snow-in-colorado) "True Snow" (patrol and avalanche-center records) | 19 resorts |
 | Snow on the ground (map layer) | [NOAA NOHRSC snow analysis](https://www.nohrsc.noaa.gov/nsa/) | Everywhere, daily |
 | Planned opening dates | Hand-entered in `src/resorts.js` (`PLANNED`) | Vail, Beaver Creek, Breckenridge, Keystone, Crested Butte, Wolf Creek |
@@ -29,13 +30,14 @@ the season chart's dashed line adds the models' forecast snow water to today's s
 
 ## How it runs
 
-A GitHub Action (`.github/workflows/update.yml`) runs every 30 minutes: it runs the tests, fetches fresh data into
+A GitHub Action (`.github/workflows/update.yml`) runs every 15 minutes during lift hours and hourly overnight: it runs the tests, fetches fresh data into
 `public/data.json` and publishes `public/` to GitHub Pages. There is no server.
 
 ## Past seasons
 
 `public/history/` holds each snow station's past winters (2005–06 onward), used for the season picker and the
-colour bands (driest 10% → snowiest 10% of years) on each resort's season chart. Past seasons never change, so
+colour bands (driest 10% → snowiest 10% of years) on each resort's season chart. Impossible sensor
+readings (snow water jumping more than ~4″ up or ~3″ down in a day and then returning) are dropped. Past seasons never change, so
 regenerate once a year after the season ends: `npm run history`.
 
 ## Each fall
