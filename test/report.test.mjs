@@ -116,7 +116,7 @@ test('statusFor wording', () => {
   const report = { lifts: { open: 1, total: 9 }, trails: { open: 1, total: 147 } };
   assert.deepEqual(statusFor({ live: true, isOpen: true, report }, today), { state: 'open', label: 'Open', pct: 1, detail: '1 of 9 lifts · 1 of 147 runs' });
   assert.equal(statusFor({ live: true, isOpen: false, note: 'Resort Opens ASAP' }, today).label, 'Opening ASAP');
-  assert.equal(statusFor({ live: true, isOpen: false, note: 'Resort Opens TBD' }, today).label, 'Opening date TBA');
+  assert.equal(statusFor({ live: true, isOpen: false, note: 'Resort Opens TBD' }, today).label, 'Opening TBA');
   assert.equal(statusFor({ live: true, isOpen: false, open: '2026-11-13' }, today).label, 'Opens Fri, Nov 13');
   assert.equal(statusFor({ live: false, open: '2026-11-13' }, today).detail, 'Planned date');
   assert.equal(statusFor({ live: true, isOpen: false, open: '2026-11-06' }, today).state, 'late');
@@ -128,7 +128,7 @@ test('statusFor wording', () => {
   const confirmed = statusFor({ live: false, open: '2026-10-30', opened: true }, today);
   assert.equal(confirmed.state, 'open');
   assert.match(confirmed.detail, /Opened Fri, Oct 30/);
-  assert.equal(statusFor({ live: false }, today).label, 'Opening date TBA');
+  assert.equal(statusFor({ live: false }, today).label, 'Opening TBA');
   assert.equal(statusFor({ live: true, isOpen: false, close: '2026-11-01' }, today).state, 'done');
 });
 

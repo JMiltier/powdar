@@ -38,7 +38,14 @@
       <button type="button" data-metric="season" aria-pressed="false" title="Snowpack vs normal">Season</button>
       <button type="button" data-metric="dates" aria-pressed="false" title="Opening and closing days">Dates</button>
       <span class="ribbon-sep" aria-hidden="true"></span>
-      <button id="snow-btn" type="button" class="snow-toggle" aria-pressed="true" title="Snow on the ground" aria-label="Snow on the ground">❄</button>
+      <button id="snow-btn" type="button" class="snow-toggle" aria-pressed="true" aria-haspopup="true" aria-expanded="false" title="Map layer" aria-label="Map layer">❄</button>
+    </div>
+    <!-- Map layers: one at a time. -->
+    <div id="layers" class="layers" role="menu" aria-label="Map layer" hidden>
+      <button type="button" role="menuitemradio" data-layer="snow"><i class="sw sw-snow"></i><span><b>Snow on the ground</b><small>Today's depth, NOAA</small></span></button>
+      <button type="button" role="menuitemradio" data-layer="radar"><i class="sw sw-radar"></i><span><b>Live radar</b><small>Snow falling now</small></span></button>
+      <button type="button" role="menuitemradio" data-layer="outlook"><i class="sw sw-outlook"></i><span><b>Season outlook</b><small>Wetter or drier than normal, next 3 months</small></span></button>
+      <button type="button" role="menuitemradio" data-layer="none"><i class="sw sw-none"></i><span><b>Off</b></span></button>
     </div>
     <p id="toast" class="toast" hidden></p>
   </div>

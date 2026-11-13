@@ -10,7 +10,7 @@ const ALL_STATES = false;
 const STATE_CODES = !ALL_STATES ? new Set(['CO']) : new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
 const validCode = (c) => (c && STATE_CODES.has(String(c).toUpperCase()) ? String(c).toUpperCase() : null);
 const STORE = {
-  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', openOnly: 'cs:openOnly', panel: 'cs:panel',
+  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', panel: 'cs:panel',
   state: 'cs:state', states: 'cs:states', theme: 'cs:theme',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
@@ -76,7 +76,9 @@ const state = {
   favs: new Set(read(STORE.favs, [])),
   metric: METRICS[read(STORE.metric, 'new24')] ? read(STORE.metric, 'new24') : 'new24',
   openOnly: read(STORE.openOnly, false),
-  snowDepth: read(STORE.snowDepth, true), // snow cover starts on
+  // The map overlay: 'snow' (on the ground; the default), 'radar', 'outlook' or 'none'.
+  layer: read(STORE.layer, null) ?? (read(STORE.snowDepth, true) ? 'snow' : 'none'),
+  outlookSeason: null, // e.g. "NDJ 2026-2027", once the outlook has loaded
   selected: null,
   sheet: 'peek',
   pastSeason: null, // a past season like '2024-25' to show in the season chart, or null for this one
@@ -126,6 +128,37 @@ function level(value, steps) {
 }
 
 // "Season Oct 28 – May 10", or as much of it as we know.
+// The resort's website as people say it: "vail.com", "skiloveland.com".
+const siteName = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return 'Website'; } };
+// The usual "opens in a new tab" icon: a box with an arrow leaving it.
+const EXT_ICON = '<svg class="ext-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+// ---------- map overlay ----------
+
+function openLayers(open) {
+  $('#layers').hidden = !open;
+  $('#snow-btn').setAttribute('aria-expanded', String(open));
+}
+
+// "NDJ 2026-2027" → "Nov–Jan".
+const MONTH_LETTERS = ['JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ', 'DJF'];
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function seasonSpan(valid) {
+  const i = MONTH_LETTERS.indexOf(String(valid ?? '').slice(0, 3));
+  return i < 0 ? 'next 3 months' : `${MONTH_NAMES[i]}–${MONTH_NAMES[(i + 2) % 12]}`;
+}
+
+// The key along the bottom of the map, for whichever overlay is showing.
+function legendFor(layer) {
+  if (layer === 'radar') {
+    return '<span class="legend-title">Live radar</span><span class="legend-keys"><span>Light</span><i class="ramp ramp-radar" aria-hidden="true"></i><span>Heavy</span></span>';
+  }
+  if (layer === 'outlook') {
+    return `<span class="legend-title">${esc(seasonSpan(state.outlookSeason))} outlook</span><span class="legend-keys"><span>Drier</span><i class="ramp ramp-outlook" aria-hidden="true"></i><span>Wetter</span><span class="muted">· ${esc(seasonSpan(state.outlookSeason))}</span></span>`;
+  }
+  return '<span class="legend-title">Snow on the ground</span><span class="legend-keys"><span>1″</span><i class="ramp" aria-hidden="true"></i><span>2 ft+</span></span>';
+}
+
 function seasonText(r, today) {
   const { open, close, when, planned } = r.dates ?? {};
   if (open && close) return `Season ${monthDay(open)} – ${monthDay(close)}`;
@@ -333,9 +366,9 @@ function renderDetail(r) {
     <div class="detail-head">
       <button type="button" class="icon" data-back aria-label="Back to all resorts">‹</button>
       <div class="detail-title">
-        <h2><a href="${esc(r.url)}" target="_blank" rel="noopener" title="Official ${esc(r.name)} website">${esc(r.name)}<span class="ext" aria-hidden="true">↗</span></a>
-          <span class="pill pill-${esc(r.status.state)}">${esc(r.status.label)}</span></h2>
-        ${seasonText(r, today) ? `<p>${esc(seasonText(r, today))}</p>` : ''}
+        <h2>${esc(r.name)} <span class="pill pill-${esc(r.status.state)}">${esc(r.status.label)}</span></h2>
+        <p>${seasonText(r, today) ? `<span>${esc(seasonText(r, today))}</span>` : ''}
+          <a class="site-link" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(siteName(r.url))}${EXT_ICON}</a></p>
       </div>
       <button type="button" class="icon star" data-fav="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Unpin' : 'Pin'} ${esc(r.name)}">${fav ? '★' : '☆'}</button>
     </div>`;
@@ -562,10 +595,11 @@ function render() {
   $('#state-btn').textContent = `${state.data.stateName ?? 'Colorado'} ▾`;
   document.querySelectorAll('[data-metric]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.metric === state.metric)));
   $('#open-only').checked = state.openOnly;
-  $('#snow-btn').setAttribute('aria-pressed', String(state.snowDepth));
-  // Hidden but still taking its space, so turning snow cover off or on never shifts the map.
-  $('#legend').classList.toggle('off', !state.snowDepth);
-  $('#map').classList.toggle('snow-on', state.snowDepth);
+  $('#snow-btn').setAttribute('aria-pressed', String(state.layer !== 'none'));
+  for (const b of document.querySelectorAll('[data-layer]')) b.setAttribute('aria-checked', String(b.dataset.layer === state.layer));
+  // Hidden but still taking its space, so changing the overlay never shifts the map.
+  $('#legend').classList.toggle('off', state.layer === 'none');
+  $('#legend').innerHTML = legendFor(state.layer);
   $('#updated').textContent = `Updated ${timeAgo(state.data.generated)}`;
 
   const r = state.data.resorts.find((x) => x.id === state.selected);
@@ -734,10 +768,15 @@ function startMap() {
     resorts: state.data.resorts,
     getPadding: coveredPadding,
     onSelect: (id) => select(id),
-    extend: state.code === 'CO' ? [39.8, -105.1] : null,
+    onOutlook: (season) => { state.outlookSeason = season; render(); },
     places: state.code === 'CO' ? CO_TOWNS : [],
   });
-  state.map.setSnowDepth(state.snowDepth);
+  state.map.setLayer(state.layer);
+  // Major highways (I-70, I-25, US-285…), Colorado only for now.
+  if (state.code === 'CO') {
+    const map = state.map;
+    fetch('roads.json?v=__V__').then((r) => r.json()).then((d) => { if (state.map === map) map.setRoads(d); }).catch(() => {});
+  }
 }
 
 async function load() {
@@ -857,12 +896,16 @@ document.addEventListener('click', (e) => {
     toast(state.favs.has(id) ? 'Pinned to the top of the list' : 'Unpinned');
     return render();
   }
-  if (t.closest('#snow-btn')) {
-    state.snowDepth = !state.snowDepth;
-    write(STORE.snowDepth, state.snowDepth);
-    state.map?.setSnowDepth(state.snowDepth);
+  if (t.closest('#snow-btn')) return openLayers($('#layers').hidden);
+  const layer = t.closest('[data-layer]');
+  if (layer) {
+    state.layer = layer.dataset.layer;
+    write(STORE.layer, state.layer);
+    state.map?.setLayer(state.layer);
+    openLayers(false);
     return render();
   }
+  if (!t.closest('#layers')) openLayers(false);
   if (t.closest('#panel-close')) return setPanel(false);
   if (t.closest('#panel-open')) return setPanel(true);
   if (t.closest('#info-btn')) {

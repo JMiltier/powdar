@@ -13,7 +13,9 @@ const TILES = {
 const isDark = () => document.documentElement.dataset.theme === 'dark';
 // Shown behind the ⓘ button instead of a permanent banner.
 export const CREDITS = 'Hillshade © <a href="https://www.esri.com">Esri</a> and its data partners (USGS, NASA, NGA, CGIAR and others) · '
-  + 'snow cover: <a href="https://www.nohrsc.noaa.gov/nsa/">NOAA NOHRSC</a> · <a href="https://leafletjs.com">Leaflet</a>';
+  + 'highways © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · '
+  + 'snow cover: <a href="https://www.nohrsc.noaa.gov/nsa/">NOAA NOHRSC</a> · radar: <a href="https://www.nssl.noaa.gov/projects/mrms/">NOAA MRMS</a> · '
+  + 'season outlook: <a href="https://www.cpc.ncep.noaa.gov/products/predictions/long_range/seasonal.php">NOAA Climate Prediction Center</a> · <a href="https://leafletjs.com">Leaflet</a>';
 // NOAA's daily national snow analysis (NOHRSC): modelled snow depth on the ground, cloud-free.
 const SNOW_DEPTH_WMS = 'https://mapservices.weather.noaa.gov/raster/services/snow/NOHRSC_Snow_Analysis/MapServer/WMSServer';
 // NOAA draws snow depth in purples and magentas, as coarse squares. We read each pixel's depth class
@@ -29,6 +31,32 @@ export const SNOW_RAMP = [
   [214, 236, 255, 120], [190, 224, 255, 145], [160, 205, 252, 165], [124, 180, 248, 180], [92, 152, 240, 195],
   [64, 122, 228, 205], [46, 98, 212, 215], [34, 76, 190, 225], [26, 58, 160, 232], [26, 58, 160, 232], [26, 58, 160, 232], [26, 58, 160, 232],
 ];
+// NOAA's live radar (MRMS base reflectivity, refreshed every few minutes), in the usual radar colors:
+// blue-grey for light, then teal, green, yellow, red, magenta for heavier. Repainted for snow: a soft
+// white-cyan glow for light snow, brighter blue, then violet for heavy.
+const RADAR_WMS = 'https://mapservices.weather.noaa.gov/eventdriven/services/radar/radar_base_reflectivity/MapServer/WMSServer';
+const RADAR_STOPS = [[124, 137, 175], [80, 104, 163], [70, 170, 190], [40, 180, 80], [20, 130, 40], [230, 220, 40], [240, 140, 20], [220, 30, 30], [200, 40, 200]];
+export const RADAR_RAMP = [
+  [235, 250, 255, 120], [205, 238, 255, 150], [160, 220, 255, 175], [110, 190, 255, 195], [70, 150, 250, 210],
+  [80, 110, 240, 220], [110, 80, 230, 228], [150, 60, 220, 235], [190, 50, 210, 240],
+];
+const radarColor = (r, g, b) => {
+  let best = 0;
+  let bestD = Infinity;
+  RADAR_STOPS.forEach(([R, G, B], i) => {
+    const d = (r - R) ** 2 + (g - G) ** 2 + (b - B) ** 2;
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  return RADAR_RAMP[best];
+};
+// NOAA Climate Prediction Center: odds of a wetter or drier than normal next 3 months (lead 1).
+const OUTLOOK = 'https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/cpc_sea_precip_outlk/MapServer/0/query';
+// Shades by probability (33–40%, 40–50%, 50–60%, 60%+): wetter in blues, drier in tans.
+const OUTLOOK_SHADES = {
+  Above: ['#b9d7f2', '#86b8e8', '#4f93d8', '#2a6fbe'],
+  Below: ['#f1dcb6', '#e3bd7f', '#cf9548', '#a96a24'],
+};
+
 const classOf = (r, g, b) => {
   let best = 0;
   let bestD = Infinity;
@@ -114,7 +142,7 @@ function segRect(seg, box) {
 // getPadding() → { top, right, bottom, left }: pixels covered by the app's bars and panels.
 // extend: an extra [lat, lon] to frame in (Colorado adds open plains east of the Front Range so its
 // labels have room to spread instead of piling onto I-70).
-export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [] }) {
+export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [], onOutlook }) {
   const bounds = L.latLngBounds(resorts.map((r) => r.at));
   if (extend) bounds.extend(extend);
   // A state with a single resort still needs some area around it.
@@ -135,12 +163,15 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // Snow cover gets its own pane so the color-muting filter on the base map doesn't wash it out.
   map.createPane('snow').style.zIndex = 250;
   map.createPane('dots').style.zIndex = 590; // just under the labels (markerPane is 600)
-  // The snow cover: one picture of the visible map, repainted (see NOAA_CLASSES).
-  let snowOn = false;
-  let snowLayer = null;
-  let snowJob = 0;
-  async function drawSnow() {
-    const job = ++snowJob;
+  // The overlay (one at a time): 'snow' (on the ground), 'radar' (falling now), 'outlook' (the season's
+  // precipitation outlook) or 'none'. Snow and radar are one picture of the visible map from NOAA,
+  // repainted pixel by pixel and smoothly upscaled; the outlook is NOAA's shapes, colored.
+  let layerName = 'none';
+  let overlay = null;
+  let job = 0;
+  let radarTimer = null;
+  let outlookData = null;
+  async function picture(url, layers, recolor) {
     const size = map.getSize();
     const b = map.getPixelBounds();
     const sw = map.options.crs.project(map.unproject(L.point(b.min.x, b.max.y)));
@@ -149,14 +180,13 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     const w = Math.max(1, Math.round(size.x / 2));
     const h = Math.max(1, Math.round(size.y / 2));
     const q = new URLSearchParams({
-      service: 'WMS', request: 'GetMap', version: '1.3.0', layers: '0', styles: '', format: 'image/png', transparent: 'true',
-      crs: 'EPSG:3857', width: w, height: h, bbox: [sw.x, sw.y, ne.x, ne.y].join(','),
+      service: 'WMS', request: 'GetMap', version: '1.3.0', layers, styles: '', format: 'image/png', transparent: 'true',
+      crs: 'EPSG:3857', width: w, height: h, bbox: [sw.x, sw.y, ne.x, ne.y].join(','), t: Math.floor(Date.now() / 120000),
     });
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.src = `${SNOW_DEPTH_WMS}?${q}`;
-    try { await img.decode(); } catch { return; }
-    if (job !== snowJob) return;
+    img.src = `${url}?${q}`;
+    await img.decode();
     const small = document.createElement('canvas');
     small.width = w;
     small.height = h;
@@ -169,11 +199,10 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       if (d[i + 3] < 8) { d[i + 3] = 0; continue; }
       const key = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
       let c = memo.get(key);
-      if (!c) memo.set(key, (c = SNOW_RAMP[classOf(d[i], d[i + 1], d[i + 2])]));
+      if (!c) memo.set(key, (c = recolor(d[i], d[i + 1], d[i + 2])));
       d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = c[3];
     }
     g.putImageData(data, 0, 0);
-    // Scaled up with smoothing: soft edges instead of squares.
     const big = document.createElement('canvas');
     big.width = size.x;
     big.height = size.y;
@@ -181,11 +210,40 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     G.imageSmoothingEnabled = true;
     G.imageSmoothingQuality = 'high';
     G.drawImage(small, 0, 0, size.x, size.y);
-    const url = big.toDataURL('image/png');
-    if (job !== snowJob) return;
-    snowLayer?.remove();
-    snowLayer = L.imageOverlay(url, map.getBounds(), { pane: 'snow', interactive: false });
-    if (snowOn) snowLayer.addTo(map);
+    return L.imageOverlay(big.toDataURL('image/png'), map.getBounds(), { pane: 'snow', interactive: false });
+  }
+  async function outlookLayer() {
+    if (!outlookData) {
+      const q = new URLSearchParams({
+        where: '1=1', outFields: 'cat,prob,valid_seas', f: 'geojson', outSR: '4326', maxAllowableOffset: '0.02',
+        geometry: '-112,34,-99,44', geometryType: 'esriGeometryEnvelope', inSR: '4326',
+      });
+      outlookData = await (await fetch(`${OUTLOOK}?${q}`)).json();
+      onOutlook?.(outlookData.features?.[0]?.properties?.valid_seas ?? null);
+    }
+    return L.geoJSON(outlookData, {
+      pane: 'snow', interactive: false,
+      style: (f) => {
+        const { cat, prob } = f.properties;
+        const shade = OUTLOOK_SHADES[cat]?.[prob < 40 ? 0 : prob < 50 ? 1 : prob < 60 ? 2 : 3];
+        return shade ? { className: 'outlook', stroke: true, color: shade, weight: 0.6, fillColor: shade, fillOpacity: 0.5 } : { stroke: false, fill: false };
+      },
+    });
+  }
+  async function drawLayer() {
+    const mine = ++job;
+    clearInterval(radarTimer);
+    let next = null;
+    try {
+      if (layerName === 'snow') next = await picture(SNOW_DEPTH_WMS, '0', (r, g, b) => SNOW_RAMP[classOf(r, g, b)]);
+      else if (layerName === 'radar') next = await picture(RADAR_WMS, '0', radarColor);
+      else if (layerName === 'outlook') next = await outlookLayer();
+    } catch { next = null; }
+    if (mine !== job) return;
+    overlay?.remove();
+    overlay = next?.addTo(map) ?? null;
+    // Radar is live: a fresh picture every 3 minutes while it's showing.
+    if (layerName === 'radar') radarTimer = setInterval(() => { if (!document.hidden) drawLayer(); }, 180000);
   }
 
   // Towns for orientation, quieter than the resorts: small muted text by a tiny square. Most important
@@ -200,18 +258,46 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   });
   // The major towns' name boxes (container pixels), reserved before the resort labels are placed:
   // name to the right of the square, or to the left near the right edge.
-  function reserveTowns(size) {
-    return towns.filter((t) => t.major).map((t) => {
+  // (Only towns whose name fits on screen: the map is framed on the resorts, not the towns.)
+  function reserveTowns(size, area) {
+    const out = [];
+    for (const t of towns) {
+      t.fixed = null;
+      if (!t.major) continue;
       const p = map.latLngToContainerPoint(t.at);
       t.node.hidden = false;
       t.node.dataset.side = 'right';
       const w = t.node.offsetWidth;
       const h = t.node.offsetHeight;
-      if (p.x + w > size.x - 6) t.node.dataset.side = 'left';
-      t.fixed = t.node.dataset.side;
-      return t.fixed === 'right' ? [p.x - 4, p.y - h / 2 - 1, p.x + w, p.y + h / 2 + 1] : [p.x - w, p.y - h / 2 - 1, p.x + 4, p.y + h / 2 + 1];
-    });
+      const right = [p.x - 4, p.y - h / 2 - 1, p.x + w, p.y + h / 2 + 1];
+      const left = [p.x - w, p.y - h / 2 - 1, p.x + 4, p.y + h / 2 + 1];
+      const fits = (b) => b[0] >= area[0] && b[2] <= area[2] && b[1] >= area[1] && b[3] <= area[3];
+      if (fits(right)) { t.fixed = 'right'; out.push(right); } else if (fits(left)) { t.fixed = 'left'; out.push(left); }
+    }
+    return out;
   }
+  // Major highways: faint lines over the snow cover, and one small route shield per highway where it
+  // fits (after the towns, so they never crowd anything).
+  map.createPane('roads').style.zIndex = 255;
+  let shields = [];
+  function setRoads(data) {
+    shields = [];
+    for (const { ref, kind, lines } of data.routes) {
+      L.polyline(lines, { pane: 'roads', className: `road road-${kind}`, interactive: false, weight: kind === 'I' ? 1.8 : 1.1 }).addTo(map);
+      // Spots for its shield: along its longest stretches, middle first.
+      const spots = [...lines].sort((a, b) => b.length - a.length).slice(0, 4)
+        .flatMap((l) => [0.5, 0.3, 0.7].map((f) => l[Math.floor((l.length - 1) * f)]));
+      shields.push(spots.map((at) => {
+        const node = document.createElement('span');
+        node.className = `shield shield-${kind}`;
+        node.textContent = ref;
+        L.marker(at, { pane: 'places', interactive: false, keyboard: false, icon: L.divIcon({ html: node, className: 'place-host', iconSize: [0, 0] }) }).addTo(map);
+        return node;
+      }));
+    }
+    placeTowns();
+  }
+
   function placeTowns() {
     const taken = [];
     for (const n of el.querySelectorAll('.pin:not(.hidden) .pin-bubble, .pin-dot, .pin:not(.hidden) .pin-tail line:not([style*="none"])')) taken.push(n.getBoundingClientRect());
@@ -219,7 +305,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     const view = el.getBoundingClientRect();
     const pad = getPadding();
     const inside = (b) => b.left >= view.left + 4 && b.right <= view.right - 4 && b.top >= view.top + pad.top && b.bottom <= view.bottom - pad.bottom;
-    for (const { node: t, major, fixed } of towns) {
+    for (const { node: t, fixed } of towns) {
       // Name to the right of its square, else left, below or above. Major towns keep the side their
       // space was reserved on (the resort labels already went around it).
       let ok = false;
@@ -227,13 +313,24 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         t.hidden = false;
         t.dataset.side = side;
         const box = t.getBoundingClientRect();
-        if (major || (inside(box) && !taken.some((b) => b.width + b.height > 0 && overlaps(box, b)))) {
+        if (fixed || (inside(box) && !taken.some((b) => b.width + b.height > 0 && overlaps(box, b)))) {
           taken.push(box);
           ok = true;
           break;
         }
       }
       t.hidden = !ok;
+    }
+    for (const spots of shields) {
+      let shown = false;
+      for (const n of spots) {
+        n.hidden = false;
+        const box = n.getBoundingClientRect();
+        if (!shown && inside(box) && !taken.some((b) => b.width + b.height > 0 && overlaps(box, b))) {
+          taken.push(box);
+          shown = true;
+        } else n.hidden = true;
+      }
     }
   }
 
@@ -346,7 +443,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     for (const o of order) o.pin.bubble.classList.remove('compact');
     const items = order.map((o) => ({ ...o, p: map.latLngToContainerPoint(o.r.at), w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight }));
     const dots = items.map((it) => it.p);
-    const reserved = reserveTowns(size);
+    const reserved = reserveTowns(size, area);
     const onTown = (box) => reserved.some((r) => box[0] < r[2] && box[2] > r[0] && box[1] < r[3] && box[3] > r[1]);
     const boxOf = (it, [dx, dy]) => [it.p.x + dx - it.w / 2 - GAP, it.p.y + dy - it.h / 2 - GAP, it.p.x + dx + it.w / 2 + GAP, it.p.y + dy + it.h / 2 + GAP];
 
@@ -601,15 +698,15 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
 
   return {
     update,
+    setRoads,
     // Light or dark relief to match the theme.
     setTheme() {
       base.setUrl(isDark() ? TILES.dark : TILES.light);
     },
-    setSnowDepth(on) {
-      snowOn = on;
-      if (!on) return snowLayer?.remove();
-      if (snowLayer) snowLayer.addTo(map);
-      else drawSnow();
+    setLayer(name) {
+      if (name === layerName && (overlay || name === 'none')) return;
+      layerName = name;
+      drawLayer();
     },
     // Switching states: remove this map entirely.
     destroy() {
@@ -621,7 +718,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       map.invalidateSize({ animate: false, pan: false });
       fit();
       layout();
-      if (snowLayer || snowOn) drawSnow();
+      if (layerName !== 'none') drawLayer();
     },
   };
 }
