@@ -412,7 +412,6 @@ function renderDetail(r) {
     ${liftSection}
     ${report}
     ${season}
-    <a class="site" href="${esc(r.url)}" target="_blank" rel="noopener">Official ${esc(r.name)} site ↗</a>
     ${notes.length ? `<h3 class="section">About the data</h3><ul class="notes">${notes.map((n) => `<li>${n}</li>`).join('')}</ul>` : ''}`;
 }
 
