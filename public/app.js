@@ -3,6 +3,9 @@ import { createSnowMap, CREDITS } from './map.js?v=__V__';
 // One data file per state (data/co.json, data/ut.json…), plus an index of states for the picker.
 const dataUrl = (code) => `data/${code.toLowerCase()}.json`;
 const STATES_URL = 'states.json';
+// Every state with resorts. Anything else in the address or storage is ignored (e.g. an old bad "#half").
+const STATE_CODES = new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
+const validCode = (c) => (c && STATE_CODES.has(String(c).toUpperCase()) ? String(c).toUpperCase() : null);
 const STORE = {
   data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', openOnly: 'cs:openOnly', panel: 'cs:panel',
   state: 'cs:state', states: 'cs:states',
@@ -57,7 +60,10 @@ const state = {
   pastSeason: null, // a past season like '2024-25' to show in the season chart, or null for this one
   panelOpen: read(STORE.panel, true), // wide screens: the resort list on the left
   map: null,
-  code: (location.hash.slice(1) || read(STORE.state, 'co')).toUpperCase(), // which state
+  // Which state: from the address, else the one picked last time on this device. A first-time visitor
+  // gets the state picker (Colorado shows behind it).
+  code: validCode(location.hash.slice(1)) ?? validCode(read(STORE.state, null)) ?? 'CO',
+  firstVisit: !validCode(location.hash.slice(1)) && !validCode(read(STORE.state, null)),
   states: read(STORE.states, null), // the picker's list
 };
 
@@ -705,15 +711,25 @@ function renderPicker() {
 }
 
 function openPicker(open) {
+  // First visit: the picker is the welcome, so it can't be dismissed without choosing.
+  if (!open && state.firstVisit) return;
   $('#picker').hidden = !open;
+  $('#picker-title').textContent = state.firstVisit ? 'Where are you skiing?' : 'Choose a state';
+  $('#picker-close').hidden = state.firstVisit;
   $('#state-btn').setAttribute('aria-expanded', String(open));
   if (open) renderPicker();
 }
 
 function setState(code) {
-  code = code.toUpperCase();
+  code = validCode(code);
+  if (!code) return;
+  state.firstVisit = false;
   openPicker(false);
-  if (code === state.code && state.data && (state.data.state ?? 'CO') === code) return;
+  write(STORE.state, code.toLowerCase());
+  if (code === state.code && state.data && (state.data.state ?? 'CO') === code) {
+    history.replaceState(null, '', `#${code.toLowerCase()}`);
+    return;
+  }
   state.code = code;
   write(STORE.state, code.toLowerCase());
   history.replaceState(null, '', `#${code.toLowerCase()}`);
@@ -730,8 +746,9 @@ function setState(code) {
 }
 
 window.addEventListener('hashchange', () => {
-  const code = location.hash.slice(1);
-  if (code && code.toUpperCase() !== state.code) setState(code);
+  const code = validCode(location.hash.slice(1));
+  if (code && code !== state.code) setState(code);
+  else if (!code) history.replaceState(null, '', `#${state.code.toLowerCase()}`);
 });
 
 document.addEventListener('click', (e) => {
@@ -813,10 +830,14 @@ setSheet('peek', false);
 document.body.classList.toggle('panel-hidden', WIDE.matches && !state.panelOpen);
 $('#panel-open').hidden = !WIDE.matches || state.panelOpen;
 // Show the last copy instantly, then fetch fresh data.
-history.replaceState(null, '', `#${state.code.toLowerCase()}`);
-write(STORE.state, state.code.toLowerCase());
+if (!state.firstVisit) {
+  history.replaceState(null, '', `#${state.code.toLowerCase()}`);
+  write(STORE.state, state.code.toLowerCase());
+} else if (location.hash) {
+  history.replaceState(null, '', location.pathname);
+}
 state.data = read(`${STORE.data}:${state.code}`, null) ?? (state.code === 'CO' ? read(STORE.data, null) : null);
 startMap();
 render();
 load();
-loadStates();
+loadStates().then(() => { if (state.firstVisit) openPicker(true); });

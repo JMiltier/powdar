@@ -103,7 +103,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
   map.createPane('snow').style.zIndex = 250;
   map.createPane('dots').style.zIndex = 590; // just under the labels (markerPane is 600)
   const snowDepth = L.tileLayer.wms(SNOW_DEPTH_WMS, {
-    pane: 'snow', layers: '0', format: 'image/png', transparent: true, version: '1.3.0', opacity: 0.75,
+    pane: 'snow', layers: '0', format: 'image/png', transparent: true, version: '1.3.0', opacity: 0.85,
   });
 
   const fit = () => {
