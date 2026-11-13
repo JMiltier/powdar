@@ -90,3 +90,37 @@ export function parseVailTerrain(html) {
   const trails = (d.GroomingAreas ?? []).flatMap((a) => a.Trails ?? []);
   return { lifts, trails: { open: trails.filter((t) => t.IsOpen).length, total: trails.length } };
 }
+
+// Webcams: the mountain-cams page embeds Brownrice players (player.brownrice.com/embed/<id>, whose
+// current frame is …/snapshot/<id>) and sometimes still images (cache.snow.com/Mtncams/*.jpg, e.g. the
+// snow stake). → [{ name, image, live }], snow stake first.
+export const camsPage = (site) => `${site}/the-mountain/mountain-conditions/mountain-cams.aspx`;
+const WORDS = ['north', 'south', 'east', 'west', 'peak', 'summit', 'base', 'village', 'river', 'run', 'lake', 'side', 'top',
+  'bowl', 'express', 'lodge', 'mountain', 'mid', 'upper', 'lower', 'snow', 'stake', 'park', 'gondola', 'plaza', 'blue', 'sky', 'basin',
+  'back', 'bowls', 'eagles', 'nest', 'beaver', 'creek', 'spruce', 'saddle', 'outpost', 'dercum', 'bergman', 'peak'];
+// "keystonenorthpeak" → "North Peak" (the resort's own name dropped; known words split out).
+export function camName(id, prefixes = []) {
+  let rest = id.toLowerCase();
+  for (const p of prefixes) if (rest.startsWith(p) && rest.length > p.length) { rest = rest.slice(p.length); break; }
+  const parts = [];
+  while (rest) {
+    const w = WORDS.filter((x) => rest.startsWith(x)).sort((a, b) => b.length - a.length)[0];
+    if (w) { parts.push(w); rest = rest.slice(w.length); continue; }
+    const next = WORDS.map((x) => rest.indexOf(x)).filter((i) => i > 0).sort((a, b) => a - b)[0] ?? rest.length;
+    parts.push(rest.slice(0, next));
+    rest = rest.slice(next);
+  }
+  return parts.map((x) => x[0].toUpperCase() + x.slice(1)).join(' ');
+}
+export function parseVailCams(html, prefixes = []) {
+  const cams = [];
+  for (const m of html.matchAll(/cache\.snow\.com\/Mtncams\/([A-Za-z0-9_]+)\.jpg/g)) {
+    if (cams.some((c) => c.image.includes(m[1]))) continue;
+    cams.push({ name: /stake/i.test(m[1]) ? 'Snow Stake' : camName(m[1].replace(/^[A-Z][a-z]+/, ''), []), image: `https://cache.snow.com/Mtncams/${m[1]}.jpg` });
+  }
+  for (const m of html.matchAll(/player\.brownrice\.com\/embed\/([a-z0-9]+)/g)) {
+    if (cams.some((c) => c.live?.endsWith(`/${m[1]}`))) continue;
+    cams.push({ name: camName(m[1], prefixes), image: `https://player.brownrice.com/snapshot/${m[1]}`, live: `https://player.brownrice.com/embed/${m[1]}` });
+  }
+  return cams.sort((a, b) => (b.name === 'Snow Stake') - (a.name === 'Snow Stake')).slice(0, 6);
+}

@@ -7,6 +7,7 @@ import { LIFT_SOURCES, summarizeLifts } from './lifts.js';
 import { liftsDue } from './lift-hours.js';
 import { VAIL_SITES, snowPage, liftPage, parseVailSnow, parseVailTerrain } from './vail.js';
 import { fetchInsights } from './insights.js';
+import CAMS from './cams.json' with { type: 'json' };
 import { nohrscUrl, parseNohrsc } from './noaa.js';
 
 export const CSC_FEED = 'https://snow.coloradoski.com/view/publicreport-feed';
@@ -463,6 +464,8 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       lifts: liftsById[r.id] ?? null,
       noaa: noaaSnow[i] ?? null,
       avgSnow: r.avgSnow ?? null,
+      // Webcams (src/cams.json, scripts/cams.mjs): still images that update on their own.
+      cams: CAMS[r.id] ?? null,
       // Key into `snowpack` (resorts can share a station).
       station: snowpack[r.snotel[0]] ? r.snotel[0] : null,
     };
