@@ -2,7 +2,7 @@ import { createSnowMap, CREDITS } from './map.js?v=__V__';
 
 const DATA_URL = 'data.json';
 const STORE = {
-  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', home: 'cs:home', snowDepth: 'cs:snowCover', openOnly: 'cs:openOnly',
+  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', openOnly: 'cs:openOnly', panel: 'cs:panel',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
 const STALE_AFTER_MS = 3 * 3_600_000;
@@ -49,6 +49,7 @@ const state = {
   snowDepth: read(STORE.snowDepth, true), // snow cover starts on
   selected: null,
   sheet: 'peek',
+  panelOpen: read(STORE.panel, true), // wide screens: the resort list on the left
   map: null,
 };
 
@@ -373,12 +374,14 @@ function sheetSizes() {
   return { h, visible: { peek, half: Math.round(window.innerHeight * 0.5), full: h } };
 }
 
-// Pixels of map the panels cover. Fitting plans for the collapsed sheet; centring a resort uses
-// the sheet's current height so the resort lands in the part of the map you can see.
-function coveredPadding(current = false) {
+// Pixels of map covered by the top bar and the list, so the map fits every resort in what's left:
+// above the collapsed sheet on phones, beside the side panel (if open) on wide screens.
+function coveredPadding() {
   const top = $('.top').getBoundingClientRect().bottom;
-  if (WIDE.matches) return { top, left: sheetEl.offsetWidth + 24, right: 0, bottom: 0 };
-  return { top, left: 0, right: 0, bottom: current ? sheetEl.offsetHeight - sheetY : sheetSizes().visible.peek };
+  // The snow-cover key sits along the bottom of the map: keep resorts and labels clear of it.
+  const legend = state.snowDepth ? $('#legend').offsetHeight + 12 : 0;
+  if (WIDE.matches) return { top, left: state.panelOpen ? sheetEl.offsetWidth + 24 : 0, right: 0, bottom: legend };
+  return { top, left: 0, right: 0, bottom: sheetSizes().visible.peek + legend };
 }
 
 function setSheetY(y, animate) {
@@ -435,14 +438,21 @@ grabEl.addEventListener('pointercancel', () => {
 
 // ---------- actions ----------
 
-function select(id, { pan = true } = {}) {
+function select(id) {
   state.selected = id;
+  if (id && WIDE.matches && !state.panelOpen) setPanel(true);
   render();
   $('#sheet-body').scrollTop = 0;
-  if (!id) return;
-  if (state.sheet === 'peek' || state.sheet === 'full') setSheet('half');
-  const r = state.data.resorts.find((x) => x.id === id);
-  if (pan && r) requestAnimationFrame(() => state.map?.focus(r));
+  if (id && (state.sheet === 'peek' || state.sheet === 'full')) setSheet('half');
+}
+
+// Wide screens: show or hide the resort list; the map refits to the space it gets.
+function setPanel(open) {
+  state.panelOpen = open;
+  write(STORE.panel, open);
+  document.body.classList.toggle('panel-hidden', !open);
+  $('#panel-open').hidden = open || !WIDE.matches;
+  state.map?.refit();
 }
 
 let toastTimer;
@@ -463,9 +473,8 @@ function startMap() {
   if (state.map || !state.data) return;
   state.map = createSnowMap($('#map'), {
     resorts: state.data.resorts,
-    home: read(STORE.home, null),
     getPadding: coveredPadding,
-    onSelect: (id) => select(id, { pan: false }),
+    onSelect: (id) => select(id),
   });
   state.map.setSnowDepth(state.snowDepth);
 }
@@ -516,13 +525,11 @@ document.addEventListener('click', (e) => {
     state.snowDepth = !state.snowDepth;
     write(STORE.snowDepth, state.snowDepth);
     state.map?.setSnowDepth(state.snowDepth);
-    return render();
+    render();
+    return state.map?.refit();
   }
-  if (t.closest('#home-btn')) {
-    if (!state.map) return;
-    write(STORE.home, state.map.getView());
-    return toast('Saved: the map will open here from now on');
-  }
+  if (t.closest('#panel-close')) return setPanel(false);
+  if (t.closest('#panel-open')) return setPanel(true);
   if (t.closest('#info-btn')) {
     const c = $('#credits');
     c.hidden = !c.hidden;
@@ -545,13 +552,17 @@ document.addEventListener('visibilitychange', () => {
 });
 const onResize = () => {
   setSheet(state.sheet, false);
-  state.map?.resize();
+  document.body.classList.toggle('panel-hidden', WIDE.matches && !state.panelOpen);
+  $('#panel-open').hidden = !WIDE.matches || state.panelOpen;
+  state.map?.refit();
 };
 window.addEventListener('resize', onResize);
 WIDE.addEventListener('change', onResize);
 
 $('#credits').innerHTML = CREDITS;
 setSheet('peek', false);
+document.body.classList.toggle('panel-hidden', WIDE.matches && !state.panelOpen);
+$('#panel-open').hidden = !WIDE.matches || state.panelOpen;
 // Show the last copy instantly, then fetch fresh data.
 state.data = read(STORE.data, null);
 startMap();

@@ -54,7 +54,6 @@ button { font: inherit; color: inherit; }
 /* With the snow layer on, a grey base map lets the snow colours read clearly. */
 #map.snow-on .leaflet-tile-pane { filter: grayscale(1) brightness(1.1); }
 @media (prefers-color-scheme: dark) { #map.snow-on .leaflet-tile-pane { filter: grayscale(1) brightness(0.55); } }
-.leaflet-bottom.leaflet-right { bottom: calc(var(--sheet-visible) + 4px); }
 
 /* ---------- Floating controls along the top ---------- */
 .top {
@@ -64,39 +63,44 @@ button { font: inherit; color: inherit; }
   pointer-events: none;
 }
 .top > * { pointer-events: auto; }
-.metrics {
-  display: flex; max-width: 100%; overflow-x: auto; scrollbar-width: none;
+.ribbon {
+  display: flex; align-items: center; max-width: 100%;
   background: var(--card); border-radius: 999px; padding: 4px; box-shadow: var(--shadow);
 }
-.metrics::-webkit-scrollbar { display: none; }
-.metrics button {
-  flex: none; border: 0; background: none; color: var(--muted); font-weight: 650; font-size: 0.9rem;
-  padding: 8px 13px; min-height: 38px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+.ribbon button {
+  flex: none; border: 0; background: none; color: var(--muted); font-weight: 700; font-size: 0.9rem;
+  padding: 7px 12px; min-height: 36px; border-radius: 999px; cursor: pointer; white-space: nowrap;
 }
-.metrics button[aria-pressed="true"] { background: var(--accent); color: #fff; }
-@media (prefers-color-scheme: dark) { .metrics button[aria-pressed="true"] { color: #0e141c; } }
+.ribbon button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+@media (prefers-color-scheme: dark) { .ribbon button[aria-pressed="true"] { color: #0e141c; } }
+.ribbon-sep { width: 1px; align-self: stretch; margin: 6px 3px; background: var(--line); }
+.ribbon .snow-toggle { font-size: 1.05rem; padding: 7px 11px; }
+.ribbon .snow-toggle[aria-pressed="true"] { background: #6a3fc1; color: #fff; }
+.toast {
+  margin: 0; background: var(--card); color: var(--text); box-shadow: var(--shadow);
+  border-radius: 12px; padding: 8px 12px; font-size: 0.85rem; font-weight: 600;
+}
+[hidden] { display: none !important; }
 
-.tools { align-self: stretch; display: flex; justify-content: flex-end; gap: 6px; pointer-events: none; }
-.tool {
-  pointer-events: auto; border: 0; cursor: pointer; white-space: nowrap;
+/* Map credits: a small ⓘ in the bottom right, just above the sheet. */
+.info-btn {
+  position: fixed; z-index: 900; right: 10px; bottom: calc(var(--sheet-visible) + 10px);
+  width: 30px; height: 30px; border: 0; border-radius: 50%; cursor: pointer;
   background: var(--card); color: var(--text); box-shadow: var(--shadow);
-  font-size: 0.8rem; font-weight: 700; padding: 0 12px; height: 34px; border-radius: 999px;
+  font: italic 700 0.9rem Georgia, serif; transition: bottom 0.25s ease;
 }
-.tool[aria-pressed="true"] { background: #6a3fc1; color: #fff; }
-.tool-round { width: 34px; padding: 0; font-family: Georgia, serif; font-style: italic; font-size: 0.95rem; }
-.credits, .toast {
-  align-self: flex-end; max-width: min(420px, 100%); margin: 0;
+.credits {
+  position: fixed; z-index: 900; right: 10px; bottom: calc(var(--sheet-visible) + 48px); margin: 0;
+  max-width: min(360px, calc(100% - 20px));
   background: var(--card); color: var(--text); box-shadow: var(--shadow);
   border-radius: 12px; padding: 8px 12px; font-size: 0.72rem;
 }
 .credits a { color: var(--accent); }
-.toast { align-self: center; font-size: 0.85rem; font-weight: 600; }
-[hidden] { display: none !important; }
 
 /* Snow-cover key: a slim strip just above the sheet. */
 .legend {
-  position: fixed; z-index: 800; left: 10px; right: 10px; bottom: calc(var(--sheet-visible) + 8px);
-  margin-inline: auto; width: fit-content; max-width: calc(100% - 20px);
+  position: fixed; z-index: 800; left: 10px; bottom: calc(var(--sheet-visible) + 10px);
+  width: fit-content; max-width: calc(100% - 60px);
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;
   background: var(--card); color: var(--text); box-shadow: var(--shadow);
   border-radius: 999px; padding: 5px 12px; font-size: 0.68rem;
@@ -125,6 +129,8 @@ button { font: inherit; color: inherit; }
 .brand { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; }
 .updated { border: 0; background: none; padding: 0; color: var(--muted); font-size: 0.78rem; cursor: pointer; white-space: nowrap; }
+.head-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.panel-close { display: none; }
 .chip {
   display: inline-flex; align-items: center; gap: 6px; flex: none;
   border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px;
@@ -266,10 +272,25 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
   line-height: 1.15; cursor: pointer; white-space: nowrap;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3); pointer-events: auto;
 }
-.pin-name { font-size: 0.68rem; font-weight: 650; }
-.pin-val { font-size: 0.82rem; font-weight: 800; }
+.pin-name { font-size: 0.66rem; font-weight: 650; }
+.pin-val { font-size: 0.8rem; font-weight: 800; }
+/* Phones: slimmer labels so the whole state fits without overlaps. */
+@media (max-width: 600px) {
+  .pin-bubble { padding: 1px 5px; gap: 3px; border-width: 1px; }
+  .pin-name { font-size: 0.6rem; letter-spacing: -0.1px; }
+  .pin-val { font-size: 0.72rem; }
+}
 .pin-bubble.is-open { border-color: var(--open); }
 .pin-bubble.is-selected { outline: 3px solid #e8a400; outline-offset: 1px; }
+/* A label sitting away from its dot gets a small pointer tab aimed at it. */
+.pin-bubble[class*="tail-"]::after {
+  content: ""; position: absolute; width: 7px; height: 7px; background: inherit;
+  border: inherit; border-width: 0; transform: rotate(45deg);
+}
+.pin-bubble.tail-b::after { bottom: -4px; left: calc(var(--tail) - 3.5px); border-right-width: 1.5px; border-bottom-width: 1.5px; }
+.pin-bubble.tail-t::after { top: -4px; left: calc(var(--tail) - 3.5px); border-left-width: 1.5px; border-top-width: 1.5px; }
+.pin-bubble.tail-l::after { left: -4px; top: calc(var(--tail) - 3.5px); border-left-width: 1.5px; border-bottom-width: 1.5px; }
+.pin-bubble.tail-r::after { right: -4px; top: calc(var(--tail) - 3.5px); border-right-width: 1.5px; border-top-width: 1.5px; }
 /* No number for this resort: a small grey dot you can still tap. */
 .pin-bubble.lvl-none { min-width: 0; width: 14px; height: 14px; padding: 0; border-radius: 50%; background: #c3cad3; border-color: #fff; }
 .pin-bubble.lvl-none > * { display: none; }
@@ -304,16 +325,29 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
   }
   .grab { cursor: default; }
   .handle { display: none; }
+  .sheet { transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
   .top { left: 404px; }
   .legend { left: 404px; bottom: 12px; }
-  .leaflet-bottom.leaflet-right { bottom: 8px; }
+  .info-btn { bottom: 12px; }
+  .credits { bottom: 50px; }
+  .panel-close {
+    display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+    border: 0; border-radius: 50%; background: var(--bg); font-size: 1.3rem; cursor: pointer;
+  }
+  /* Collapsed: the list slides away and the map takes the whole window. */
+  body.panel-hidden .sheet { transform: translateX(calc(-100% - 24px)) !important; }
+  body.panel-hidden .top, body.panel-hidden .legend { left: 0; }
+  body.panel-hidden .legend { left: 12px; }
+  .panel-open {
+    position: fixed; z-index: 1000; left: 12px; top: 12px; height: 44px; padding: 0 16px;
+    border: 0; border-radius: 999px; background: var(--card); color: var(--text); box-shadow: var(--shadow);
+    font-weight: 700; cursor: pointer;
+  }
 }
 
 /* ---------- Small phones (iPhone SE: 320–375px wide) ---------- */
 @media (max-width: 380px) {
-  .metrics button { padding: 7px 10px; font-size: 0.84rem; min-height: 36px; }
-  .tool { font-size: 0.76rem; padding: 0 10px; height: 32px; }
-  .tool-round { width: 32px; padding: 0; }
+  .ribbon button { padding: 7px 9px; font-size: 0.84rem; }
   .brand { flex-direction: column; align-items: flex-start; gap: 0; }
   h1 { font-size: 1.1rem; }
   .row { gap: 10px; padding: 10px 2px; }
@@ -321,7 +355,16 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
   .stat b { font-size: 1.35rem; }
   .stat span { font-size: 0.68rem; }
 }
+@media (max-width: 400px) {
+  .legend { padding: 4px 10px; gap: 6px; }
+  .legend-title { display: none; } /* the ❄ button already says what this is */
+  .legend-keys { gap: 5px; }
+}
+@media (max-width: 360px) {
+  .pin-name { font-size: 0.56rem; }
+  .pin-val { font-size: 0.68rem; }
+  .pin-bubble { padding: 0 4px; }
+}
 @media (max-width: 340px) {
-  .metrics button { padding: 7px 8px; font-size: 0.8rem; }
-  .tools { gap: 4px; }
+  .ribbon button { padding: 6px 7px; font-size: 0.8rem; }
 }
