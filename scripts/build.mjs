@@ -84,6 +84,12 @@ if (liveCo) {
   }
 }
 
+// The forecasters' messages or alerts didn't come through: keep the last ones (up to a day old).
+if (liveCo?.insights && Date.now() - Date.parse(liveCo.generated) < 24 * 3_600_000) {
+  if (!report.insights?.discussions?.length) report.insights = { ...report.insights, discussions: liveCo.insights.discussions };
+  if (report.insights && report.insights.alerts == null) report.insights.alerts = liveCo.insights.alerts;
+}
+
 // Publishing a page with no data at all is worse than keeping the last good one.
 if (!report.sources.coloradoSki && report.sources.forecasts === 0) process.exit(1);
 

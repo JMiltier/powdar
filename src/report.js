@@ -6,6 +6,7 @@ import { parseSnotel, snotelUrl, stationSeason, waterYear } from './snotel.js';
 import { LIFT_SOURCES, summarizeLifts } from './lifts.js';
 import { liftsDue } from './lift-hours.js';
 import { VAIL_SITES, snowPage, liftPage, parseVailSnow, parseVailTerrain } from './vail.js';
+import { fetchInsights } from './insights.js';
 import { nohrscUrl, parseNohrsc } from './noaa.js';
 
 export const CSC_FEED = 'https://snow.coloradoski.com/view/publicreport-feed';
@@ -425,6 +426,9 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     }
   }
 
+  // The forecasters' key messages and active alerts (see insights.js).
+  const insights = await fetchInsights(getJson, fetchFn, { backoff, log });
+
   const resorts = RESORTS.map((r, i) => {
     let c = r.csc ? csc.get(r.csc) : undefined;
     // A Vail Resorts mountain: its own report, shaped like Colorado Ski Country's.
@@ -465,6 +469,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
   });
 
   return {
+    insights,
     generated: now.toISOString(),
     today,
     season: season.name,
