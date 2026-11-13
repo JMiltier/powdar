@@ -81,6 +81,7 @@ button { font: inherit; color: inherit; }
   border-radius: 12px; padding: 8px 12px; font-size: 0.85rem; font-weight: 600;
 }
 [hidden] { display: none !important; }
+body.sheet-full .info-btn, body.sheet-full .credits, body.sheet-full .legend { display: none; }
 
 /* Map credits: a small ⓘ in the bottom right, just above the sheet. */
 .info-btn {
@@ -244,6 +245,32 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .k-proj { border-top: 2px dashed var(--snow); }
 .k-normal { height: 9px !important; background: color-mix(in srgb, var(--muted) 25%, transparent); border-radius: 2px; }
 .avg { margin: 6px 2px 10px; font-size: 0.88rem; }
+.avg .source { display: block; margin: 2px 0 0; }
+.source { margin: 2px 2px 12px; font-size: 0.72rem; color: var(--muted); line-height: 1.45; }
+.source a { color: var(--accent); }
+.season-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.season-pick select {
+  font: inherit; font-size: 0.82rem; font-weight: 650; color: var(--text); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; cursor: pointer;
+}
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+/* Historical range bands, in the same colours as the Season map view. */
+.chart .band { stroke: none; }
+.b-low { fill: #f2b48a; background: #f2b48a; }
+.b-below { fill: #f8dc9a; background: #f8dc9a; }
+.b-normal { fill: #dfe5ec; background: #dfe5ec; }
+.b-above { fill: #b9d3f6; background: #b9d3f6; }
+.b-high { fill: #7fa9ea; background: #7fa9ea; }
+@media (prefers-color-scheme: dark) {
+  .chart .band { opacity: 0.55; }
+  .band-key span { opacity: 0.8; }
+}
+.chart .median { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 2 2; }
+.k-median { border-top: 1.5px dashed var(--muted); }
+.band-key { display: flex; flex-wrap: wrap; gap: 3px; margin: 2px 2px 6px; font-size: 0.66rem; }
+.band-key span { padding: 1px 6px; border-radius: 6px; color: #15202e; }
+.chart .now.faint { stroke-opacity: 0.35; stroke-width: 2; }
+.k-faint { border-top: 2.5px solid color-mix(in srgb, var(--snow) 35%, transparent); }
 
 .report { list-style: none; margin: 0 0 10px; padding: 0; font-size: 0.88rem; }
 .report li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 2px; border-top: 1px solid var(--line); }
@@ -282,15 +309,10 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 }
 .pin-bubble.is-open { border-color: var(--open); }
 .pin-bubble.is-selected { outline: 3px solid #e8a400; outline-offset: 1px; }
-/* A label sitting away from its dot gets a small pointer tab aimed at it. */
-.pin-bubble[class*="tail-"]::after {
-  content: ""; position: absolute; width: 7px; height: 7px; background: inherit;
-  border: inherit; border-width: 0; transform: rotate(45deg);
-}
-.pin-bubble.tail-b::after { bottom: -4px; left: calc(var(--tail) - 3.5px); border-right-width: 1.5px; border-bottom-width: 1.5px; }
-.pin-bubble.tail-t::after { top: -4px; left: calc(var(--tail) - 3.5px); border-left-width: 1.5px; border-top-width: 1.5px; }
-.pin-bubble.tail-l::after { left: -4px; top: calc(var(--tail) - 3.5px); border-left-width: 1.5px; border-bottom-width: 1.5px; }
-.pin-bubble.tail-r::after { right: -4px; top: calc(var(--tail) - 3.5px); border-right-width: 1.5px; border-top-width: 1.5px; }
+/* Pointer from a label to its dot, drawn in the label's own colours. */
+.pin-tail { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.pin-tail polygon { stroke-width: 1.5; stroke-linejoin: round; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.25)); }
+
 /* No number for this resort: a small grey dot you can still tap. */
 .pin-bubble.lvl-none { min-width: 0; width: 14px; height: 14px; padding: 0; border-radius: 50%; background: #c3cad3; border-color: #fff; }
 .pin-bubble.lvl-none > * { display: none; }

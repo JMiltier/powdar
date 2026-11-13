@@ -14,7 +14,7 @@ const SURFACE = {
   VC: 'Variable', LG: 'Loose granular', LSGR: 'Loose granular', FG: 'Frozen granular', WG: 'Wet granular', ICY: 'Icy',
 };
 const SOURCE_NAMES = {
-  nws: 'National Weather Service', ecmwf_ifs025: 'European', gfs_seamless: 'American', gem_seamless: 'Canadian', icon_seamless: 'German',
+  nws: 'National Weather Service', ecmwf_ifs025: 'European ECMWF', gfs_seamless: 'American GFS/HRRR', gem_seamless: 'Canadian GEM', icon_seamless: 'German ICON',
 };
 
 // What the map and list show. `steps` are the upper bounds of each colour level.
@@ -49,6 +49,7 @@ const state = {
   snowDepth: read(STORE.snowDepth, true), // snow cover starts on
   selected: null,
   sheet: 'peek',
+  pastSeason: null, // a past season like '2024-25' to show in the season chart, or null for this one
   panelOpen: read(STORE.panel, true), // wide screens: the resort list on the left
   map: null,
 };
@@ -266,10 +267,13 @@ function renderDetail(r) {
       ${stat(inches(f?.next7), 'next 7 days', rangeText(f?.next7Range))}
     </div>
     ${bars}
-    ${weather ? `<h3 class="section">Weather</h3><ul class="weather">${weather}</ul>` : ''}
+    ${f ? `<p class="source">Snow forecast: the middle of ${sources.length > 1 ? `${sources.length} forecasts (${esc(sources.join(', '))})` : 'the National Weather Service forecast'}${sources.length > 1 ? `, via ${sourceLink('https://www.weather.gov', 'NWS')} and ${sourceLink('https://open-meteo.com', 'Open-Meteo')}` : ''}. Small numbers are the likely range.${state.data.sources.modelsReused ? ` Model forecast from ${esc(timeAgo(state.data.sources.modelsAt))}.` : ''}</p>` : ''}
+    ${weather ? `<h3 class="section">Weather</h3><ul class="weather">${weather}</ul>
+      <p class="source">Source: ${sourceLink(`https://forecast.weather.gov/MapClick.php?lat=${r.at[0]}&lon=${r.at[1]}`, 'National Weather Service forecast')}.</p>` : ''}
     ${seasonSection(r)}
     ${report}
-    ${sources.length > 1 ? `<p class="muted small">Forecast blends ${sources.length} sources: ${esc(sources.join(', '))}. Big number = middle forecast, small = likely range.</p>` : ''}
+    ${report ? `<p class="source">Source: ${sourceLink('https://www.coloradoski.com/snow-report/', 'Colorado Ski Country USA')} snow report.</p>` : ''}
+    ${r.dates?.planned && r.dates.open ? `<p class="source">Opening date as announced by the resort; no live status available.</p>` : ''}
     <a class="site" href="${esc(r.url)}" target="_blank" rel="noopener">Official ${esc(r.name)} site ↗</a>`;
 }
 
@@ -280,28 +284,47 @@ const SEASON_DAYS = 273; // Oct 1 → Jun 30
 const MONTHS = ['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
 const MONTH_STARTS = [0, 31, 61, 92, 123, 151, 182, 212, 243];
 
-function seasonChart(st, ahead) {
+// `shown`: the season line to draw ([day, inches] points). For this season it's st.season plus the
+// dashed 2-week projection; for a past season, that season's line with this season faintly behind it.
+function seasonChart(st, ahead, past, bands) {
   const W = 320;
   const H = 128;
   const pad = { l: 4, r: 4, t: 14, b: 18 };
   const last = st.season.at(-1);
-  const proj = last && ahead?.length ? [last, ...ahead.map((w, i) => [last[0] + i + 1, last[1] + w])] : [];
-  const maxY = Math.max(1, ...st.normal.map((p) => p[1]), ...st.season.map((p) => p[1]), ...proj.map((p) => p[1])) * 1.08;
+  const proj = !past && last && ahead?.length ? [last, ...ahead.map((w, i) => [last[0] + i + 1, last[1] + w])] : [];
+  const shown = past ? past.points : st.season;
+  const maxY = Math.max(1, ...st.normal.map((p) => p[1]), ...shown.map((p) => p[1]), ...st.season.map((p) => p[1]), ...proj.map((p) => p[1]),
+    ...(bands ? bands.p90.map((p) => p[1]) : [])) * 1.08;
   const x = (d) => pad.l + (d / SEASON_DAYS) * (W - pad.l - pad.r);
   const y = (v) => H - pad.b - (v / maxY) * (H - pad.t - pad.b);
-  const line = (pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p[0]).toFixed(1)} ${y(p[1]).toFixed(1)}`).join(' ');
-  const area = st.normal.length ? `${line(st.normal)} L${x(st.normal.at(-1)[0]).toFixed(1)} ${y(0)} L${x(st.normal[0][0]).toFixed(1)} ${y(0)} Z` : '';
+  const line = (pts) => pts.filter((p) => p[0] <= SEASON_DAYS).map((p, i) => `${i ? 'L' : 'M'}${x(p[0]).toFixed(1)} ${y(p[1]).toFixed(1)}`).join(' ');
+  const area = st.normal.length ? `${line(st.normal)} L${x(Math.min(SEASON_DAYS, st.normal.at(-1)[0])).toFixed(1)} ${y(0)} L${x(st.normal[0][0]).toFixed(1)} ${y(0)} Z` : '';
   const months = MONTHS.map((m, i) => `<text x="${x(MONTH_STARTS[i] + 2).toFixed(1)}" y="${H - 4}">${m}</text>`).join('');
+  const end = past ? null : last;
   return `
-    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Snowpack this season compared with normal">
+    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Snowpack ${past ? `in ${past.season}` : 'this season'} compared with normal">
       ${MONTH_STARTS.slice(1).map((d) => `<line class="grid" x1="${x(d)}" x2="${x(d)}" y1="${pad.t}" y2="${H - pad.b}"/>`).join('')}
-      <path class="normal" d="${area}"/>
+      ${bands ? bandPaths(bands, x, y) : `<path class="normal" d="${area}"/>`}
+      ${bands && st.normal.length ? `<path class="median" d="${line(st.normal)}"/>` : ''}
+      ${past ? `<path class="now faint" d="${line(st.season)}"/>` : ''}
       ${proj.length ? `<path class="proj" d="${line(proj)}"/>` : ''}
-      <path class="now" d="${line(st.season)}"/>
-      ${last ? `<circle class="now-dot" cx="${x(last[0])}" cy="${y(last[1])}" r="3.5"/>` : ''}
+      <path class="now" d="${line(shown)}"/>
+      ${end ? `<circle class="now-dot" cx="${x(end[0])}" cy="${y(end[1])}" r="3.5"/>` : ''}
       ${st.peak ? `<text class="peak" x="${x(dayOfSeason(st.peak.date)).toFixed(1)}" y="${(y(st.peak.swe) - 4).toFixed(1)}">normal peak ${st.peak.swe}″</text>` : ''}
       ${months}
     </svg>`;
+}
+
+// Filled areas between percentile curves, driest to snowiest.
+function bandPaths(b, x, y) {
+  const strip = (lo, hi, cls) => {
+    const top = hi.map((p) => `${x(p[0]).toFixed(1)} ${y(p[1]).toFixed(1)}`);
+    const bottom = [...lo].reverse().map((p) => `${x(p[0]).toFixed(1)} ${y(p[1]).toFixed(1)}`);
+    return `<path class="band ${cls}" d="M${top.join(' L')} L${bottom.join(' L')} Z"/>`;
+  };
+  const zero = b.p10.map(([d]) => [d, 0]);
+  return strip(zero, b.p10, 'b-low') + strip(b.p10, b.p25, 'b-below') + strip(b.p25, b.p75, 'b-normal')
+    + strip(b.p75, b.p90, 'b-above') + strip(b.p90, b.max, 'b-high');
 }
 
 function dayOfSeason(ymd) {
@@ -310,19 +333,103 @@ function dayOfSeason(ymd) {
   return Math.round((Date.parse(`${ymd}T12:00:00Z`) - start) / 864e5);
 }
 
+// Past seasons, one small file per snow station, loaded the first time someone picks one.
+const history = new Map();
+async function loadHistory(triplet) {
+  if (history.has(triplet)) return history.get(triplet);
+  const req = fetch(`history/${triplet.split(':')[0]}.json`).then((res) => (res.ok ? res.json() : null)).catch(() => null);
+  history.set(triplet, req);
+  return req;
+}
+
+// Colour bands from the saved winters: for each day of the season, the 10th/25th/50th/75th/90th
+// percentile and the snowiest year's value. Cached per station.
+const bandCache = new Map();
+function bandsFor(triplet, hist) {
+  if (bandCache.has(triplet)) return bandCache.get(triplet);
+  const daily = Array.from({ length: SEASON_DAYS + 1 }, () => []);
+  for (const { points } of hist.seasons) {
+    for (let i = 0; i + 1 < points.length; i++) {
+      const [d0, v0] = points[i];
+      const [d1, v1] = points[i + 1];
+      for (let d = d0; d < d1 && d <= SEASON_DAYS; d++) daily[d].push(v0 + ((v1 - v0) * (d - d0)) / (d1 - d0 || 1));
+    }
+  }
+  const q = (arr, p) => {
+    if (!arr.length) return 0;
+    const sorted = [...arr].sort((a, b) => a - b);
+    const i = (sorted.length - 1) * p;
+    return sorted[Math.floor(i)] + (sorted[Math.ceil(i)] - sorted[Math.floor(i)]) * (i % 1);
+  };
+  const days = [];
+  for (let d = 0; d <= SEASON_DAYS; d += 3) days.push(d);
+  const curve = (p) => days.map((d) => [d, q(daily[d], p)]);
+  const bands = {
+    p10: curve(0.1), p25: curve(0.25), p75: curve(0.75), p90: curve(0.9), max: curve(1),
+    years: hist.seasons.length, first: hist.seasons.at(-1)?.season, last: hist.seasons[0]?.season,
+  };
+  bandCache.set(triplet, bands);
+  return bands;
+}
+
+// "2025-26", "2024-25", … back to 2005-06 (where the saved history starts).
+function pastSeasons() {
+  const [y, m] = state.data.today.split('-').map(Number);
+  const start = m >= 10 ? y : y - 1;
+  const out = [];
+  for (let s = start - 1; s >= 2005; s--) out.push(`${s}-${String(s + 1).slice(2)}`);
+  return out;
+}
+
+const SNOTEL_SITE = (triplet) => `https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=${triplet.split(':')[0]}`;
+const sourceLink = (href, text) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(text)}</a>`;
+
 function seasonSection(r) {
   const st = station(r);
   if (!st && !r.avgSnow) return '';
-  const pctLine = st?.pct != null
-    ? `<span class="pct lvl-${seasonLevel(st.pct)}">${st.pct}%</span> of normal snowpack for this date`
-    : st ? 'Too early in the season to compare with normal' : '';
+  const pick = state.pastSeason;
+  let past = null;
+  let head;
+  // Past winters (for the colour bands and the season picker) load in the background.
+  const h = st ? history.get(r.station) : null;
+  const data = h && !(h instanceof Promise) ? h : null;
+  if (st && !h) {
+    loadHistory(r.station).then((loaded) => {
+      history.set(r.station, loaded);
+      if (state.selected === r.id) render();
+    });
+  }
+  const bands = data ? bandsFor(r.station, data) : null;
+  if (st && pick) {
+    past = data?.seasons.find((x) => x.season === pick) ?? null;
+    if (!data) head = 'Loading past seasons…';
+    else if (!past) head = `No record from ${esc(pick)} at this station.`;
+    else {
+      const ofNormal = st.peak ? Math.round((past.peak.swe / st.peak.swe) * 100) : null;
+      head = `${esc(pick)} peaked at <b>${past.peak.swe}″</b> of snow water on ${monthDay(past.peak.date)}`
+        + (ofNormal != null ? ` · <span class="pct lvl-${seasonLevel(ofNormal)}">${ofNormal}%</span> of a normal peak` : '');
+    }
+  } else if (st) {
+    head = st.pct != null
+      ? `<span class="pct lvl-${seasonLevel(st.pct)}">${st.pct}%</span> of normal snowpack for this date`
+      : 'Too early in the season to compare with normal';
+  }
+  const options = ['<option value="">This season</option>', ...pastSeasons().map((v) => `<option value="${v}"${v === pick ? ' selected' : ''}>${v}</option>`)].join('');
   return `
-    <h3 class="section">Season</h3>
-    ${st ? `<p class="season-head">${pctLine}</p>
-      ${seasonChart(st, r.forecast?.waterAhead)}
-      <p class="legend-line"><i class="k-now"></i>This season <i class="k-proj"></i>Next 2 weeks <i class="k-normal"></i>Normal</p>
-      <p class="muted small">Snow water at the ${esc(st.name)} snow station${st.latest.depth != null ? ` (${st.latest.depth}″ of snow on the ground)` : ''}.</p>` : ''}
-    ${r.avgSnow ? `<p class="avg">A typical season brings about <b>${r.avgSnow}″</b> of snow here.</p>` : ''}`;
+    <div class="season-title">
+      <h3 class="section">Season</h3>
+      ${st ? `<label class="season-pick"><span class="sr">Show season</span><select data-season>${options}</select></label>` : ''}
+    </div>
+    ${st ? `<p class="season-head">${head}</p>
+      ${seasonChart(st, r.forecast?.waterAhead, past, bands)}
+      <p class="legend-line">${past
+        ? `<i class="k-now"></i>${esc(pick)} <i class="k-faint"></i>This season`
+        : '<i class="k-now"></i>This season <i class="k-proj"></i>Next 2 weeks'}${bands ? ' <i class="k-median"></i>Normal' : ' <i class="k-normal"></i>Normal'}</p>
+      ${bands ? `<p class="band-key"><span class="b-high">Snowiest 10%</span><span class="b-above">Above</span><span class="b-normal">Typical</span><span class="b-below">Below</span><span class="b-low">Driest 10%</span></p>` : ''}
+      <p class="source">Snow water at the ${sourceLink(SNOTEL_SITE(r.station), `${st.name} SNOTEL station`)}${st.latest.depth != null && !past ? ` (${st.latest.depth}″ of snow on the ground)` : ''}.
+        Normal is the 1991–2020 median${bands ? `; colour bands show how the ${bands.years} winters from ${esc(bands.first)} to ${esc(bands.last)} ranged` : ''}. Source: USDA NRCS Snow Survey.</p>` : ''}
+    ${r.avgSnow ? `<p class="avg">A typical season brings about <b>${r.avgSnow}″</b> of snow here.
+      <span class="source">Source: ${sourceLink('https://www.zrankings.com/articles/best-snow-in-colorado', 'ZRankings')} (patrol and avalanche-center records).</span></p>` : ''}`;
 }
 
 function renderMap() {
@@ -398,6 +505,8 @@ function setSheetY(y, animate) {
 function setSheet(name, animate = true) {
   state.sheet = name;
   sheetEl.dataset.state = name;
+  // With the sheet all the way up there's no map to caption: tuck the key and ⓘ away.
+  document.body.classList.toggle('sheet-full', name === 'full' && !WIDE.matches);
   if (WIDE.matches) return setSheetY(0, false);
   const { h, visible } = sheetSizes();
   setSheetY(h - visible[name], animate);
@@ -539,6 +648,11 @@ document.addEventListener('click', (e) => {
   if (t.closest('#updated')) return load();
 });
 
+document.addEventListener('change', (e) => {
+  if (!e.target.matches('[data-season]')) return;
+  state.pastSeason = e.target.value || null;
+  render();
+});
 $('#open-only').addEventListener('change', (e) => {
   state.openOnly = e.target.checked;
   write(STORE.openOnly, state.openOnly);
