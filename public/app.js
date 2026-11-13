@@ -691,6 +691,80 @@ function todayStats() {
   const top = (key) => rs.map((r) => ({ r, v: METRICS[key].get(r) ?? 0 })).sort((a, b) => b.v - a.v)[0];
   return { open, lifts, runs, fresh: top('new24'), week: top('next7') };
 }
+// ---------- Today in Colorado ----------
+// Highlights computed from the data (facts, with forecast ranges), plus the NWS forecasters' key
+// messages and active alerts, quoted as published (the build fetches them; src/insights.js).
+const listNames = (rows) => rows.map(({ r, v, range }) => `${esc(r.name)} <b>${inches(v)}</b>${range ? ` <span class="muted">(${esc(range)})</span>` : ''}`).join(', ');
+function highlights() {
+  const d = state.data;
+  const out = [];
+  const top = (key, min) => d.resorts.map((r) => ({ r, v: r.forecast?.[key] ?? 0, range: rangeText(r.forecast?.[`${key}Range`]) }))
+    .filter((x) => x.v >= min).sort((a, b) => b.v - a.v).slice(0, 3);
+  const fresh = d.resorts.map((r) => ({ r, v: r.report?.new24 ?? 0 })).filter((x) => x.v >= 2).sort((a, b) => b.v - a.v).slice(0, 4);
+  if (fresh.length) out.push(`<b>Fresh snow</b> in the last 24 hours (resort reports): ${listNames(fresh)}.`);
+  const soon3 = top('next72', 3);
+  if (soon3.length) out.push(`<b>Next 3 days</b>, the most snow: ${listNames(soon3)}.`);
+  else {
+    const best = d.resorts.map((r) => r.forecast?.next72 ?? 0).reduce((a, b) => Math.max(a, b), 0);
+    out.push(`<b>Next 3 days:</b> little new snow anywhere${best >= 0.5 ? ` (at most about ${inches(best)})` : ''}.`);
+  }
+  const week = top('next7', 6).filter((x) => !soon3.some((s) => s.r.id === x.r.id && s.v === x.v));
+  if (week.length) out.push(`<b>Next 7 days:</b> ${listNames(week)}.`);
+  const today = d.today;
+  const opened = d.resorts.filter((r) => r.status.state === 'open' && r.dates?.open && r.dates.open <= today && (Date.parse(today) - Date.parse(r.dates.open)) / 864e5 <= 3);
+  if (opened.length) out.push(`<b>Just opened:</b> ${opened.map((r) => esc(r.name)).join(', ')}.`);
+  const soon = d.resorts.filter((r) => r.status.state === 'soon' && r.status.date && (Date.parse(r.status.date) - Date.parse(today)) / 864e5 <= 7)
+    .sort((a, b) => a.status.date.localeCompare(b.status.date));
+  if (soon.length) out.push(`<b>Opening this week:</b> ${soon.map((r) => `${esc(r.name)} <span class="muted">${esc(monthDay(r.status.date))}</span>`).join(', ')}.`);
+  const regions = regionPcts();
+  if (regions.length > 1) {
+    const hi = regions[0];
+    const lo = regions.at(-1);
+    out.push(`<b>Snowpack:</b> ${esc(hi.name)} leads at ${hi.pct}% of normal; ${esc(lo.name)} is lowest at ${lo.pct}%.`);
+  }
+  return out;
+}
+function regionPcts() {
+  const d = state.data;
+  return [...new Set(d.resorts.map((r) => r.region))].map((name) => {
+    const ids = [...new Set(d.resorts.filter((r) => r.region === name && r.station).map((r) => r.station))];
+    return { name, pct: statewidePct(ids.map((id) => ({ id, ...d.snowpack[id] })), 0.5), resorts: d.resorts.filter((r) => r.region === name).map((r) => r.name) };
+  }).filter((g) => g.pct != null).sort((a, b) => b.pct - a.pct);
+}
+const alertTime = (iso) => (iso ? new Date(iso).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'America/Denver' }) : '');
+function alertsBlock(alerts) {
+  if (!alerts?.length) return '';
+  return alerts.map((a) => `
+    <div class="alert alert-${/warning/i.test(a.event) ? 'warn' : /watch/i.test(a.event) ? 'watch' : 'adv'}">
+      <b>${esc(a.event)}</b>
+      <span>${esc(a.areas.split(';').slice(0, 3).map((s) => s.trim()).join(' · '))}${a.areas.split(';').length > 3 ? ' …' : ''}</span>
+      <small>${a.ends ? `Until ${esc(alertTime(a.ends))}` : ''}${a.office ? ` · ${esc(a.office)}` : ''}</small>
+    </div>`).join('');
+}
+function todaySection() {
+  const ins = state.data.insights;
+  const items = highlights();
+  const disc = ins?.discussions ?? [];
+  return `
+    <h3 class="section">Today in Colorado</h3>
+    ${alertsBlock(ins?.alerts)}
+    <ul class="highlights">${items.map((t) => `<li>${t}</li>`).join('')}</ul>
+    ${disc.length ? `<h3 class="section">From the forecasters <span class="section-note">National Weather Service, as written</span></h3>
+      ${disc.map((o) => `
+        <div class="nws">
+          <p class="nws-head"><b>${esc(o.name)}</b> <span class="muted">${esc(o.covers)}</span></p>
+          <ul>${o.messages.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
+          <p class="source">Issued ${esc(timeAgo(o.issued))} · ${sourceLink(o.url, 'full discussion')}</p>
+        </div>`).join('')}` : ''}`;
+}
+
+// One line for the card: an active alert first, else the biggest snow on the way.
+function headlineInsight() {
+  const a = state.data.insights?.alerts?.[0];
+  if (a) return `<span class="dot-alert"></span>${esc(a.event)}: ${esc(a.areas.split(';')[0].trim())}${a.areas.split(';').length > 1 ? ' +' : ''}`;
+  const best = state.data.resorts.map((r) => ({ r, v: r.forecast?.next72 ?? 0 })).sort((x, y) => y.v - x.v)[0];
+  return best?.v >= 3 ? `Most snow next 3 days: ${esc(best.r.name)} ${inches(best.v)}` : '';
+}
 function overviewCard() {
   if (!state.data?.snowpack || state.code !== 'CO') return '';
   const t = todayStats();
@@ -702,6 +776,7 @@ function overviewCard() {
         <span class="row-name">Colorado today</span>
         <span class="card-more">Overview${UI.chevron}</span>
       </span>
+      ${headlineInsight() ? `<span class="row-sub overview-line">${headlineInsight()}</span>` : ''}
       <span class="card-stats">
         <span class="cs"><b>${t.open.length}/${state.data.resorts.length}</b><small>Open</small></span>
         <span class="cs"><b>${t.lifts[1] ? `${t.lifts[0]}` : '–'}</b><small>Lifts spinning</small></span>
@@ -749,10 +824,7 @@ function renderOverview() {
   }
 
   // Regions: their stations' snow water against normal.
-  const regions = [...new Set(d.resorts.map((r) => r.region))].map((name) => {
-    const ids = [...new Set(d.resorts.filter((r) => r.region === name && r.station).map((r) => r.station))];
-    return { name, pct: statewidePct(ids.map((id) => ({ id, ...d.snowpack[id] })), 0.5), resorts: d.resorts.filter((r) => r.region === name).map((r) => r.name) };
-  }).filter((g) => g.pct != null).sort((a, b) => b.pct - a.pct);
+  const regions = regionPcts();
   const maxPct = Math.max(150, ...regions.map((g) => g.pct));
   const regionRows = regions.map((g) => `
     <li class="region">
@@ -788,6 +860,7 @@ function renderOverview() {
       ${tile(inches(t.fresh.v), 'most new snow', t.fresh.v >= 0.5 ? esc(t.fresh.r.name) : 'last 24 hrs')}
       ${tile(inches(t.week.v), 'most next 7 days', esc(t.week.r.name))}
     </div>
+    ${todaySection()}
     <h3 class="section">Snowpack, ski country <span class="section-note">${list.length} mountain stations</span></h3>
     ${snowChart}
     <h3 class="section">By region</h3>

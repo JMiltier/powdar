@@ -761,3 +761,24 @@ button, .row, summary { -webkit-tap-highlight-color: transparent; }
 .depth-steps { gap: 6px; }
 .depth-step { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; font-size: 0.62rem; font-weight: 700; line-height: 1; }
 .depth-step i { display: block; width: 26px; height: 9px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15); }
+
+/* Today in Colorado */
+.highlights { margin: 4px 0 10px; padding-left: 18px; font-size: 0.88rem; line-height: 1.45; }
+.highlights li { margin: 4px 0; }
+.highlights li::marker { color: var(--accent); }
+.alert { display: flex; flex-direction: column; gap: 1px; margin: 6px 0; padding: 8px 12px; border-radius: 12px; border-left: 4px solid; font-size: 0.84rem; }
+.alert b { font-size: 0.9rem; }
+.alert small { color: var(--muted); font-size: 0.74rem; }
+.alert-adv { background: color-mix(in srgb, #3b82e0 10%, var(--card)); border-color: #3b82e0; }
+.alert-watch { background: color-mix(in srgb, #e8a400 12%, var(--card)); border-color: #e8a400; }
+.alert-warn { background: color-mix(in srgb, #d6402e 12%, var(--card)); border-color: #d6402e; }
+.nws { margin: 6px 0 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.nws-head { margin: 0 0 4px; font-size: 0.86rem; }
+.nws-head .muted { font-size: 0.74rem; display: block; }
+.nws ul { margin: 0; padding-left: 18px; font-size: 0.85rem; line-height: 1.45; }
+.nws li { margin: 3px 0; }
+.nws .source { margin: 6px 0 0; }
+.overview-line { padding-left: 0 !important; color: var(--text) !important; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.dot-alert { width: 8px; height: 8px; border-radius: 50%; background: #3b82e0; flex: none; box-shadow: 0 0 0 3px color-mix(in srgb, #3b82e0 25%, transparent); }
+.overview-line { display: block !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.overview-line .dot-alert { display: inline-block; margin-right: 6px; vertical-align: 1px; }
