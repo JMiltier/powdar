@@ -4,6 +4,7 @@ import { RESORTS, PLANNED } from './resorts.js';
 import { MODELS, modelUrl, snowHours } from './models.js';
 import { parseSnotel, snotelUrl, stationSeason, waterYear } from './snotel.js';
 import { LIFT_SOURCES, summarizeLifts } from './lifts.js';
+import { liftsDue } from './lift-hours.js';
 import { nohrscUrl, parseNohrsc } from './noaa.js';
 
 export const CSC_FEED = 'https://snow.coloradoski.com/view/publicreport-feed';
@@ -285,7 +286,7 @@ export async function pool(items, limit, fn) {
 }
 
 // skipModels: don't fetch the weather models this time (the caller reuses the last hour's forecast).
-export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), log = () => {}, backoff = 2000, skipModels = false } = {}) {
+export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), log = () => {}, backoff = 2000, skipModels = false, prevLifts = {} } = {}) {
   const today = localDate(now);
   const season = seasonOf(today);
   const planned = PLANNED[season.name] ?? {};
@@ -341,8 +342,10 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       return null;
     }),
     // Live lift-by-lift status from each resort's own lift data.
+    // Outside the ski day the last check stands (lift-hours.js).
     pool(liftIds, 4, async (id) => {
       const src = LIFT_SOURCES[id];
+      if (!liftsDue('CO', now, prevLifts[id]?.checked)) return prevLifts[id] ?? null;
       try {
         const body = src.type === 'json' ? await getJson(fetchFn, src.url, { backoff }) : await getText(fetchFn, src.url, { backoff });
         const lifts = src.parse(body);

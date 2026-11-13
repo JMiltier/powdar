@@ -33,14 +33,16 @@ const liveCo = (process.env.LIVE_URL || DATA_BRANCH) ? await published('data/co.
 const skipModels = Boolean(liveCo?.sources?.modelsAt && Date.now() - Date.parse(liveCo.sources.modelsAt) < MODELS_EVERY_MS);
 if (skipModels) console.log('Colorado model forecasts are under an hour old: reusing them.');
 
-let report = await buildReport({ log: (msg) => console.warn(msg), skipModels });
+// Last published lift checks, reused outside the ski day.
+const prevLifts = Object.fromEntries((liveCo?.resorts ?? []).filter((r) => r.lifts).map((r) => [r.id, r.lifts]));
+let report = await buildReport({ log: (msg) => console.warn(msg), skipModels, prevLifts });
 console.log(summary(report));
 
 // GitHub's servers sometimes can't connect to the weather models for a minute or two.
 if (!modelsOk(report) && !skipModels) {
   console.log(`Weather models unreachable; trying again in ${RETRY_AFTER_MS / 1000}s.`);
   await sleep(RETRY_AFTER_MS);
-  const again = await buildReport({ log: (msg) => console.warn(msg) });
+  const again = await buildReport({ log: (msg) => console.warn(msg), prevLifts });
   console.log(summary(again));
   if (modelsOk(again) || again.sources.coloradoSki) report = again;
 }

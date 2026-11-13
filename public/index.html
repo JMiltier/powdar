@@ -6,8 +6,17 @@
   <title>Powdar</title>
   <meta name="description" content="Colorado ski resorts on one map: snow on the way, base depth, and opening and closing days.">
   <!-- Status and navigation bars match the app instead of a blue band (installed app). -->
-  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
-  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#161e29">
+  <meta name="theme-color" content="#ffffff">
+  <!-- Light or dark before anything draws (the choice is remembered; "auto" follows the phone). -->
+  <script>
+    (function () {
+      var pick = 'auto';
+      try { pick = localStorage.getItem('cs:theme') || 'auto'; } catch (e) {}
+      var dark = pick === 'dark' || (pick === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      document.querySelector('meta[name=theme-color]').content = dark ? '#161e29' : '#ffffff';
+    })();
+  </script>
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="manifest.webmanifest">
@@ -35,8 +44,15 @@
 
   <button id="panel-open" class="panel-open" type="button" hidden aria-label="Show resort list">☰ Resorts</button>
 
-  <button id="info-btn" class="info-btn" type="button" aria-label="Map credits" aria-expanded="false">i</button>
-  <p id="credits" class="credits" hidden></p>
+  <button id="info-btn" class="info-btn" type="button" aria-label="Theme and map credits" aria-expanded="false">i</button>
+  <div id="credits" class="credits" hidden>
+    <div class="theme-pick" role="group" aria-label="Theme">
+      <button type="button" data-theme-pick="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-theme-pick="light" aria-pressed="false">Light</button>
+      <button type="button" data-theme-pick="dark" aria-pressed="false">Dark</button>
+    </div>
+    <p id="credit-text"></p>
+  </div>
 
   <div id="legend" class="legend">
     <span class="legend-title" title="NOAA NOHRSC modelled snow depth; each color starts at the depth shown">Snow on the ground (inches)</span>

@@ -15,21 +15,20 @@
   --shadow: 0 2px 10px rgba(16, 24, 40, 0.18);
   --radius: 18px;
   --sheet-visible: 140px;
-  color-scheme: light dark;
+  color-scheme: light;
 }
+:root[data-theme="dark"] { color-scheme: dark; }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0e141c;
-    --card: #161e29;
-    --text: #e8edf3;
-    --muted: #94a0af;
-    --line: #26303c;
-    --accent: #8ab4ff;
-    --accent-soft: #1d2a3d;
-    --snow: #6aa7ff;
-    --shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
-  }
+:root[data-theme="dark"] {
+  --bg: #0e141c;
+  --card: #161e29;
+  --text: #e8edf3;
+  --muted: #94a0af;
+  --line: #26303c;
+  --accent: #8ab4ff;
+  --accent-soft: #1d2a3d;
+  --snow: #6aa7ff;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
 }
 
 * { box-sizing: border-box; }
@@ -52,10 +51,10 @@ button { font: inherit; color: inherit; }
 .leaflet-container { font: inherit; background: var(--bg); }
 /* Calm the terrain colors so the snow bubbles stand out. */
 .leaflet-tile-pane { filter: saturate(0.18) brightness(1.12) contrast(0.92); }
-@media (prefers-color-scheme: dark) { .leaflet-tile-pane { filter: saturate(0.15) brightness(0.5) contrast(1.15); } }
+:root[data-theme="dark"] .leaflet-tile-pane { filter: saturate(0.15) brightness(0.5) contrast(1.15); }
 /* With the snow layer on, a grey base map lets the snow colors read clearly. */
 #map.snow-on .leaflet-tile-pane { filter: grayscale(1) brightness(1.1); }
-@media (prefers-color-scheme: dark) { #map.snow-on .leaflet-tile-pane { filter: grayscale(1) brightness(0.55); } }
+:root[data-theme="dark"] #map.snow-on .leaflet-tile-pane { filter: grayscale(1) brightness(0.55); }
 
 /* ---------- Floating controls along the top ---------- */
 .top {
@@ -74,7 +73,7 @@ button { font: inherit; color: inherit; }
   padding: 7px 12px; min-height: 36px; border-radius: 999px; cursor: pointer; white-space: nowrap;
 }
 .ribbon button[aria-pressed="true"] { background: var(--accent); color: #fff; }
-@media (prefers-color-scheme: dark) { .ribbon button[aria-pressed="true"] { color: #0e141c; } }
+:root[data-theme="dark"] .ribbon button[aria-pressed="true"] { color: #0e141c; }
 .ribbon-sep { width: 1px; align-self: stretch; margin: 6px 3px; background: var(--line); }
 .ribbon .snow-toggle { font-size: 1.05rem; padding: 7px 11px; }
 .ribbon .snow-toggle[aria-pressed="true"] { background: #6a3fc1; color: #fff; }
@@ -99,6 +98,14 @@ body.sheet-full .info-btn, body.sheet-full .credits, body.sheet-full .legend { d
   border-radius: 12px; padding: 8px 12px; font-size: 0.72rem;
 }
 .credits a { color: var(--accent); }
+.credits p { margin: 0; }
+/* Light / dark / follow the phone. */
+.theme-pick { display: flex; gap: 2px; margin: 0 0 8px; padding: 2px; border-radius: 10px; background: var(--bg); }
+.theme-pick button {
+  flex: 1; border: 0; border-radius: 8px; padding: 5px 10px; cursor: pointer;
+  background: none; color: var(--muted); font: inherit; font-size: 0.78rem; font-weight: 600;
+}
+.theme-pick button[aria-pressed="true"] { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
 
 /* Snow-cover key: a slim strip just above the sheet. */
 .legend {
@@ -246,7 +253,7 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 /* This season and its projection: their own high-contrast color, with a halo, so they never blend
    into the blue/orange history bands. */
 .chart { --series: #111827; --halo: rgba(255, 255, 255, 0.9); }
-@media (prefers-color-scheme: dark) { .chart { --series: #ffffff; --halo: rgba(10, 14, 22, 0.85); } }
+:root[data-theme="dark"] .chart { --series: #ffffff; --halo: rgba(10, 14, 22, 0.85); }
 .chart .halo { fill: none; stroke: var(--halo); stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; opacity: 0.8; }
 .chart .now { fill: none; stroke: var(--series); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .chart .proj { fill: none; stroke: var(--series); stroke-width: 1.6; stroke-dasharray: 4 3; stroke-linecap: round; opacity: 0.85; }
@@ -276,10 +283,8 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .b-normal { fill: #dfe5ec; background: #dfe5ec; }
 .b-above { fill: #b9d3f6; background: #b9d3f6; }
 .b-high { fill: #7fa9ea; background: #7fa9ea; }
-@media (prefers-color-scheme: dark) {
-  .chart .band { opacity: 0.55; }
-  .band-key span { opacity: 0.8; }
-}
+:root[data-theme="dark"] .chart .band { opacity: 0.55; }
+:root[data-theme="dark"] .band-key span { opacity: 0.8; }
 .chart .median { fill: none; stroke: var(--series); stroke-width: 1.3; stroke-dasharray: 3 2.5; opacity: 0.6; }
 .chart .peak-dot { fill: var(--halo); stroke: var(--series); stroke-width: 1.3; opacity: 0.9; }
 .k-median { border-top: 1.5px dashed var(--text); opacity: 0.7; }
@@ -312,7 +317,7 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 /* ---------- Map labels ---------- */
 /* A light label: a small colored chip with the number, then the name as outlined text (no box). */
 :root { --map-text: #111827; --map-halo: rgba(255, 255, 255, 0.95); }
-@media (prefers-color-scheme: dark) { :root { --map-text: #f3f6fa; --map-halo: rgba(8, 12, 20, 0.9); } }
+:root[data-theme="dark"] { --map-text: #f3f6fa; --map-halo: rgba(8, 12, 20, 0.9); }
 .pin-host { background: none; border: 0; }
 .pin { position: relative; width: 0; height: 0; }
 .pin-dot {
@@ -332,7 +337,7 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 /* One contained pill per resort: a colored number chip plus the name, on a solid capsule, so it never
    blends with town names on the map. The chip's color carries the value (see the levels below). */
 :root { --pill-bg: #ffffff; --pill-text: #15202e; --pill-edge: rgba(15, 23, 42, 0.14); }
-@media (prefers-color-scheme: dark) { :root { --pill-bg: #1c2532; --pill-text: #eef2f7; --pill-edge: rgba(255, 255, 255, 0.16); } }
+:root[data-theme="dark"] { --pill-bg: #1c2532; --pill-text: #eef2f7; --pill-edge: rgba(255, 255, 255, 0.16); }
 .pin-bubble {
   position: absolute; left: 0; top: 0;
   display: flex; align-items: center; gap: 5px; padding: 2px 8px 2px 2px;
@@ -452,3 +457,8 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 @media (max-width: 340px) {
   .ribbon button { padding: 6px 7px; font-size: 0.8rem; }
 }
+
+/* Where the numbers come from: small print at the very bottom of a resort's details. */
+.notes { list-style: none; margin: 0 2px 16px; padding: 0; font-size: 0.72rem; color: var(--muted); line-height: 1.45; }
+.notes li + li { margin-top: 6px; }
+.notes a { color: var(--accent); }

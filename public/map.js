@@ -175,24 +175,27 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
   // smaller side (28–90 px), so a small window never gets long, sprawling lines. If labels still don't
   // fit, the whole set is retried at 90% and then 82% size; a label that can't fit even then shows just
   // its number, and only failing that, hides (its dot stays).
-  // Finished layouts are remembered (by screen size, padding and label texts), so switching back to
-  // a view or re-rendering the same data is instant.
+  // Finished layouts are remembered (by screen size, padding and label texts, not which one is selected),
+  // so tapping a resort, switching back to a view or re-rendering the same data is instant.
   // Never below ~9 px text: past that, a label shows just its number chip instead.
   const LABEL_SCALES = [1, 0.9, 0.82];
+  const BUDGET_MS = 70; // per label size
   const layoutCache = new Map();
   function layout() {
     const size = map.getSize();
     const pad = getPadding();
-    const key = JSON.stringify([size, pad, map.getZoom(), order.map((o) => [o.r.id, o.pin.bubble.textContent, o.pin.bubble.className.replace(/ compact/g, '')])]);
+    const key = JSON.stringify([size, pad, map.getZoom(), order.map((o) => [o.r.id, o.pin.bubble.textContent, o.pin.bubble.className.replace(/ (compact|is-selected)/g, '')]).sort()]);
     const cached = layoutCache.get(key);
     if (cached) {
       el.style.setProperty('--label-scale', cached.scale);
       return apply(cached.result);
     }
     let best = null;
-    for (const scale of LABEL_SCALES) {
+    // Time budget: on a slow phone, settle for a slightly less polished layout instead of freezing.
+    const start = performance.now();
+    for (const [i, scale] of LABEL_SCALES.entries()) {
       el.style.setProperty('--label-scale', scale);
-      const attempt = computeLayout(size, pad);
+      const attempt = computeLayout(size, pad, start + BUDGET_MS * (i + 1));
       if (!best || attempt.misses < best.misses) best = { ...attempt, scale };
       if (attempt.misses === 0) break;
     }
@@ -203,7 +206,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
   }
 
   // One layout at the current label size → { result, misses } (misses: labels shown number-only or hidden).
-  function computeLayout(size, pad) {
+  function computeLayout(size, pad, deadline) {
+    const late = () => performance.now() > deadline;
     const area = [pad.left + 2, pad.top + 2, size.x - pad.right - 2, size.y - pad.bottom - 2];
     const maxLead = Math.max(28, Math.min(90, 0.1 * Math.min(area[2] - area[0], area[3] - area[1])));
     // Un-hide everything first: a label hidden by the last layout would measure as zero size.
@@ -256,9 +260,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
     let seed = 7;
     const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     let bestStart = null;
-    for (let t = 0; t < 16; t++) {
+    for (let t = 0; t < 8 && !(t > 0 && late()); t++) {
       pick.clear();
-      const seq = [...labels].sort((a, b) => b.selected - a.selected || crowd(b) - crowd(a) + (t ? (rand() - 0.5) * 6 : 0));
+      const seq = [...labels].sort((a, b) => crowd(b) - crowd(a) + (t ? (rand() - 0.5) * 6 : 0));
       let hidden = 0;
       for (const it of seq) {
         let c = null;
@@ -281,7 +285,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
     // 2) Improve it: move one label at a time to another valid spot when that shortens things
     //    (sometimes accepting a worse move early on, to escape dead ends). Clashes are never allowed.
     let temp = 3000;
-    for (let k = 0; k < 12000 && labels.length; k++) {
+    for (let k = 0; k < 12000 && labels.length && !(k % 256 === 0 && late()); k++) {
       const it = labels[Math.floor(rand() * labels.length)];
       const next = it.cands[Math.floor(rand() * it.cands.length)];
       const cur = pick.get(it);
@@ -303,7 +307,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
       }
       return c;
     };
-    for (let round = 0; round < 3; round++) {
+    for (let round = 0; round < 3 && !(round > 0 && late()); round++) {
       for (const it of labels.filter((x) => !pick.get(x))) {
         // Spots needing the fewest labels moved come first.
         const options = it.cands
@@ -340,7 +344,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
       }
       return c;
     };
-    for (let k = 0; k < 3500 && labels.length; k++) {
+    for (let k = 0; k < 3500 && labels.length && !(k % 128 === 0 && late()); k++) {
       // Favour the labels that are furthest out.
       const a = labels[Math.floor(rand() * labels.length)];
       const b = labels[Math.floor(rand() * labels.length)];

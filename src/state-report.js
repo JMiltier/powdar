@@ -1,11 +1,12 @@
 // Builds one state's data file (public/data/<state>.json) for states other than Colorado. Same shape
 // as Colorado's data.json, minus what only Colorado has (Colorado Ski Country's feed, opening dates).
 // Forecasts, snowpack and NOAA snow depth refresh every few hours (to stay inside the free forecast
-// allowance); live lift status refreshes every update.
+// allowance); live lift status refreshes every update during the ski day.
 import { MODELS, modelUrl, snowHours } from './models.js';
 import { parseSnotel, snotelUrl, stationSeason, waterYear } from './snotel.js';
 import { feedReader, summarizeLifts } from './lifts.js';
 import { nohrscUrl, parseNohrsc } from './noaa.js';
+import { liftsDue } from './lift-hours.js';
 import { blendForecast, nwsSnowHours, localDate, seasonOf, getJson, getText, pool, MODEL_DAYS } from './report.js';
 
 const NWS = 'https://api.weather.gov/gridpoints';
@@ -76,9 +77,14 @@ export async function buildStateReport({ code, name, resorts, prev, refresh, fet
     }
   }
 
-  const lifts = await pool(resorts, 4, (r) => fetchLifts(fetchFn, r, now, backoff, log));
+  // Lift feeds only during the ski day (plus one check after); otherwise the last check stands.
+  const lifts = await pool(resorts, 4, (r) => (liftsDue(code, now, old.get(r.id)?.lifts?.checked)
+    ? fetchLifts(fetchFn, r, now, backoff, log)
+    : old.get(r.id)?.lifts ?? null));
   const out = resorts.map((r, i) => {
-    const liveLifts = lifts[i] ?? (old.get(r.id)?.lifts && Date.now() - Date.parse(old.get(r.id).lifts.checked) < 3 * 3_600_000 ? old.get(r.id).lifts : null);
+    // A failed check keeps the last answer for a few hours (overnight, the after-hours one stands).
+    const prevLifts = old.get(r.id)?.lifts;
+    const liveLifts = lifts[i] ?? (prevLifts && now - Date.parse(prevLifts.checked) < 3 * 3_600_000 ? prevLifts : null);
     return {
       id: r.id,
       name: r.name,
