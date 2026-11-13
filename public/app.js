@@ -1016,8 +1016,18 @@ function renderOverview() {
       normal,
       peak: { swe: Math.round(peakAt[1] * 10) / 10, date: dateOfSeason(peakAt[0]) },
     };
-    snowChart = `${seasonChart(st, null, null, bands)}
-      <p class="legend-line"><i class="k-now"></i>This season <i class="k-median"></i>Normal</p>
+    // The next two weeks, statewide: each station's projected gain (the average of its resorts'
+    // forecasts), averaged over the stations, as the dashed line on from "now".
+    const perStation = list.map((stn) => {
+      const rows = d.resorts.filter((r) => r.station === stn.id && r.forecast?.waterAhead?.length).map((r) => r.forecast.waterAhead);
+      if (!rows.length) return null;
+      const n = Math.min(...rows.map((x) => x.length));
+      return Array.from({ length: n }, (_, i) => rows.reduce((a, x) => a + x[i], 0) / rows.length);
+    }).filter(Boolean);
+    const days = perStation.length ? Math.min(...perStation.map((x) => x.length)) : 0;
+    const ahead = days ? Array.from({ length: days }, (_, i) => perStation.reduce((a, x) => a + x[i], 0) / perStation.length) : null;
+    snowChart = `${seasonChart(st, ahead, null, bands)}
+      <p class="legend-line"><i class="k-now"></i>This season ${ahead ? '<i class="k-proj"></i>Next 2 weeks ' : ''}<i class="k-median"></i>Normal</p>
       <p class="band-key"><span class="b-high">Snowiest 10%</span><span class="b-above">Above</span><span class="b-normal">Typical</span><span class="b-below">Below</span><span class="b-low">Driest 10%</span></p>`;
     notes.push(`Ski-country snowpack: the average of the ${list.length} high-elevation SNOTEL stations near Colorado's resorts (not all of Colorado) (USDA NRCS Snow Survey), against the same average over the ${hist.seasons} winters ${esc(hist.first)} to ${esc(hist.last)}; % of normal is their total snow water against their total 1991–2020 median.`);
   }
