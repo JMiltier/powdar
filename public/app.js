@@ -333,8 +333,28 @@ function camsSection(r, notes) {
       <button type="button" class="cam" role="listitem" data-cam="${i}" aria-label="${esc(cam.name)} webcam">
         <img src="${esc(camSrc(cam.image))}" alt="" loading="lazy" decoding="async" onerror="this.closest('.cam').hidden = true">
         <span>${esc(cam.name)}</span>
+        <em class="cam-age" data-cam-age="${i}">${cam.fresh === 'live' ? '<i></i>Live' : cam.updated ? esc(shortAgo(cam.updated)) : ''}</em>
       </button>`).join('')}
     </div>`;
+}
+// "5 min ago" / "2 hr ago" (short, for a badge).
+const shortAgo = (iso) => {
+  const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} hr ago` : `${Math.round(m / 1440)} days ago`;
+};
+// For cameras with a real "taken at" time, read it straight from the camera's server where it allows
+// (fresher than the update's note of it).
+function refreshCamAges(r) {
+  r.cams?.cams?.forEach((cam, i) => {
+    if (cam.fresh === 'live') return;
+    fetch(camSrc(cam.image), { method: 'HEAD', cache: 'no-store' }).then((res) => {
+      const lm = res.ok && res.headers.get('last-modified');
+      if (!lm) return;
+      cam.updated = new Date(lm).toISOString();
+      const el = document.querySelector(`[data-cam-age="${i}"]`);
+      if (el && state.selected === r.id) el.textContent = shortAgo(cam.updated);
+    }).catch(() => {});
+  });
 }
 function openCam(r, i) {
   const c = r.cams?.cams?.[i];
@@ -344,7 +364,7 @@ function openCam(r, i) {
     <div class="cam-view-inner">
       <img src="${esc(camSrc(c.image))}" alt="${esc(`${r.name}: ${c.name} webcam`)}">
       <div class="cam-view-bar">
-        <span><b>${esc(r.name)}</b> · ${esc(c.name)}</span>
+        <span><b>${esc(r.name)}</b> · ${esc(c.name)}${c.fresh === 'live' ? ' · <span class="live-dot"></span>Live' : c.updated ? ` · ${esc(shortAgo(c.updated))}` : ''}</span>
         <span>${c.live ? `<a href="${esc(c.live)}" target="_blank" rel="noopener">Live video${EXT_ICON}</a>` : ''}
           <a href="${esc(r.cams.page)}" target="_blank" rel="noopener">All cams${EXT_ICON}</a></span>
       </div>
@@ -637,6 +657,7 @@ function renderDetail(r) {
     ${season}
     ${temps}
     ${notes.length ? `<h3 class="section">About the data</h3><ul class="notes">${notes.map((n) => `<li>${n}</li>`).join('')}</ul>` : ''}`;
+  if (r.cams?.cams?.length) refreshCamAges(r);
 }
 
 // ---------- season chart ----------

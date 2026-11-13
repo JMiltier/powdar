@@ -8,6 +8,9 @@ import { liftsDue } from './lift-hours.js';
 import { VAIL_SITES, snowPage, liftPage, parseVailSnow, parseVailTerrain } from './vail.js';
 import { fetchInsights } from './insights.js';
 import CAMS from './cams.json' with { type: 'json' };
+
+// Webcam servers that make a fresh frame each time they're asked (so the picture is always current).
+export const camIsLive = (url) => /player\.brownrice\.com\/snapshot\/|ipcamlive\.com\/player\/snapshot|hdrelay\.io\/api\/public\/poster|hdrelay\.com\/camera\/[^/]+\/snapshot/.test(url);
 import { nohrscUrl, parseNohrsc } from './noaa.js';
 
 export const CSC_FEED = 'https://snow.coloradoski.com/view/publicreport-feed';
@@ -427,6 +430,23 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     }
   }
 
+  // When each webcam image was taken, for cameras whose server says so (Last-Modified). Cameras that
+  // make a fresh frame on request are "live" and need no check. (The app re-reads the time itself where
+  // the server allows it; this is for the ones that don't.)
+  const camsWithTimes = structuredClone(CAMS);
+  const camList = Object.values(camsWithTimes).flatMap((e) => e.cams ?? []);
+  await pool(camList, 6, async (cam) => {
+    if (camIsLive(cam.image)) { cam.fresh = 'live'; return; }
+    for (const method of ['HEAD', 'GET']) { // (some servers only answer a full request)
+      try {
+        const res = await fetchFn(cam.image, { method, headers: { 'User-Agent': USER_AGENT } });
+        const lm = res.headers.get('last-modified');
+        res.body?.cancel?.();
+        if (res.ok && lm) { cam.updated = new Date(lm).toISOString(); break; }
+      } catch { /* try the next way, or no time */ }
+    }
+  });
+
   // The forecasters' key messages and active alerts (see insights.js).
   const insights = await fetchInsights(getJson, fetchFn, { backoff, log });
 
@@ -464,8 +484,9 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       lifts: liftsById[r.id] ?? null,
       noaa: noaaSnow[i] ?? null,
       avgSnow: r.avgSnow ?? null,
-      // Webcams (src/cams.json, scripts/cams.mjs): still images that update on their own.
-      cams: CAMS[r.id] ?? null,
+      // Webcams (src/cams.json, scripts/cams.mjs): still images that update on their own, with when
+      // each was last taken where the camera's server says (see camTimes below).
+      cams: camsWithTimes[r.id] ?? null,
       // Key into `snowpack` (resorts can share a station).
       station: snowpack[r.snotel[0]] ? r.snotel[0] : null,
     };
