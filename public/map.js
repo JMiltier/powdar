@@ -157,13 +157,19 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     dragging: false, touchZoom: false, doubleClickZoom: false, scrollWheelZoom: false, boxZoom: false, keyboard: false,
   });
   // detectRetina: sharp relief on high-resolution phone screens (one zoom level more detail).
-  const base = L.tileLayer(isDark() ? TILES.dark : TILES.light, { maxZoom: 13, detectRetina: true }).addTo(map);
-  // A tile that fails to load (a mobile network blip) gets one more try instead of leaving a blank.
-  base.on('tileerror', ({ tile }) => {
-    if (tile.dataset.retried) return;
-    tile.dataset.retried = '1';
-    setTimeout(() => { tile.src = `${tile.src.split('?')[0]}?retry=1`; }, 1500);
-  });
+  // (A new layer on theme change: swapping the address of the old one makes Leaflet ask for tiles
+  // at a fractional zoom at this map's in-between zoom level, which come back blank.)
+  const relief = () => {
+    const layer = L.tileLayer(isDark() ? TILES.dark : TILES.light, { maxZoom: 13, detectRetina: true });
+    // A tile that fails to load (a mobile network blip) gets one more try instead of leaving a blank.
+    layer.on('tileerror', ({ tile }) => {
+      if (tile.dataset.retried) return;
+      tile.dataset.retried = '1';
+      setTimeout(() => { tile.src = `${tile.src.split('?')[0]}?retry=1`; }, 1500);
+    });
+    return layer.addTo(map);
+  };
+  let base = relief();
 
   // Snow cover gets its own pane so the color-muting filter on the base map doesn't wash it out.
   map.createPane('snow').style.zIndex = 250;
@@ -858,7 +864,11 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     setRoads,
     // Light or dark relief to match the theme.
     setTheme() {
-      base.setUrl(isDark() ? TILES.dark : TILES.light);
+      // The new relief loads under the old one, which goes once it's there (no blank flash).
+      const old = base;
+      base = relief();
+      base.once('load', () => old.remove());
+      setTimeout(() => old.remove(), 4000);
       if (layerName === 'snow') drawLayer(); // its edge depends on the theme
     },
     // Radar loop: play or pause (paused shows the newest frame).
