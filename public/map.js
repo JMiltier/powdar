@@ -102,8 +102,14 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, outli
     dragging: false, touchZoom: false, doubleClickZoom: false, scrollWheelZoom: false, boxZoom: false, keyboard: false,
   });
   const base = L.tileLayer(isDark() ? TILES.dark : TILES.light, { maxZoom: 12 }).addTo(map);
-  // The state's border, faintly, so the map has a shape without town names. [[lat, lon], …]
-  if (outline) L.polyline(outline, { className: 'state-line', interactive: false }).addTo(map);
+  // The state stands out: everything outside its border is dimmed, and the border is a fine line.
+  // [[lat, lon], …]
+  if (outline) {
+    map.createPane('mask').style.zIndex = 260; // over the snow cover, under the resorts
+    const world = [[85, -180], [85, 180], [-85, 180], [-85, -180]];
+    L.polygon([world, outline], { pane: 'mask', className: 'outside', interactive: false, stroke: false }).addTo(map);
+    L.polyline(outline, { pane: 'mask', className: 'state-line', interactive: false }).addTo(map);
+  }
 
   // Snow cover gets its own pane so the color-muting filter on the base map doesn't wash it out.
   map.createPane('snow').style.zIndex = 250;

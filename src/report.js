@@ -220,6 +220,8 @@ export function statusFor({ live, isOpen, open, close, when, opened, note, repor
     const pct = report?.trails?.total ? Math.round((report.trails.open / report.trails.total) * 100) : null;
     return { state: 'open', label: 'Open', pct, detail: parts.join(' · ') || null };
   }
+  // Opening day, before the lifts start (or before the resort's report says so).
+  if (open && open === today) return { state: 'soon', label: 'Opens today', date: open, detail: null };
   if (open && open > today) {
     return { state: 'soon', label: `Opens ${when ?? shortDate(open)}`, date: open, detail: live ? null : 'Planned date' };
   }
