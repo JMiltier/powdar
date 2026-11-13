@@ -9,19 +9,26 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <header class="top">
     <div class="top-row">
       <h1><span aria-hidden="true">❄</span> Colorado Snow</h1>
-      <button id="refresh" class="icon-btn" type="button" aria-label="Refresh">↻</button>
+      <div class="top-actions">
+        <div class="view-switch" role="group" aria-label="View">
+          <button type="button" data-view="map" aria-pressed="false">Map</button>
+          <button type="button" data-view="list" aria-pressed="true">List</button>
+        </div>
+        <button id="refresh" class="icon-btn" type="button" aria-label="Refresh">↻</button>
+      </div>
     </div>
     <p id="updated" class="updated">Loading…</p>
+    <p id="notice" class="notice" hidden></p>
   </header>
 
   <main>
-    <p id="notice" class="notice" hidden></p>
     <section id="summary" class="summary" aria-live="polite"></section>
 
     <nav class="controls" aria-label="Sort and filter">
@@ -43,12 +50,29 @@
     </section>
   </main>
 
+  <section id="map-view" class="map-view" hidden aria-label="Snow map">
+    <div class="map-metrics seg" role="group" aria-label="Show on map">
+      <button type="button" data-metric="next72" aria-pressed="true">Next 3 days</button>
+      <button type="button" data-metric="next7" aria-pressed="false">7 days</button>
+      <button type="button" data-metric="new24" aria-pressed="false">Last 24 hrs</button>
+      <button type="button" data-metric="depth" aria-pressed="false">Base</button>
+    </div>
+    <p id="map-hint" class="map-hint"></p>
+    <div id="map"></div>
+    <div id="sheet" class="sheet" hidden>
+      <button id="sheet-close" class="sheet-close" type="button" aria-label="Close">×</button>
+      <div id="sheet-body"></div>
+    </div>
+  </section>
+
   <footer class="foot">
     <p>Tap ☆ to pin a resort to the top. Tap a resort for its day-by-day forecast.</p>
+    <p>Map © OpenStreetMap contributors, style © OpenTopoMap (CC-BY-SA).</p>
     <p>Snow forecast: National Weather Service. Open status, lifts and snow totals: Colorado Ski Country USA.
       Vail, Beaver Creek, Breckenridge, Keystone, Crested Butte and Wolf Creek show planned dates only, so check their sites to be sure.</p>
   </footer>
 
+  <script src="vendor/leaflet/leaflet.js"></script>
   <script src="app.js" type="module"></script>
 </body>
 </html>

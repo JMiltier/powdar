@@ -178,3 +178,81 @@ h1 { margin: 0; font-size: 1.35rem; letter-spacing: 0.2px; }
 .small { font-size: 0.85rem; }
 
 .foot { padding: 4px 18px calc(24px + env(safe-area-inset-bottom)); font-size: 0.8rem; color: var(--muted); }
+
+/* ---------- Header view switch ---------- */
+.top-actions { display: flex; align-items: center; gap: 8px; }
+.view-switch { display: inline-flex; background: rgba(255, 255, 255, 0.15); border-radius: 999px; padding: 3px; }
+.view-switch button {
+  border: 0; background: none; color: #fff; font: inherit; font-weight: 700; font-size: 0.9rem;
+  padding: 7px 14px; border-radius: 999px; cursor: pointer; min-height: 38px;
+}
+.view-switch button[aria-pressed="true"] { background: #fff; color: #1b4f9c; }
+.top .notice { max-width: 640px; margin: 8px auto 2px; }
+@media (max-width: 380px) { h1 { font-size: 1.15rem; } .view-switch button { padding: 7px 11px; } }
+
+/* ---------- Map view ---------- */
+body.map-mode main, body.map-mode .foot { display: none; }
+body.map-mode { overflow: hidden; }
+.map-view {
+  position: fixed; left: 0; right: 0; bottom: 0; top: var(--header-h, 92px);
+  display: flex; flex-direction: column; background: var(--bg);
+}
+.map-view[hidden] { display: none; }
+.map-metrics { align-self: center; margin: 8px 8px 0; max-width: calc(100% - 16px); overflow-x: auto; }
+.map-metrics button { padding: 8px 12px; white-space: nowrap; }
+.map-hint { margin: 4px 12px 6px; font-size: 0.78rem; color: var(--muted); text-align: center; }
+#map { flex: 1; min-height: 0; background: var(--bg); }
+
+.pin-host { background: none; border: 0; }
+.pin { position: relative; width: 0; height: 0; }
+.pin-dot {
+  position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%;
+  background: #1b4f9c; box-shadow: 0 0 0 1.5px #fff; display: none;
+}
+.pin.moved .pin-dot { display: block; }
+.pin-line { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.pin-line line { stroke: #1b4f9c; stroke-width: 1.5; opacity: 0.7; }
+.pin:not(.moved) .pin-line { display: none; }
+.pin-bubble {
+  position: absolute; left: 0; top: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-width: 34px; padding: 3px 7px; border-radius: 10px;
+  border: 2px solid rgba(0, 0, 0, 0.12); background: #fff; color: #15202e;
+  font: inherit; line-height: 1.05; cursor: pointer; white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25); pointer-events: auto;
+}
+.pin-val { font-size: 0.95rem; font-weight: 800; }
+.pin-bubble { padding: 2px 6px 3px; }
+.pin-name { display: none; font-size: 0.6rem; font-weight: 700; opacity: 0.85; }
+#map.show-names .pin-name { display: block; }
+#map:not(.show-names) .pin-bubble { min-width: 30px; padding: 2px 5px; border-radius: 8px; }
+/* Snow colour levels: white for nothing, deepening blues, purple for big totals. */
+/* No number for this resort: a small grey dot you can still tap. */
+.pin-bubble.lvl-none, #map:not(.show-names) .pin-bubble.lvl-none {
+  min-width: 0; width: 14px; height: 14px; padding: 0; border-radius: 50%; background: #c3cad3; border-color: #fff;
+}
+.pin-bubble.lvl-none > * { display: none !important; }
+.pin-bubble.lvl-0 { background: #fff; color: #5f6b7a; }
+.pin-bubble.lvl-1 { background: #dbe9fb; }
+.pin-bubble.lvl-2 { background: #9cc3f5; }
+.pin-bubble.lvl-3 { background: #4f8fe6; color: #fff; }
+.pin-bubble.lvl-4 { background: #1f5fc4; color: #fff; }
+.pin-bubble.lvl-5 { background: #6a3fc1; color: #fff; }
+.pin-bubble.is-open { border-color: #1fa14f; }
+.pin-bubble.is-selected { outline: 3px solid #e8a400; outline-offset: 1px; }
+
+.sheet {
+  position: absolute; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom));
+  max-width: 560px; margin-inline: auto; max-height: 62%; overflow-y: auto; z-index: 1000;
+  background: var(--card); border-radius: var(--radius); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+}
+.sheet .card { box-shadow: none; }
+.sheet .card summary { padding-right: 44px; }
+.sheet-close {
+  position: absolute; top: 6px; right: 6px; z-index: 2; width: 36px; height: 36px;
+  border: 0; border-radius: 50%; background: var(--bg); color: var(--text); font-size: 1.4rem; cursor: pointer;
+}
+.leaflet-container { font: inherit; }
+/* Calm the terrain colours so the snow bubbles stand out. */
+.leaflet-tile-pane { filter: saturate(0.45) brightness(1.08); }
+@media (prefers-color-scheme: dark) { .leaflet-tile-pane { filter: saturate(0.4) brightness(0.6) contrast(1.1); } }
