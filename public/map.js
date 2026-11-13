@@ -11,17 +11,66 @@ const TILES = {
   dark: 'https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade_Dark/MapServer/tile/{z}/{y}/{x}',
 };
 const isDark = () => document.documentElement.dataset.theme === 'dark';
-// NASA GIBS: each day's real satellite photo (VIIRS on NOAA-20, ~250 m, a few hours after its early-
-// afternoon pass), free and keyless. 'sat' is true color (snow white, clouds white too); 'satsnow' is
+// NASA GIBS: each day's real satellite photo (VIIRS, ~250 m, a few hours after the early-afternoon
+// passes), free and keyless. 'sat' is true color (snow white, clouds white too); 'satsnow' is
 // shortwave-infrared false color, where snow shows bright cyan and clouds stay white.
+// One satellite's swath often misses part of Colorado (GIBS sends those parts black), so the photo is
+// pieced together: NOAA-21, then NOAA-20 where 21 has nothing, then the day before for what's left.
 const GIBS = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best';
-const SAT_LAYERS = { sat: 'VIIRS_NOAA20_CorrectedReflectance_TrueColor', satsnow: 'VIIRS_NOAA20_CorrectedReflectance_BandsM11-I2-I1' };
-export const satTile = (kind, date) => `${GIBS}/${SAT_LAYERS[kind]}/default/${date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
+const SAT_BANDS = { sat: 'CorrectedReflectance_TrueColor', satsnow: 'CorrectedReflectance_BandsM11-I2-I1' };
+const SATS = ['VIIRS_NOAA21', 'VIIRS_NOAA20'];
+const gibsTile = (sat, kind, date) => `${GIBS}/${sat}_${SAT_BANDS[kind]}/default/${date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
+export const satTile = (kind, date) => gibsTile(SATS[0], kind, date);
+const dayBefore = (iso) => new Date(Date.parse(`${iso}T12:00:00Z`) - 864e5).toISOString().slice(0, 10);
+const loadImage = (src) => new Promise((ok) => {
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => ok(img);
+  img.onerror = () => ok(null);
+  img.src = src;
+});
+const SatLayer = L.GridLayer.extend({
+  createTile(coords, done) {
+    const size = this.getTileSize();
+    const tile = document.createElement('canvas');
+    tile.width = size.x;
+    tile.height = size.y;
+    const { kind, date } = this.options;
+    const sources = [date, dayBefore(date)].flatMap((d) => SATS.map((sat) => gibsTile(sat, kind, d)));
+    const ctx = tile.getContext('2d', { willReadFrequently: true });
+    let out = null; // the pieced-together pixels
+    let missing = Infinity;
+    (async () => {
+      for (const tpl of sources) {
+        const img = await loadImage(L.Util.template(tpl, coords));
+        if (!img) continue;
+        if (!out) {
+          ctx.drawImage(img, 0, 0, size.x, size.y);
+          out = ctx.getImageData(0, 0, size.x, size.y);
+        } else {
+          ctx.clearRect(0, 0, size.x, size.y);
+          ctx.drawImage(img, 0, 0, size.x, size.y);
+          const add = ctx.getImageData(0, 0, size.x, size.y).data;
+          const px = out.data;
+          for (let i = 0; i < px.length; i += 4) if (empty(px, i) && !empty(add, i)) { px[i] = add[i]; px[i + 1] = add[i + 1]; px[i + 2] = add[i + 2]; }
+        }
+        missing = 0;
+        for (let i = 0; i < out.data.length; i += 16) if (empty(out.data, i)) missing++;
+        if (!missing) break;
+      }
+      if (out) ctx.putImageData(out, 0, 0);
+      done(null, tile);
+    })();
+    return tile;
+  },
+});
+// No data: black (JPEG blurs the edge a little, so near-black counts too).
+const empty = (px, i) => px[i] < 10 && px[i + 1] < 10 && px[i + 2] < 10;
 // Fine terrain shading laid over the satellite photo (multiplied in CSS) so ridges stay crisp.
 const SHADE = 'https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}';
 // Shown behind the ⓘ button instead of a permanent banner.
 export const CREDITS = 'Hillshade © <a href="https://www.esri.com">Esri</a> and its data partners (USGS, NASA, NGA, CGIAR and others) · '
-  + 'satellite: <a href="https://earthdata.nasa.gov/gibs">NASA GIBS</a> (VIIRS, NOAA-20) · '
+  + 'satellite: <a href="https://earthdata.nasa.gov/gibs">NASA GIBS</a> (VIIRS, NOAA-21 and NOAA-20) · '
   + 'highways © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · '
   + 'snow cover: <a href="https://www.nohrsc.noaa.gov/nsa/">NOAA NOHRSC</a> · radar: <a href="https://www.nssl.noaa.gov/projects/mrms/">NOAA MRMS</a> · '
   + 'snow forecast: <a href="https://www.wpc.ncep.noaa.gov/wwd/winter_wx.shtml">NWS Weather Prediction Center</a> · '
@@ -196,7 +245,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   const relief = () => {
     const layer = baseKind === 'terrain'
       ? L.tileLayer(isDark() ? TILES.dark : TILES.light, { maxZoom: 13, detectRetina: true })
-      : L.tileLayer(satTile(baseKind, satDate), { maxZoom: 13, maxNativeZoom: 9 });
+      : new SatLayer({ kind: baseKind, date: satDate, maxZoom: 13, maxNativeZoom: 9 });
     // A tile that fails to load (a mobile network blip) gets one more try instead of leaving a blank.
     layer.on('tileerror', ({ tile }) => {
       if (tile.dataset.retried) return;
