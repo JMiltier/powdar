@@ -1,4 +1,5 @@
 import { createSnowMap, CREDITS, satTile } from './map.js?v=__V__';
+import { weatherIcon, UI } from './icons.js?v=__V__';
 
 // One data file per state (data/co.json, data/ut.json…), plus an index of states for the picker.
 const dataUrl = (code) => `data/${code.toLowerCase()}.json`;
@@ -331,18 +332,6 @@ function seasonLevel(pct) {
 }
 
 // A plain-words sky icon from the Weather Service's short forecast.
-function skyIcon(text = '') {
-  const t = text.toLowerCase();
-  if (/thunder/.test(t)) return '⛈️';
-  if (/snow|flurr|blizzard/.test(t)) return '🌨️';
-  if (/rain|drizzle|showers/.test(t)) return '🌧️';
-  if (/fog|haze|smoke/.test(t)) return '🌫️';
-  if (/partly|mostly sunny|mostly clear/.test(t)) return '⛅';
-  if (/sunny|clear/.test(t)) return '☀️';
-  if (/cloud|overcast/.test(t)) return '☁️';
-  if (/wind|breezy/.test(t)) return '💨';
-  return '';
-}
 
 // Buttons depend on what the state has: Dates only where opening dates exist (Colorado); Season where
 // there are snow stations, NOAA snow Depth where there aren't.
@@ -433,7 +422,7 @@ function renderDetail(r) {
     <div class="days">${f.days.map((d) => `
       <div class="day${d.snow >= 1 ? ' has-snow' : ''}">
         <span class="day-name">${weekday(d.date, today)}</span>
-        <span class="day-sky" title="${esc(d.sky ?? d.night ?? '')}">${skyIcon(d.sky ?? d.night) || '&nbsp;'}</span>
+        <span class="day-sky" title="${esc(d.sky ?? d.night ?? '')}">${weatherIcon(d.sky ?? d.night) || '&nbsp;'}</span>
         <span class="day-temp">${d.hi ?? '–'}°<i>${d.lo ?? '–'}°</i></span>
         <span class="day-snow">${d.snow >= 1 ? inches(d.snow) : d.snow > 0 ? '<1″' : ''}</span>
       </div>`).join('')}
@@ -481,13 +470,13 @@ function renderDetail(r) {
   const sources = f?.sources?.map((s) => SOURCE_NAMES[s] ?? s) ?? [];
   $('#grab-detail').innerHTML = `
     <div class="detail-head">
-      <button type="button" class="icon" data-back aria-label="Back to all resorts">‹</button>
+      <button type="button" class="icon" data-back aria-label="Back to all resorts">${UI.back}</button>
       <div class="detail-title">
         <h2><span>${esc(r.name)}<a class="site-link" href="${esc(r.url)}" target="_blank" rel="noopener" aria-label="${esc(r.name)} website (${esc(siteName(r.url))})" title="${esc(siteName(r.url))}">${EXT_ICON}</a></span>
           <span class="pill pill-${esc(r.status.state)}">${esc(r.status.label)}</span></h2>
         ${seasonText(r, today) ? `<p>${esc(seasonText(r, today))}</p>` : ''}
       </div>
-      <button type="button" class="icon star" data-fav="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Unpin' : 'Pin'} ${esc(r.name)}">${fav ? '★' : '☆'}</button>
+      <button type="button" class="icon star" data-fav="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Unpin' : 'Pin'} ${esc(r.name)}">${fav ? UI.starFilled : UI.star}</button>
     </div>`;
   const top = `
     <div class="stats">
@@ -1187,6 +1176,8 @@ window.addEventListener('resize', () => {
 WIDE.addEventListener('change', onResize);
 
 $('#credit-text').innerHTML = CREDITS;
+$('#info-btn').innerHTML = UI.info;
+$('#snow-btn').innerHTML = UI.layers;
 applyTheme();
 DARK.addEventListener('change', () => applyTheme());
 setSheet('peek', false);
