@@ -37,13 +37,14 @@ export const RESORTS = [
 // Planned dates for resorts without a live feed, keyed by season. Update each fall;
 // a season with no entry shows "Date TBA" instead of last year's dates.
 // `when` replaces the exact date in the wording when a resort only gave a rough target.
-// Sources: Vail Resorts' 2026-27 announcement (coloradobiz.com).
+// `opened: true` once news confirms the resort actually opened (shows as Open, not "Probably open").
+// Sources: Vail Resorts' 2026-27 announcement (coloradobiz.com); Keystone opened Oct 30 (unofficialnetworks.com).
 export const PLANNED = {
   '2026-27': {
     breckenridge: { open: '2026-11-06' },
     vail: { open: '2026-11-13' },
     'beaver-creek': { open: '2026-11-25' },
     'crested-butte': { open: '2026-11-25' },
-    keystone: { open: '2026-10-31', when: 'late October' },
+    keystone: { open: '2026-10-30', opened: true },
   },
 };

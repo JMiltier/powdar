@@ -107,7 +107,7 @@ const shortDate = (ymd) =>
   new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' });
 
 // One status per resort, phrased for people: what's the situation and how sure are we.
-export function statusFor({ live, isOpen, open, close, when, note, report }, today) {
+export function statusFor({ live, isOpen, open, close, when, opened, note, report }, today) {
   if (close && today > close) return { state: 'done', label: 'Closed for the season' };
   if (live && isOpen) {
     const parts = [];
@@ -118,8 +118,10 @@ export function statusFor({ live, isOpen, open, close, when, note, report }, tod
   if (open && open > today) {
     return { state: 'soon', label: `Opens ${when ?? shortDate(open)}`, date: open, detail: live ? null : 'Planned date' };
   }
+  if (open && opened) return { state: 'open', label: 'Open', date: open, detail: `Opened ${shortDate(open)} · no live lift count` };
   if (open && live) return { state: 'late', label: 'Not open yet', date: open, detail: `Was planned for ${shortDate(open)}` };
-  if (open) return { state: 'likely', label: 'Likely open', date: open, detail: `Planned to open ${when ?? shortDate(open)} · no live status` };
+  // Planned date has passed but we can't read this resort's site to confirm it.
+  if (open) return { state: 'likely', label: 'Probably open', date: open, detail: `Set to open ${when ?? shortDate(open)} · can't confirm live` };
   return { state: 'tba', label: 'Opening date TBA', detail: note ?? null };
 }
 
@@ -182,7 +184,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     const p = planned[r.id] ?? {};
     const facts = live
       ? { live, isOpen: c.isOpen, open: c.open, close: c.close, report: c.report }
-      : { live, isOpen: false, open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when, note: p.note };
+      : { live, isOpen: false, open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when, opened: p.opened, note: p.note };
     // A report from a closed resort is usually last season's leftovers.
     const report = live && c.isOpen ? c.report : null;
     return {
