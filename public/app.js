@@ -11,7 +11,7 @@ const ALL_STATES = false;
 const STATE_CODES = !ALL_STATES ? new Set(['CO']) : new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
 const validCode = (c) => (c && STATE_CODES.has(String(c).toUpperCase()) ? String(c).toUpperCase() : null);
 const STORE = {
-  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', sort: 'cs:sort', panel: 'cs:panel',
+  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', sort: 'cs:sort', unit: 'cs:unit', panel: 'cs:panel',
   state: 'cs:state', states: 'cs:states', theme: 'cs:theme',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
@@ -79,6 +79,7 @@ const state = {
   openOnly: read(STORE.openOnly, false),
   favsOnly: read(STORE.favsOnly, false),
   pass: read(STORE.pass, 'all'), // 'all', 'epic', 'ikon', 'indy' or 'other'
+  unit: read(STORE.unit, 'F'), // temperatures in 'F' or 'C' (the data is always °F)
   sort: read(STORE.sort, 'name'), // the list: 'name' (A–Z), 'value' (the map view's number) or 'open'
   // The map overlay: 'snow' (on the ground; the default), 'radar', 'outlook' or 'none'.
   layer: read(STORE.layer, null) ?? (read(STORE.snowDepth, true) ? 'snow' : 'none'),
@@ -473,11 +474,11 @@ function renderDetail(r) {
       <div class="day${d.snow >= 1 ? ' has-snow' : ''}">
         <span class="day-name">${weekday(d.date, today)}</span>
         <span class="day-sky" title="${esc(d.sky ?? d.night ?? '')}">${weatherIcon(d.sky ?? d.night) || '&nbsp;'}</span>
-        <span class="day-temp">${d.hi ?? '–'}°<i>${d.lo ?? '–'}°</i></span>
+        <span class="day-temp">${deg(d.hi)}<i>${deg(d.lo)}</i></span>
         <span class="day-snow">${d.snow >= 1 ? inches(d.snow) : d.snow > 0 ? '<1″' : ''}</span>
       </div>`).join('')}
     </div>
-    ${f.week2 ? `<p class="week2"><b>Days 8–14:</b> about ${inches(f.week2.mid)} more${rangeText(f.week2.range) ? ` (${rangeText(f.week2.range)})` : ''}</p>` : ''}` : '<p class="muted">Forecast unavailable right now.</p>';
+    <p class="week2">${f.week2 ? `<b>Days 8–14:</b> about ${inches(f.week2.mid)} more${rangeText(f.week2.range) ? ` (${rangeText(f.week2.range)})` : ''} · ` : ''}<span class="muted">Highs/lows in ${unitLabel()}</span></p>` : '<p class="muted">Forecast unavailable right now.</p>';
 
   // Where every number comes from, gathered at the very bottom for anyone curious.
   const notes = [];
@@ -748,7 +749,7 @@ function renderOverview() {
     const week = temps.slice(-7).filter(([dd]) => median(dd) != null);
     const diff = week.length >= 4 ? Math.round(week.reduce((a, [dd, v]) => a + v - median(dd), 0) / week.length) : null;
     tempBlock = `<p class="season-head">${diff == null ? 'This season so far, against normal' : Math.abs(diff) <= 1 ? 'The last week has been <b>about normal</b> statewide'
-      : `The last week has been <span class="temp-diff ${diff > 0 ? 'warm' : 'cold'}">${Math.abs(diff)}° ${diff > 0 ? 'warmer' : 'colder'}</span> than normal statewide`}</p>
+      : `The last week has been <span class="temp-diff ${diff > 0 ? 'warm' : 'cold'}">${Math.round(Math.abs(toUnit(diff, true)))}${unitLabel()} ${diff > 0 ? 'warmer' : 'colder'}</span> than normal statewide`}</p>
       ${tempChart(temps, ahead, tn.days)}
       <p class="legend-line"><i class="k-now"></i>This season <i class="k-proj"></i>Next 7 days <i class="k-median"></i>Normal</p>`;
     notes.push(`Statewide temperature: the average of the stations' daily mean (high and low); normal range averaged from each station's ${tn.seasons} winters.`);
@@ -780,6 +781,12 @@ const dateOfSeason = (d) => {
   return new Date(start + d * 864e5).toISOString().slice(0, 10);
 };
 
+// ---------- temperature units ----------
+// Data is °F; shown in the chosen unit. diff: a difference of degrees (no 32° offset).
+const toUnit = (f, diff = false) => (state.unit === 'C' ? (diff ? f * 5 / 9 : (f - 32) * 5 / 9) : f);
+const deg = (f) => (f == null ? '–' : `${Math.round(toUnit(f))}°`);
+const unitLabel = () => `°${state.unit}`;
+
 // ---------- temperature chart ----------
 // This season's daily temperature at the resort's snow station (mean of the day's high and low, °F)
 // against the normal range for each date (public/temps/, from 20+ past winters; scripts/temps.mjs),
@@ -804,7 +811,7 @@ function tempSection(r, notes) {
   const diff = week.length >= 4 ? Math.round(week.reduce((a, [d, t]) => a + t - median(d), 0) / week.length) : null;
   const head = diff == null ? 'This season so far, against normal'
     : Math.abs(diff) <= 1 ? 'The last week has been <b>about normal</b>'
-      : `The last week has been <span class="temp-diff ${diff > 0 ? 'warm' : 'cold'}">${Math.abs(diff)}° ${diff > 0 ? 'warmer' : 'colder'}</span> than normal`;
+      : `The last week has been <span class="temp-diff ${diff > 0 ? 'warm' : 'cold'}">${Math.round(Math.abs(toUnit(diff, true)))}${unitLabel()} ${diff > 0 ? 'warmer' : 'colder'}</span> than normal`;
   const ahead = (r.forecast?.days ?? []).filter((d) => d.hi != null && d.lo != null).map((d) => [dayOfSeason(d.date), (d.hi + d.lo) / 2]);
   notes.push(`Temperature: daily mean of the high and low at the ${sourceLink(SNOTEL_SITE(r.station), `${n.name} SNOTEL station`)} (USDA NRCS); normal range from the ${n.seasons} winters ${esc(n.first)} to ${esc(n.last)}. Forecast: the snow forecast's daily highs and lows at mid-mountain.`);
   return `
@@ -814,7 +821,13 @@ function tempSection(r, notes) {
     <p class="legend-line"><i class="k-now"></i>This season <i class="k-proj"></i>Next 7 days <i class="k-median"></i>Normal</p>
     <p class="band-key"><span class="t-band-wide">Coldest–warmest 10%</span><span class="t-band-mid">Typical half</span></p>`;
 }
-function tempChart(season, ahead, days) {
+function tempChart(seasonF, aheadF, daysF) {
+  // Everything in the chosen unit from here on.
+  const season = seasonF.map(([d, v]) => [d, toUnit(v)]);
+  const ahead = aheadF.map(([d, v]) => [d, toUnit(v)]);
+  const days = daysF.map((row) => row && row.map((v) => toUnit(v)));
+  const step = state.unit === 'C' ? 10 : 20;
+  const freezing = toUnit(32);
   const W = 320;
   const H = 128;
   const pad = { l: 22, r: 4, t: 16, b: 18 };
@@ -832,24 +845,25 @@ function tempChart(season, ahead, days) {
   };
   const med = days.map((v, d) => (v ? [d, v[2]] : null)).filter(Boolean);
   const grid = [];
-  for (let t = Math.ceil(lo / 20) * 20; t <= hi; t += 20) grid.push(t);
+  for (let t = Math.ceil(lo / step) * step; t <= hi; t += step) grid.push(t);
   const months = MONTHS.map((m, i) => `<text x="${x(MONTH_STARTS[i] + 2).toFixed(1)}" y="${H - 4}">${m}</text>`).join('');
   const flip = last && x(last[0]) > W - 80;
   return `
     <svg class="chart temp-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily temperature this season compared with normal">
       ${grid.map((t) => `<line class="grid" x1="${pad.l}" x2="${W - pad.r}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text class="t-axis" x="${pad.l - 4}" y="${(y(t) + 3).toFixed(1)}" text-anchor="end">${t}°</text>`).join('')}
-      ${t32(y, pad, W, lo, hi)}
+      <text class="t-axis t-unit" x="${pad.l - 4}" y="${pad.t - 5}" text-anchor="end">${unitLabel()}</text>
+      ${freezeLine(y, pad, W, lo, hi, freezing)}
       ${band(0, 4, 't-band-wide')}${band(1, 3, 't-band-mid')}
       <path class="median" d="${path(med)}"/>
       ${proj.length > 1 ? `<path class="halo" d="${path(proj)}"/><path class="proj" d="${path(proj)}"/>` : ''}
       <path class="halo" d="${path(season)}"/><path class="now" d="${path(season)}"/>
       ${last ? `<circle class="now-dot" cx="${x(last[0])}" cy="${y(last[1])}" r="3"/>
-        <text class="now-label" text-anchor="${flip ? 'end' : 'start'}" x="${(x(last[0]) + (flip ? -7 : 7)).toFixed(1)}" y="${(y(last[1]) - 7).toFixed(1)}">now ${Math.round(last[1])}°</text>` : ''}
+        <text class="now-label" text-anchor="${flip ? 'end' : 'start'}" x="${(x(last[0]) + (flip ? -7 : 7)).toFixed(1)}" y="${(y(last[1]) - 7).toFixed(1)}">now ${Math.round(last[1])}${unitLabel()}</text>` : ''}
       ${months}
     </svg>`;
 }
 // The freezing line, faintly, when it's in range.
-const t32 = (y, pad, W, lo, hi) => (32 > lo && 32 < hi ? `<line class="freeze" x1="${pad.l}" x2="${W - pad.r}" y1="${y(32).toFixed(1)}" y2="${y(32).toFixed(1)}"/><text class="t-axis freeze-label" x="${W - pad.r - 2}" y="${(y(32) - 3).toFixed(1)}" text-anchor="end">32°</text>` : '');
+const freezeLine = (y, pad, W, lo, hi, t) => (t > lo && t < hi ? `<line class="freeze" x1="${pad.l}" x2="${W - pad.r}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text class="t-axis freeze-label" x="${W - pad.r - 2}" y="${(y(t) - 3).toFixed(1)}" text-anchor="end">${Math.round(t)}°${state.unit} freezing</text>` : '');
 
 // Past seasons, one small file per snow station, loaded the first time someone picks one.
 const seasonHistory = new Map();
@@ -1428,6 +1442,13 @@ document.addEventListener('click', (e) => {
     $('#info-btn').setAttribute('aria-expanded', String(!c.hidden));
     return;
   }
+  const unitBtn = t.closest('[data-unit-pick]');
+  if (unitBtn) {
+    state.unit = unitBtn.dataset.unitPick;
+    write(STORE.unit, state.unit);
+    syncUnitPick();
+    return render();
+  }
   if (t.closest('[data-theme-pick]')) return applyTheme(t.closest('[data-theme-pick]').dataset.themePick);
   if (t.closest('#updated')) return load();
 });
@@ -1474,6 +1495,10 @@ WIDE.addEventListener('change', onResize);
 
 $('#credit-text').innerHTML = CREDITS;
 $('#info-btn').innerHTML = UI.info;
+function syncUnitPick() {
+  for (const b of document.querySelectorAll('[data-unit-pick]')) b.setAttribute('aria-pressed', String(b.dataset.unitPick === state.unit));
+}
+syncUnitPick();
 $('#snow-btn').innerHTML = UI.layers;
 applyTheme();
 DARK.addEventListener('change', () => applyTheme());
