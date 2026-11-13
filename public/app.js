@@ -11,7 +11,7 @@ const ALL_STATES = false;
 const STATE_CODES = !ALL_STATES ? new Set(['CO']) : new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
 const validCode = (c) => (c && STATE_CODES.has(String(c).toUpperCase()) ? String(c).toUpperCase() : null);
 const STORE = {
-  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', panel: 'cs:panel',
+  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', sort: 'cs:sort', panel: 'cs:panel',
   state: 'cs:state', states: 'cs:states', theme: 'cs:theme',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
@@ -80,6 +80,7 @@ const state = {
   openOnly: read(STORE.openOnly, false),
   favsOnly: read(STORE.favsOnly, false),
   pass: read(STORE.pass, 'all'), // 'all', 'epic', 'ikon', 'indy' or 'other'
+  sort: read(STORE.sort, 'name'), // the list: 'name' (A–Z), 'value' (the map view's number) or 'open'
   // The map overlay: 'snow' (on the ground; the default), 'radar', 'outlook' or 'none'.
   layer: read(STORE.layer, null) ?? (read(STORE.snowDepth, true) ? 'snow' : 'none'),
   outlookSeason: null, // e.g. "NDJ 2026-2027", once the outlook has loaded
@@ -357,7 +358,9 @@ function ordered(all = false) {
   return state.data.resorts
     .filter((r) => all || matches(r))
     .map((r) => ({ r, v: valueFor(r) }))
-    .sort((a, b) => state.favs.has(b.r.id) - state.favs.has(a.r.id) || b.v.sort - a.v.sort || a.r.name.localeCompare(b.r.name));
+    // A–Z unless asked otherwise; favorites and filters never reorder anything.
+    .sort((a, b) => (state.sort === 'value' ? b.v.sort - a.v.sort : state.sort === 'open' ? openRank(b.r) - openRank(a.r) : 0)
+      || a.r.name.localeCompare(b.r.name));
 }
 
 // ---------- rendering ----------
@@ -391,6 +394,27 @@ function renderHeadline() {
 }
 
 // "Open · 3 of 24 lifts · 2% of runs", "Opens Fri, Nov 20", …
+// Open first: open, then probably open, opening soon (soonest first), then the rest.
+function openRank(r) {
+  const s = r.status.state;
+  if (s === 'open') return 4;
+  if (s === 'likely') return 3;
+  if (s === 'soon') return 2 - (r.status.date ? Date.parse(r.status.date) / 1e14 : 0.5);
+  return 0;
+}
+
+// Short status for a card's pill: "Open", "Opens Nov 21", "TBA"…
+function shortStatus(r) {
+  const s = r.status;
+  if (s.state === 'open') return 'Open';
+  if (s.state === 'likely') return 'Open?';
+  if (s.state === 'soon') return s.label.replace(/^Opens (\w{3}, )?/, 'Opens ');
+  if (s.state === 'late') return 'Delayed';
+  if (s.state === 'done') return 'Closed';
+  return 'TBA';
+}
+const METRIC_LABEL = { new24: 'Most −24h', next72: 'Most +3d', next7: 'Most +7d', base: 'Deepest', season: 'Snowpack', dates: 'Opening' };
+
 function rowSub(r) {
   const s = r.status;
   if (s.state !== 'open') return s.label;
@@ -398,17 +422,44 @@ function rowSub(r) {
   return ['Open', lifts?.total ? `${lifts.open} of ${lifts.total} lifts` : null, s.pct != null ? `${s.pct}% of runs` : null].filter(Boolean).join(' · ');
 }
 
+// Each resort as a card: status, then the numbers that matter side by side (the map's current view
+// highlighted).
+const CARD_STATS = [['new24', '−24h'], ['next72', '+3d'], ['next7', '+7d'], ['base', 'Base'], ['season', 'Season']];
+function cardSub(r) {
+  const s = r.status;
+  const lifts = r.report?.lifts ?? (r.lifts?.total ? { open: r.lifts.open, total: r.lifts.total } : null);
+  const parts = s.state === 'open'
+    ? [lifts?.total ? `${lifts.open}/${lifts.total} lifts` : null, r.report?.trails?.total ? `${r.report.trails.open}/${r.report.trails.total} runs` : null]
+    : [seasonText(r, state.data.today) || null];
+  return [...parts, PASS_NAMES[passOf(r)] !== 'Other' ? PASS_NAMES[passOf(r)] : null].filter(Boolean).join(' · ');
+}
 function renderList() {
-  const rows = ordered().map(({ r, v }) => `
-    <button type="button" class="row" data-open="${esc(r.id)}">
-      <span class="dot dot-${esc(r.status.state)}" aria-hidden="true"></span>
-      <span class="row-main">
-        <span class="row-name">${state.favs.has(r.id) ? '<span class="fav">★</span> ' : ''}${esc(r.name)}</span>
-        <span class="row-sub">${esc(rowSub(r))}</span>
+  const views = availableMetrics();
+  const sortBar = `
+    <div class="list-tools" role="group" aria-label="Sort resorts">
+      <span>Sort</span>
+      <button type="button" data-sort="name" aria-pressed="${state.sort === 'name'}">A–Z</button>
+      <button type="button" data-sort="value" aria-pressed="${state.sort === 'value'}">${esc(METRIC_LABEL[state.metric] ?? 'Value')}</button>
+      <button type="button" data-sort="open" aria-pressed="${state.sort === 'open'}">Open first</button>
+    </div>`;
+  const rows = ordered().map(({ r }) => {
+    const fav = state.favs.has(r.id);
+    const stats = CARD_STATS.filter(([k]) => views.includes(k)).map(([k, label]) => {
+      const v = valueFor(r, k);
+      return `<span class="cs${k === state.metric ? ' on' : ''}"><b class="lvl-${esc(v.level)}">${esc(v.text)}</b><small>${label}</small></span>`;
+    }).join('');
+    return `
+    <button type="button" class="row card" data-open="${esc(r.id)}">
+      <span class="card-top">
+        <span class="dot dot-${esc(r.status.state)}" aria-hidden="true"></span>
+        <span class="row-name">${esc(r.name)}</span>${fav ? `<span class="card-fav" aria-label="Favorite">${UI.starFilled}</span>` : ''}
+        <span class="pill pill-${esc(r.status.state)}">${esc(shortStatus(r))}</span>
       </span>
-      <span class="val lvl-${v.level}">${esc(v.text)}${v.sub ? `<small>${esc(v.sub)}</small>` : ''}</span>
-    </button>`).join('');
-  $('#list').innerHTML = rows || `<p class="empty">${state.openOnly && !state.favsOnly && state.pass === 'all' ? 'Nothing open yet.' : 'No resorts match these filters.'} <button type="button" class="link" data-clear-filters>Show all</button></p>`;
+      <span class="row-sub">${esc(cardSub(r))}</span>
+      <span class="card-stats">${stats}</span>
+    </button>`;
+  }).join('');
+  $('#list').innerHTML = sortBar + (rows || `<p class="empty">${state.openOnly && !state.favsOnly && state.pass === 'all' ? 'Nothing open yet.' : 'No resorts match these filters.'} <button type="button" class="link" data-clear-filters>Show all</button></p>`);
 }
 
 function renderDetail(r) {
@@ -689,7 +740,8 @@ function renderMap() {
       open: open && !['dates', 'season'].includes(METRICS[state.metric].kind),
       important: selected || fav || open,
       // Who keeps a full label when space runs out: filter matches, then favorites, then open resorts.
-      prio: (filtering() && matches(r) ? 4 : 0) + (fav ? 2 : 0) + (isOpenish(r) ? 1 : 0),
+      // (Open status only: filters and favorites fade or star resorts but never move labels.)
+      prio: isOpenish(r) ? 1 : 0,
       rank: [selected, fav, open, v.sort],
     };
   });
@@ -1092,8 +1144,14 @@ document.addEventListener('click', (e) => {
     const id = star.dataset.fav;
     state.favs.has(id) ? state.favs.delete(id) : state.favs.add(id);
     write(STORE.favs, [...state.favs]);
-    toast(state.favs.has(id) ? 'Pinned to the top of the list' : 'Unpinned');
+    toast(state.favs.has(id) ? 'Added to favorites' : 'Removed from favorites');
     return render();
+  }
+  const sortBtn = t.closest('[data-sort]');
+  if (sortBtn) {
+    state.sort = sortBtn.dataset.sort;
+    write(STORE.sort, state.sort);
+    return renderList();
   }
   if (t.closest('#filter-btn')) return openFilters($('#filters').hidden);
   const passBtn = t.closest('[data-pass]');
