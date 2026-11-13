@@ -32,9 +32,16 @@ the season chart's dashed line adds the models' forecast snow water to today's s
 A GitHub Action (`.github/workflows/update.yml`) runs every 30 minutes: it runs the tests, fetches fresh data into
 `public/data.json` and publishes `public/` to GitHub Pages. There is no server.
 
+## Past seasons
+
+`public/history/` holds each snow station's past winters (2005–06 onward), used for the season picker and the
+colour bands (driest 10% → snowiest 10% of years) on each resort's season chart. Past seasons never change, so
+regenerate once a year after the season ends: `npm run history`.
+
 ## Each fall
 
-Update `PLANNED` in `src/resorts.js` with the new season's dates for the resorts without a live feed.
+Update `PLANNED` in `src/resorts.js` with the new season's dates for the resorts without a live feed, and run
+`npm run history` to add the season that just ended.
 Seasons without an entry show "Opening date TBA" instead of stale dates.
 
 ## Local development

@@ -1,7 +1,6 @@
 // The map: one fixed view of every Colorado resort (no panning or zooming). Each resort has a dot at
 // its real spot and its own one-line label ("A-Basin 3″"). Where resorts crowd together (I-70) the
-// labels fan out around the cluster, and a label that sits away from its dot gets a small pointer
-// tab aimed at it, so every resort stays readable on one screen without connector lines.
+// labels fan out around the cluster, each with a short pointer reaching all the way to its dot.
 const L = window.L;
 
 // OpenTopoMap: free, no key, and its terrain shading suits mountains. Colours are muted in CSS.
@@ -31,7 +30,7 @@ function spotsFor(w, h) {
   const b = h / 2 + DOT_R + 1;
   const out = [[0, 0], [a, 0], [-a, 0], [0, -b], [0, b], [a, -b], [a, b], [-a, -b], [-a, b]];
   for (let i = -4; i <= 4; i++) {
-    for (let j = -5; j <= 5; j++) {
+    for (let j = -6; j <= 6; j++) {
       const dx = i * (w / 2 + 3);
       const dy = j * (h + GAP);
       if (Math.abs(i) <= 1 && Math.abs(j) <= 1) continue;
@@ -39,6 +38,58 @@ function spotsFor(w, h) {
     }
   }
   return out;
+}
+
+// A pointer from a label at offset s to its dot: the wedge's base sits on the label edge nearest the
+// dot, its tip on the dot's rim. Returns the wedge polygon and its centre line (for clash checks).
+function pointer(it, [dx, dy]) {
+  const l = it.p.x + dx - it.w / 2;
+  const t = it.p.y + dy - it.h / 2;
+  const r = l + it.w;
+  const b = t + it.h;
+  const half = 5;
+  // Nearest point on the label's outline, kept away from the rounded corners.
+  const bx = Math.min(r - 8, Math.max(l + 8, it.p.x));
+  const by = Math.min(b - 6, Math.max(t + 6, it.p.y));
+  let base;
+  let along;
+  if (it.p.y > b) { base = [bx, b - 1.5]; along = [1, 0]; }
+  else if (it.p.y < t) { base = [bx, t + 1.5]; along = [1, 0]; }
+  else if (it.p.x > r) { base = [r - 1.5, by]; along = [0, 1]; }
+  else { base = [l + 1.5, by]; along = [0, 1]; }
+  const vx = it.p.x - base[0];
+  const vy = it.p.y - base[1];
+  const len = Math.hypot(vx, vy) || 1;
+  const tip = [it.p.x - (vx / len) * (DOT_R + 0.5), it.p.y - (vy / len) * (DOT_R + 0.5)];
+  return {
+    points: [[base[0] - along[0] * half, base[1] - along[1] * half], [base[0] + along[0] * half, base[1] + along[1] * half], tip],
+    seg: [base[0], base[1], tip[0], tip[1]],
+  };
+}
+
+function segPointDist([x1, y1, x2, y2], p) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const t = Math.max(0, Math.min(1, ((p.x - x1) * dx + (p.y - y1) * dy) / (dx * dx + dy * dy || 1)));
+  return Math.hypot(p.x - (x1 + t * dx), p.y - (y1 + t * dy));
+}
+
+function segSeg([a, b, c, d], [e, f, g, h]) {
+  const cross = (x1, y1, x2, y2, x3, y3) => (x2 - x1) * (y3 - y1) - (y2 - y1) * (x3 - x1);
+  const d1 = cross(e, f, g, h, a, b);
+  const d2 = cross(e, f, g, h, c, d);
+  const d3 = cross(a, b, c, d, e, f);
+  const d4 = cross(a, b, c, d, g, h);
+  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+}
+
+// Does a segment touch a box (with a little shrink so a pointer may start on its own label's edge)?
+function segRect(seg, box) {
+  const [x1, y1, x2, y2] = seg;
+  const [l, t, r, b] = [box[0] + 1, box[1] + 1, box[2] - 1, box[3] - 1];
+  const inside = (x, y) => x > l && x < r && y > t && y < b;
+  if (inside(x1, y1) || inside(x2, y2)) return true;
+  return segSeg(seg, [l, t, r, t]) || segSeg(seg, [r, t, r, b]) || segSeg(seg, [l, b, r, b]) || segSeg(seg, [l, t, l, b]);
 }
 
 // getPadding() → { top, right, bottom, left }: pixels covered by the app's bars and panels.
@@ -73,7 +124,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
     if (pin) return pin;
     const root = document.createElement('div');
     root.className = 'pin';
-    root.innerHTML = '<button type="button" class="pin-bubble"><span class="pin-name"></span><b class="pin-val"></b></button>';
+    root.innerHTML = '<svg class="pin-tail" width="1" height="1" aria-hidden="true"><polygon/></svg>'
+      + '<button type="button" class="pin-bubble"><span class="pin-name"></span><b class="pin-val"></b></button>';
     // Dots live on their own layer beneath every label, so no dot ever sits on top of a label.
     const dot = document.createElement('button');
     dot.type = 'button';
@@ -89,103 +141,153 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
     }
     L.marker(r.at, { pane: 'dots', icon: L.divIcon({ html: dot, className: 'pin-host', iconSize: [0, 0] }), keyboard: false }).addTo(map);
     const marker = L.marker(r.at, { icon: L.divIcon({ html: root, className: 'pin-host', iconSize: [0, 0] }), keyboard: false }).addTo(map);
-    pin = { marker, root, bubble: root.querySelector('.pin-bubble'), val: root.querySelector('.pin-val'), name: root.querySelector('.pin-name') };
+    pin = {
+      marker, root, tail: root.querySelector('polygon'),
+      bubble: root.querySelector('.pin-bubble'), val: root.querySelector('.pin-val'), name: root.querySelector('.pin-name'),
+    };
     pins.set(r.id, pin);
     return pin;
   }
 
-  // Label layout by simulated annealing: every label picks one of its candidate spots (or, as a last
-  // resort, hides). The cost of a layout:
-  //   - overlapping another label: huge;  hiding: huge
-  //   - distance from its own dot (squared, so one long jump costs more than several short ones)
-  //   - sitting nearer another resort's dot than its own: big, so labels never look misassigned
-  // Hard rules filtered up front: a spot must stay in the visible map and not cover another dot.
+  // Label layout by simulated annealing. Each label sits on its dot or nearby; a label that isn't on
+  // its dot gets a pointer (a wedge in the label's colour) running all the way to the dot.
+  // Hard rules: labels never overlap; a pointer never crosses another label, another pointer, or
+  // passes over another resort's dot; everything stays in the visible map.
+  // Cost: pointer length (squared, so one long pointer costs more than several short ones).
   function layout() {
     const size = map.getSize();
     const pad = getPadding();
     const area = [pad.left + 2, pad.top + 2, size.x - pad.right - 2, size.y - pad.bottom - 2];
-    const items = order.map((o) => {
-      o.pin.bubble.className = o.pin.bubble.className.replace(/ tail-[tblr]/g, '');
-      return { ...o, p: map.latLngToContainerPoint(o.r.at), w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight };
-    });
+    // Un-hide everything first: a label hidden by the last layout would measure as zero size.
+    for (const o of order) o.pin.root.classList.remove('hidden');
+    const items = order.map((o) => ({ ...o, p: map.latLngToContainerPoint(o.r.at), w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight }));
     const dots = items.map((it) => it.p);
     const boxOf = (it, [dx, dy]) => [it.p.x + dx - it.w / 2 - GAP, it.p.y + dy - it.h / 2 - GAP, it.p.x + dx + it.w / 2 + GAP, it.p.y + dy + it.h / 2 + GAP];
-    const distToBox = (pt, b) => Math.hypot(Math.max(b[0] - pt.x, 0, pt.x - b[2]), Math.max(b[1] - pt.y, 0, pt.y - b[3]));
 
-    // Candidate spots per label with their fixed (own) cost.
     for (const it of items) {
       const spots = it.empty ? [[0, 0]] : spotsFor(it.w, it.h);
       it.cands = [];
       for (const s of spots) {
         const box = boxOf(it, s);
         if (box[0] < area[0] || box[2] > area[2] || box[1] < area[1] || box[3] > area[3]) continue;
-        if (dots.some((d) => d !== it.p && d.x + DOT_R > box[0] && d.x - DOT_R < box[2] && d.y + DOT_R > box[1] && d.y - DOT_R < box[3])) continue;
-        const own = distToBox(it.p, box);
-        const nearestOther = Math.min(...dots.filter((d) => d !== it.p).map((d) => distToBox(d, box)));
-        // Misleading spots (nearer another resort's dot than this one's) cost far more than distance.
-        const cost = s[0] ** 2 + s[1] ** 2 + (nearestOther + 2 < own ? 40000 + 400 * (own - nearestOther) ** 2 : 0);
-        it.cands.push({ s, box, cost });
+        const tail = s[0] === 0 && s[1] === 0 ? null : pointer(it, s);
+        // Covering another resort's dot, or a pointer passing over one, is confusing: allowed only
+        // when there's no other way (the tightest clusters, on the smallest screens).
+        const covers = dots.filter((d) => d !== it.p && d.x + DOT_R > box[0] && d.x - DOT_R < box[2] && d.y + DOT_R > box[1] && d.y - DOT_R < box[3]).length;
+        const passes = tail ? dots.filter((d) => d !== it.p && segPointDist(tail.seg, d) < DOT_R + 3).length : 0;
+        const len = tail ? Math.hypot(tail.seg[2] - tail.seg[0], tail.seg[3] - tail.seg[1]) : 0;
+        it.cands.push({ s, box, tail, cost: (tail ? 30 : 0) + len * len + 80000 * (covers + passes) });
       }
       it.cands.sort((a, b) => a.cost - b.cost);
     }
-    const hit = (a, b) => a && b && a.box[0] < b.box[2] && a.box[2] > b.box[0] && a.box[1] < b.box[3] && a.box[3] > b.box[1];
-    const labels = items.filter((it) => !it.empty && it.cands.length);
+
+    const hit = (a, b) => a.box[0] < b.box[2] && a.box[2] > b.box[0] && a.box[1] < b.box[3] && a.box[3] > b.box[1];
+    // Hard: labels overlapping, or a pointer running under another label.
+    const clash = (a, b) => hit(a, b)
+      || (a.tail && segRect(a.tail.seg, b.box))
+      || (b.tail && segRect(b.tail.seg, a.box));
+    // Soft but expensive: two pointers crossing (better than hiding a label).
+    const CROSS = 50000;
+    const crossings = (it, c) => (c.tail ? labels.reduce((n, o) => {
+      const oc = o !== it && pick.get(o);
+      return n + (oc && oc.tail && segSeg(c.tail.seg, oc.tail.seg) ? 1 : 0);
+    }, 0) : 0);
+    const costOf = (it, c) => (c ? c.cost + CROSS * crossings(it, c) : 1e7);
+    // "No data" dots take part too (on their dot only), so labels keep clear of them.
+    const labels = items.filter((it) => it.cands.length);
     const pick = new Map();
-    const free = (it, c) => labels.every((o) => o === it || !hit(c, pick.get(o)));
+    const free = (it, c) => labels.every((o) => o === it || !pick.get(o) || !clash(c, pick.get(o)));
 
     // 1) A layout where everything fits: crowded resorts first, each taking its cheapest free spot.
-    //    A few orderings are tried; the one that hides the fewest labels wins.
+    //    Several orderings are tried; the one that hides the fewest labels (then is shortest) wins.
     const crowd = (it) => labels.filter((o) => Math.hypot(o.p.x - it.p.x, o.p.y - it.p.y) < 90).length;
     let seed = 7;
     const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     let bestStart = null;
-    for (let t = 0; t < 30; t++) {
+    for (let t = 0; t < 40; t++) {
       pick.clear();
       const seq = [...labels].sort((a, b) => b.selected - a.selected || crowd(b) - crowd(a) + (t ? (rand() - 0.5) * 6 : 0));
       let hidden = 0;
       for (const it of seq) {
-        const c = it.cands.find((x) => free(it, x)) ?? null;
+        let c = null;
+        let best = Infinity;
+        for (const x of it.cands) {
+          if (x.cost >= best) break; // sorted by cost: nothing cheaper further on
+          if (!free(it, x)) continue;
+          const v = costOf(it, x);
+          if (v < best) { best = v; c = x; }
+        }
         pick.set(it, c);
         if (!c) hidden++;
       }
-      const cost = hidden * 1e6 + labels.reduce((a, it) => a + (pick.get(it)?.cost ?? 0), 0);
+      const cost = hidden * 1e7 + labels.reduce((a, it) => a + costOf(it, pick.get(it)), 0);
       if (!bestStart || cost < bestStart.cost) bestStart = { cost, picks: new Map(pick) };
     }
     pick.clear();
     for (const [k, v] of bestStart.picks) pick.set(k, v);
 
-    // 2) Improve it: move one label at a time to another free spot when that lowers the cost
-    //    (sometimes accepting a worse move early on, to escape dead ends). Overlaps are never allowed.
-    let temp = 2000;
+    // 2) Improve it: move one label at a time to another valid spot when that shortens things
+    //    (sometimes accepting a worse move early on, to escape dead ends). Clashes are never allowed.
+    let temp = 3000;
     for (let k = 0; k < 30000 && labels.length; k++) {
       const it = labels[Math.floor(rand() * labels.length)];
       const next = it.cands[Math.floor(rand() * it.cands.length)];
       const cur = pick.get(it);
-      if (!free(it, next)) continue;
-      const delta = next.cost - (cur ? cur.cost - 1e6 : 0); // placing a hidden label is a huge win
+      if (next === cur || !free(it, next)) continue;
+      const delta = costOf(it, next) - costOf(it, cur); // placing a hidden label is a huge win
       if (delta < 0 || rand() < Math.exp(-delta / temp)) pick.set(it, next);
       temp *= 0.9997;
     }
 
+    // 3) Repair: for a label still squeezed out, take a spot anyway and re-seat the (few) labels in
+    //    its way somewhere else. Kept only if every one of them finds a new spot.
+    const bestFree = (it) => {
+      let c = null;
+      let best = Infinity;
+      for (const x of it.cands) {
+        if (!free(it, x)) continue;
+        const v = costOf(it, x);
+        if (v < best) { best = v; c = x; }
+      }
+      return c;
+    };
+    for (let round = 0; round < 3; round++) {
+      for (const it of labels.filter((x) => !pick.get(x))) {
+        // Spots needing the fewest labels moved come first.
+        const options = it.cands
+          .map((c) => ({ c, blockers: labels.filter((o) => o !== it && pick.get(o) && clash(c, pick.get(o))) }))
+          .filter((o) => o.blockers.length <= 6)
+          .sort((a, b) => a.blockers.length - b.blockers.length || a.c.cost - b.c.cost);
+        for (const { c, blockers } of options) {
+          const saved = blockers.map((o) => [o, pick.get(o)]);
+          for (const o of blockers) pick.set(o, null);
+          pick.set(it, c);
+          let ok = true;
+          for (const o of blockers) {
+            const n = bestFree(o);
+            if (!n) { ok = false; break; }
+            pick.set(o, n);
+          }
+          if (ok) break;
+          pick.set(it, null);
+          for (const [o, v] of saved) pick.set(o, v);
+        }
+      }
+    }
+
     for (const it of items) {
-      const c = it.empty ? it.cands[0] : pick.get(it);
+      const c = pick.get(it);
       it.pin.root.classList.toggle('hidden', !c);
+      it.pin.tail.setAttribute('points', '');
       if (!c) continue;
       const [dx, dy] = c.s;
       it.pin.bubble.style.transform = `translate(${dx - it.w / 2}px, ${dy - it.h / 2}px)`;
-      // A label away from its dot gets a pointer tab on the side facing the dot.
-      if (dx === 0 && dy === 0) continue;
-      const left = dx - it.w / 2;
-      const top = dy - it.h / 2;
-      let side;
-      if (top > 0) side = 't';
-      else if (top + it.h < 0) side = 'b';
-      else side = left > 0 ? 'l' : 'r';
-      const along = side === 't' || side === 'b'
-        ? Math.min(it.w - 8, Math.max(8, -left))
-        : Math.min(it.h - 5, Math.max(5, -top));
-      it.pin.bubble.classList.add(`tail-${side}`);
-      it.pin.bubble.style.setProperty('--tail', `${along}px`);
+      if (!c.tail) continue;
+      // Draw the wedge in the label's own colours, from its edge to the rim of the dot.
+      const cs = getComputedStyle(it.pin.bubble);
+      it.pin.tail.setAttribute('points', c.tail.points.map(([x, y]) => `${(x - it.p.x).toFixed(1)},${(y - it.p.y).toFixed(1)}`).join(' '));
+      it.pin.tail.style.fill = cs.backgroundColor;
+      it.pin.tail.style.stroke = cs.borderTopColor;
     }
   }
 

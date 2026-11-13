@@ -366,6 +366,8 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       resorts: RESORTS.length,
       nws: nwsData.filter(Boolean).length,
       models: Object.fromEntries(MODELS.map((m, k) => [m.id, Boolean(modelData[k])])),
+      // When the model forecasts were fetched (carried forward if a later update reuses them).
+      modelsAt: modelData.some(Boolean) ? now.toISOString() : null,
       snotel: Object.keys(snowpack).length,
     },
     resorts,
