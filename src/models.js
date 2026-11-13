@@ -39,7 +39,14 @@ export function modelUrl(model, resorts, days) {
   return `${OPEN_METEO}?${q}`;
 }
 
-// One location's response → hourly snow in inches: [{ t: msTimestamp, v }].
+// Share of precipitation that falls as snow (the rest is rain), by air temperature (°C).
+export function snowFraction(c) {
+  if (c >= 2) return 0;
+  if (c > 0) return (2 - c) / 2;
+  return 1;
+}
+
+// One location's response → hourly snow: [{ t: msTimestamp, v: inches of snow, w: inches of water as snow }].
 // Open-Meteo precipitation is the sum over the preceding hour, so it's stamped at the hour's middle.
 export function snowHours(loc) {
   const h = loc?.hourly;
@@ -51,7 +58,7 @@ export function snowHours(loc) {
     const c = h.temperature_2m?.[i];
     if (p == null || c == null) continue;
     any = true;
-    out.push({ t: h.time[i] * 1000 - 1_800_000, v: (p * snowRatio(c)) / MM_PER_INCH });
+    out.push({ t: h.time[i] * 1000 - 1_800_000, v: (p * snowRatio(c)) / MM_PER_INCH, w: (p * snowFraction(c)) / MM_PER_INCH });
   }
   return any ? out : null;
 }

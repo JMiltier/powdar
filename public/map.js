@@ -36,7 +36,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, home }) {
   const bounds = L.latLngBounds(resorts.map((r) => r.at));
   const map = L.map(el, {
     zoomControl: false, attributionControl: false, maxZoom: 12, zoomSnap: 0.25, zoomDelta: 0.5,
-    maxBounds: bounds.pad(0.4), maxBoundsViscosity: 0.8,
+    maxBounds: bounds.pad(1), maxBoundsViscosity: 0.8,
   });
   // Pinch zoom covers phones; mouse users get +/- buttons.
   if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) L.control.zoom({ position: 'bottomright' }).addTo(map);

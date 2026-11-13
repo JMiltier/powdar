@@ -2,12 +2,15 @@
 // so it runs the same in the GitHub Action, the local preview server and tests.
 import { RESORTS, PLANNED } from './resorts.js';
 import { MODELS, modelUrl, snowHours } from './models.js';
+import { parseSnotel, snotelUrl, stationSeason, waterYear } from './snotel.js';
 
 export const CSC_FEED = 'https://snow.coloradoski.com/view/publicreport-feed';
 const NWS = 'https://api.weather.gov/gridpoints';
 const USER_AGENT = 'Powdar (github.com/JMiltier/powdar)';
 const TZ = 'America/Denver';
-const FORECAST_DAYS = 7;
+const FORECAST_DAYS = 7; // days shown day by day
+const OUTLOOK_DAYS = 14; // days 8–14 are summarised as a less-certain "week 2"
+const MODEL_DAYS = 16;
 const MM_PER_INCH = 25.4;
 const DAY_MS = 86_400_000;
 
@@ -77,37 +80,84 @@ export function spread(values) {
   return { mid: round1(mid), lo: round1(s[Math.floor((n - 1) / 4)]), hi: round1(s[Math.ceil((3 * (n - 1)) / 4)]) };
 }
 
-// sources: [{ id, hours: [{ t, v (inches) }] | null }]; nws: raw NWS properties for temperatures.
-export function blendForecast({ sources, nws }, now) {
+// Daily sky, wind and chance of precipitation from the NWS text forecast, by local date.
+export function nwsDaily(periods) {
+  const out = new Map();
+  for (const p of periods ?? []) {
+    const date = localDate(new Date(Date.parse(p.startTime)));
+    const day = out.get(date) ?? {};
+    const pop = p.probabilityOfPrecipitation?.value ?? null;
+    if (p.isDaytime) Object.assign(day, { sky: p.shortForecast, wind: p.windSpeed, pop });
+    else Object.assign(day, { night: p.shortForecast, nightPop: pop });
+    out.set(date, day);
+  }
+  return out;
+}
+
+const HOUR = 3_600_000;
+// A source "covers" a local date if its hours reach that evening.
+const covers = (lastT, ymd) => lastT >= Date.parse(`${ymd}T12:00:00Z`) + 16 * HOUR;
+
+// sources: [{ id, hours: [{ t, v (inches of snow), w? (inches of water as snow) }] | null }];
+// nws: raw NWS gridpoint properties (temperatures); periods: NWS text-forecast periods (sky, wind).
+// Each day and total uses only the sources whose forecast reaches that far.
+export function blendForecast({ sources, nws, periods }, now) {
   const today = localDate(now);
-  const dates = Array.from({ length: FORECAST_DAYS }, (_, i) => addDays(today, i));
-  const usable = sources.filter((s) => s.hours);
+  const dates = Array.from({ length: OUTLOOK_DAYS }, (_, i) => addDays(today, i));
+  const usable = sources.filter((s) => s.hours?.length);
   if (!usable.length) return null;
   const nowMs = now.getTime();
 
-  const totals = usable.map(({ hours }) => {
-    const daily = new Map(dates.map((d) => [d, 0]));
+  const per = usable.map(({ id, hours }) => {
+    const snow = new Map(dates.map((d) => [d, 0]));
+    const water = new Map(dates.map((d) => [d, 0]));
     let next72 = 0;
     let past24 = 0;
-    for (const { t, v } of hours) {
+    let lastT = -Infinity;
+    let firstT = Infinity;
+    const hasWater = hours.some((h) => h.w != null);
+    for (const { t, v, w } of hours) {
+      lastT = Math.max(lastT, t);
+      firstT = Math.min(firstT, t);
       const d = localDate(new Date(t));
-      if (daily.has(d)) daily.set(d, daily.get(d) + v);
-      if (t >= nowMs - 3_600_000 && t < nowMs + 72 * 3_600_000) next72 += v;
-      if (t >= nowMs - 24 * 3_600_000 && t < nowMs) past24 += v;
+      if (snow.has(d) && t >= nowMs - HOUR) {
+        snow.set(d, snow.get(d) + v);
+        if (w != null) water.set(d, water.get(d) + w);
+      } else if (snow.has(d) && d === today) {
+        snow.set(d, snow.get(d) + v); // earlier today still counts toward today's bar
+      }
+      if (t >= nowMs - HOUR && t < nowMs + 72 * HOUR) next72 += v;
+      if (t >= nowMs - 24 * HOUR && t < nowMs) past24 += v;
     }
-    // Only sources that reach back a full day (the models, not NWS) can estimate the last 24 hours.
-    const coversPast = hours.some((h) => h.t <= nowMs - 23 * 3_600_000);
-    return { daily, next72, next7: [...daily.values()].reduce((a, b) => a + b, 0), past24: coversPast ? past24 : null };
+    return { id, snow, water, next72, past24, lastT, hasWater, coversPast: firstT <= nowMs - 23 * HOUR };
   });
 
-  const temps = nwsTemps(nws, dates);
-  const days = dates.map((date) => {
-    const s = spread(totals.map((x) => x.daily.get(date)));
-    return { date, snow: s.mid, snowLo: s.lo, snowHi: s.hi, ...temps.get(date) };
+  const pick = (filter, value) => spread(per.filter(filter).map(value));
+  const reach = (i) => (p) => covers(p.lastT, dates[i]);
+  const sumDays = (p, from, to) => dates.slice(from, to + 1).reduce((a, d) => a + p.snow.get(d), 0);
+
+  const temps = nwsTemps(nws, dates.slice(0, FORECAST_DAYS));
+  const sky = nwsDaily(periods);
+  const days = dates.slice(0, FORECAST_DAYS).map((date, i) => {
+    const s = pick(reach(i), (p) => p.snow.get(date)) ?? spread(per.map((p) => p.snow.get(date)));
+    return { date, snow: s.mid, snowLo: s.lo, snowHi: s.hi, ...temps.get(date), ...sky.get(date) };
   });
-  const n72 = spread(totals.map((x) => x.next72));
-  const n7 = spread(totals.map((x) => x.next7));
-  const p24 = spread(totals.map((x) => x.past24).filter((v) => v != null));
+  const n72 = pick((p) => p.lastT >= nowMs + 66 * HOUR, (p) => p.next72) ?? spread(per.map((p) => p.next72));
+  const n7 = pick(reach(FORECAST_DAYS - 1), (p) => sumDays(p, 0, FORECAST_DAYS - 1)) ?? spread(per.map((p) => sumDays(p, 0, FORECAST_DAYS - 1)));
+  const wk2 = pick(reach(OUTLOOK_DAYS - 1), (p) => sumDays(p, FORECAST_DAYS, OUTLOOK_DAYS - 1));
+  const p24 = pick((p) => p.coversPast, (p) => p.past24);
+
+  // Water piling onto the snowpack over the next two weeks (cumulative, middle forecast), for the
+  // season chart's projection. Only the models report water; NWS gives snow depth only.
+  let cum = null;
+  const waterAhead = [];
+  for (let i = 0; i < OUTLOOK_DAYS; i++) {
+    const s = pick((p) => p.hasWater && reach(i)(p), (p) => dates.slice(0, i + 1).reduce((a, d) => a + p.water.get(d), 0));
+    if (!s) break;
+    cum = s.mid;
+    waterAhead.push(cum);
+  }
+
   return {
     days,
     past24: p24?.mid ?? null,
@@ -116,6 +166,8 @@ export function blendForecast({ sources, nws }, now) {
     next72Range: [n72.lo, n72.hi],
     next7: n7.mid,
     next7Range: [n7.lo, n7.hi],
+    week2: wk2 ? { mid: wk2.mid, range: [wk2.lo, wk2.hi], sources: per.filter(reach(OUTLOOK_DAYS - 1)).length } : null,
+    waterAhead,
     sources: usable.map((s) => s.id),
   };
 }
@@ -223,11 +275,15 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     log(`Colorado Ski Country feed failed: ${err.message}`);
   }
 
-  // Each model is one request covering every resort; NWS is one request per resort.
-  const [modelData, nwsData] = await Promise.all([
+  // Each model is one request covering every resort; NWS is two requests per resort (gridded
+  // numbers + the text forecast); SNOTEL is two requests for every station (this season, normals).
+  const stations = [...new Set(RESORTS.map((r) => r.snotel[0]))];
+  const wy = waterYear(today);
+  const lastSeasonEnd = `${wy.startYear}-07-31`;
+  const [modelData, nwsData, nwsText, snowNow, snowNormal] = await Promise.all([
     Promise.all(MODELS.map(async (m) => {
       try {
-        const data = await getJson(fetchFn, modelUrl(m.id, RESORTS, FORECAST_DAYS + 1), { backoff });
+        const data = await getJson(fetchFn, modelUrl(m.id, RESORTS, MODEL_DAYS), { backoff });
         return Array.isArray(data) ? data : [data];
       } catch (err) {
         log(`Model ${m.label} failed: ${err.message}${err.cause ? ` (${err.cause.code ?? err.cause.message})` : ''}`);
@@ -242,9 +298,31 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
         return null;
       }
     }),
+    pool(RESORTS, 4, async (r) => {
+      try {
+        return (await getJson(fetchFn, `${NWS}/${r.nws[0]}/${r.nws[1]},${r.nws[2]}/forecast`, { backoff })).properties.periods;
+      } catch (err) {
+        log(`NWS text forecast failed for ${r.name}: ${err.message}`);
+        return null;
+      }
+    }),
+    getJson(fetchFn, snotelUrl(stations, wy.start, today), { backoff }).then(parseSnotel).catch((err) => {
+      log(`SNOTEL (this season) failed: ${err.message}`);
+      return null;
+    }),
+    getJson(fetchFn, snotelUrl(stations, `${wy.startYear - 1}-10-01`, lastSeasonEnd), { backoff }).then(parseSnotel).catch((err) => {
+      log(`SNOTEL (normals) failed: ${err.message}`);
+      return null;
+    }),
   ]);
+  const snowpack = Object.fromEntries(stations.map((t) => {
+    const name = RESORTS.find((r) => r.snotel[0] === t).snotel[1];
+    const s = snowNow && stationSeason({ current: snowNow.get(t), normals: snowNormal?.get(t), today });
+    return [t, s && { name, ...s }];
+  }).filter(([, s]) => s));
   const forecasts = RESORTS.map((r, i) => blendForecast({
     nws: nwsData[i],
+    periods: nwsText[i],
     sources: [
       { id: 'nws', hours: nwsSnowHours(nwsData[i]) },
       ...MODELS.map((m, k) => ({ id: m.id, hours: snowHours(modelData[k]?.[i]) })),
@@ -272,6 +350,9 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       dates: { open: facts.open ?? null, close: facts.close ?? null, when: facts.when ?? null, planned: !live },
       report,
       forecast: forecasts[i],
+      avgSnow: r.avgSnow ?? null,
+      // Key into `snowpack` (resorts can share a station).
+      station: snowpack[r.snotel[0]] ? r.snotel[0] : null,
     };
   });
 
@@ -285,7 +366,9 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       resorts: RESORTS.length,
       nws: nwsData.filter(Boolean).length,
       models: Object.fromEntries(MODELS.map((m, k) => [m.id, Boolean(modelData[k])])),
+      snotel: Object.keys(snowpack).length,
     },
     resorts,
+    snowpack,
   };
 }
