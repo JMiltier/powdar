@@ -68,6 +68,16 @@ test('snowHours converts a model response with the temperature ratio', () => {
   assert.equal(snowHours({}), null);
 });
 
+test('past 24 hours comes only from sources that cover it', () => {
+  const now = NOW.getTime();
+  const model = { id: 'm', hours: [{ t: now - 20 * 3_600_000, v: 2 }, { t: now - 23.5 * 3_600_000, v: 1 }, { t: now + 3_600_000, v: 5 }] };
+  const future = { id: 'nws', hours: [{ t: now + 3_600_000, v: 4 }] };
+  const f = blendForecast({ nws: null, sources: [model, future] }, NOW);
+  assert.equal(f.past24, 3);
+  assert.deepEqual(f.past24Range, [3, 3]);
+  assert.equal(blendForecast({ nws: null, sources: [future] }, NOW).past24, null);
+});
+
 test('blendForecast uses the median of sources and gives a range', () => {
   const t = NOW.getTime() + 3_600_000;
   const src = (id, v) => ({ id, hours: [{ t, v }] });
@@ -104,7 +114,9 @@ test('every CSC key in resorts.js exists in the feed', () => {
 test('statusFor wording', () => {
   const today = '2026-11-12';
   const report = { lifts: { open: 1, total: 9 }, trails: { open: 1, total: 147 } };
-  assert.deepEqual(statusFor({ live: true, isOpen: true, report }, today), { state: 'open', label: 'Open', detail: '1 of 9 lifts · 1 of 147 runs' });
+  assert.deepEqual(statusFor({ live: true, isOpen: true, report }, today), { state: 'open', label: 'Open', pct: 1, detail: '1 of 9 lifts · 1 of 147 runs' });
+  assert.equal(statusFor({ live: true, isOpen: false, note: 'Resort Opens ASAP' }, today).label, 'Opening ASAP');
+  assert.equal(statusFor({ live: true, isOpen: false, note: 'Resort Opens TBD' }, today).label, 'Opening date TBA');
   assert.equal(statusFor({ live: true, isOpen: false, open: '2026-11-13' }, today).label, 'Opens Fri, Nov 13');
   assert.equal(statusFor({ live: false, open: '2026-11-13' }, today).detail, 'Planned date');
   assert.equal(statusFor({ live: true, isOpen: false, open: '2026-11-06' }, today).state, 'late');

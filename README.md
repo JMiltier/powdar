@@ -1,4 +1,4 @@
-# PowScout
+# Powdar
 
 A simple phone app for Colorado ski resorts: one map with every resort's snow forecast, base depth, or opening and
 closing days, and a pull-up list. Tap any resort for its 7-day forecast, live report and season dates.

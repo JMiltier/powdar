@@ -32,6 +32,7 @@ export function modelUrl(model, resorts, days) {
     hourly: 'temperature_2m,precipitation',
     models: model,
     forecast_days: String(days),
+    past_days: '1', // yesterday too, for a "last 24 hours" estimate at resorts that don't report
     timeformat: 'unixtime',
     timezone: 'America/Denver',
   });

@@ -19,6 +19,11 @@ const SOURCE_NAMES = {
 
 // What the map and list show. `steps` are the upper bounds of each colour level.
 const METRICS = {
+  // The resort's own report when it has one, otherwise the weather models' estimate.
+  new24: {
+    kind: 'snow', get: (r) => r.report?.new24 ?? r.forecast?.past24, est: (r) => r.report?.new24 == null && r.forecast?.past24 != null,
+    steps: [1, 3, 6, 12], top: 'Most new snow, last 24 hrs',
+  },
   next72: { kind: 'snow', get: (r) => r.forecast?.next72, range: (r) => r.forecast?.next72Range, steps: [1, 3, 6, 12], top: 'Most snow, next 3 days' },
   next7: { kind: 'snow', get: (r) => r.forecast?.next7, range: (r) => r.forecast?.next7Range, steps: [1, 3, 6, 12], top: 'Most snow, next 7 days' },
   depth: { kind: 'base', get: (r) => r.report?.depth, steps: [12, 24, 36, 60], top: 'Deepest base' },
@@ -38,7 +43,7 @@ const state = {
   data: null,
   loadedAt: 0,
   favs: new Set(read(STORE.favs, [])),
-  metric: METRICS[read(STORE.metric, 'next72')] ? read(STORE.metric, 'next72') : 'next72',
+  metric: METRICS[read(STORE.metric, 'new24')] ? read(STORE.metric, 'new24') : 'new24',
   openOnly: read(STORE.openOnly, false),
   snowDepth: read(STORE.snowDepth, false),
   selected: null,
@@ -95,7 +100,7 @@ function valueFor(r, metricKey = state.metric) {
     const { state: s, date } = r.status;
     const close = r.dates?.close;
     const daysOut = date ? (Date.parse(date) - Date.parse(state.data.today)) / 864e5 : 0;
-    if (s === 'open') return { text: close ? `til ${monthDay(close)}` : 'Open', level: 'open', sort: 1e5 };
+    if (s === 'open') return { text: r.status.pct != null ? `${r.status.pct}% open` : 'Open', level: 'open', sort: 1e5 + (r.status.pct ?? 0) };
     if (s === 'likely') return { text: 'Probably', level: 'likely', sort: 9e4 };
     if (s === 'soon') return { text: r.dates?.when ?? monthDay(date), level: 'soon', sort: 8e4 - daysOut };
     if (s === 'late') return { text: 'Delayed', level: 'late', sort: 7e4 };
@@ -104,7 +109,7 @@ function valueFor(r, metricKey = state.metric) {
   const v = m.get(r) ?? null;
   return {
     text: v == null ? '–' : m.kind === 'base' ? `${Math.round(v)}″` : inches(v),
-    sub: m.range ? rangeText(m.range(r)) : '',
+    sub: m.est?.(r) ? (v >= 0.5 ? 'est.' : '') : m.range ? rangeText(m.range(r)) : '',
     level: level(v, m.steps),
     sort: v ?? -1,
   };
@@ -137,10 +142,19 @@ function renderHeadline() {
       const n = data.resorts.filter((r) => m.get(r) != null).length;
       text = v ? `${m.top}: <strong>${esc(best.name)} ${Math.round(v)}″</strong> · ${n} resorts reporting` : 'No base reports yet: resorts report once open';
     } else {
-      text = v >= 1 ? `${m.top}: <strong>${esc(best.name)} ${inches(v)}</strong>` : `No real snow in the forecast for the next ${state.metric === 'next7' ? '7' : '3'} days`;
+      const quiet = { new24: 'No new snow in the last 24 hrs', next72: 'No real snow in the next 3 days', next7: 'No real snow in the next 7 days' };
+      text = v >= 1 ? `${m.top}: <strong>${esc(best.name)} ${inches(v)}</strong>` : quiet[state.metric];
     }
   }
   $('#headline').innerHTML = text;
+}
+
+// "Open · 3 of 24 lifts · 2% of runs", "Opens Fri, Nov 20", …
+function rowSub(r) {
+  const s = r.status;
+  if (s.state !== 'open') return s.label;
+  const lifts = r.report?.lifts;
+  return ['Open', lifts?.total ? `${lifts.open} of ${lifts.total} lifts` : null, s.pct != null ? `${s.pct}% of runs` : null].filter(Boolean).join(' · ');
 }
 
 function renderList() {
@@ -149,7 +163,7 @@ function renderList() {
       <span class="dot dot-${esc(r.status.state)}" aria-hidden="true"></span>
       <span class="row-main">
         <span class="row-name">${state.favs.has(r.id) ? '<span class="fav">★</span> ' : ''}${esc(r.name)}</span>
-        <span class="row-sub">${esc(r.status.label)}${r.status.state === 'open' && r.status.detail ? ` · ${esc(r.status.detail.split(' · ')[0])}` : ''}</span>
+        <span class="row-sub">${esc(rowSub(r))}</span>
       </span>
       <span class="val lvl-${v.level}">${esc(v.text)}${v.sub ? `<small>${esc(v.sub)}</small>` : ''}</span>
     </button>`).join('');
@@ -174,35 +188,44 @@ function renderDetail(r) {
       </div>`).join('')}
     </div>` : '<p class="muted">Forecast unavailable right now.</p>';
 
+  // How much of the mountain is open, as simple bars.
+  const meter = (label, open, total) => (total ? `
+    <div class="meter"><span>${label}</span><b>${open} of ${total}</b>
+      <i style="--pct:${Math.max(open ? 2 : 0, Math.round((open / total) * 100))}%"></i></div>` : '');
   const report = rep ? `
+    <h3 class="section">Open terrain</h3>
+    ${meter('Lifts', rep.lifts?.open ?? 0, rep.lifts?.total)}
+    ${meter('Runs', rep.trails?.open ?? 0, rep.trails?.total)}
     <ul class="report">
-      ${rep.lifts?.total ? `<li><span>Lifts</span><b>${rep.lifts.open} of ${rep.lifts.total}</b></li>` : ''}
-      ${rep.trails?.total ? `<li><span>Runs</span><b>${rep.trails.open} of ${rep.trails.total}</b></li>` : ''}
-      <li><span>New snow</span><b>${inches(rep.new24)} 24 hr · ${inches(rep.new48)} 48 hr</b></li>
+      ${rep.depth != null ? `<li><span>Base depth</span><b>${rep.depth}″</b></li>` : ''}
+      <li><span>Reported new snow</span><b>${inches(rep.new24)} 24 hr · ${inches(rep.new48)} 48 hr</b></li>
       ${rep.surface ? `<li><span>Surface</span><b>${esc(SURFACE[rep.surface] ?? rep.surface)}</b></li>` : ''}
       ${rep.updated ? `<li class="muted"><span>Resort report</span><b>${esc(timeAgo(rep.updated))}</b></li>` : ''}
-    </ul>` : '';
+    </ul>
+    ${rep.message ? `<p class="message">“${esc(rep.message.length > 260 ? `${rep.message.slice(0, 257).trimEnd()}…` : rep.message)}”</p>` : ''}` : '';
+  const new24 = rep?.new24 ?? f?.past24;
+  const new24Label = rep?.new24 != null ? 'last 24 hrs' : f?.past24 != null ? 'last 24 hrs (est.)' : 'last 24 hrs';
 
   const sources = f?.sources?.map((s) => SOURCE_NAMES[s] ?? s) ?? [];
   $('#detail').innerHTML = `
     <div class="detail-head">
       <button type="button" class="icon" data-back aria-label="Back to all resorts">‹</button>
       <div class="detail-title">
-        <h2>${esc(r.name)}</h2>
+        <h2><a href="${esc(r.url)}" target="_blank" rel="noopener" title="Official ${esc(r.name)} website">${esc(r.name)}<span class="ext" aria-hidden="true">↗</span></a></h2>
         <p><span class="pill pill-${esc(r.status.state)}">${esc(r.status.label)}</span> ${esc(seasonText(r, today))}</p>
       </div>
       <button type="button" class="icon star" data-fav="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Unpin' : 'Pin'} ${esc(r.name)}">${fav ? '★' : '☆'}</button>
     </div>
     ${r.status.detail && r.status.state !== 'open' ? `<p class="muted small">${esc(r.status.detail)}</p>` : ''}
     <div class="stats">
+      ${stat(inches(new24), new24Label)}
       ${stat(inches(f?.next72), 'next 3 days', rangeText(f?.next72Range))}
       ${stat(inches(f?.next7), 'next 7 days', rangeText(f?.next7Range))}
-      ${rep?.depth != null ? stat(`${rep.depth}″`, 'base') : stat('–', r.live ? 'base (once open)' : 'no live report')}
     </div>
     ${bars}
     ${report}
     ${sources.length > 1 ? `<p class="muted small">Forecast blends ${sources.length} sources: ${esc(sources.join(', '))}. Big number = middle forecast, small = likely range.</p>` : ''}
-    <a class="site" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)} website ↗</a>`;
+    <a class="site" href="${esc(r.url)}" target="_blank" rel="noopener">Official ${esc(r.name)} site ↗</a>`;
 }
 
 function renderMap() {
@@ -258,7 +281,7 @@ function sheetSizes() {
 // the sheet's current height so the resort lands in the part of the map you can see.
 function coveredPadding(current = false) {
   const top = $('.top').getBoundingClientRect().bottom;
-  if (WIDE.matches) return { top: 0, left: sheetEl.offsetWidth + 16, right: 0, bottom: 0 };
+  if (WIDE.matches) return { top, left: sheetEl.offsetWidth + 24, right: 0, bottom: 0 };
   return { top, left: 0, right: 0, bottom: current ? sheetEl.offsetHeight - sheetY : sheetSizes().visible.peek };
 }
 

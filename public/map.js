@@ -44,6 +44,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, home }) {
 
   // Its own pane so the colour-muting filter on the base map doesn't wash it out.
   map.createPane('snow').style.zIndex = 250;
+  map.createPane('dots').style.zIndex = 590; // just under the labels (markerPane is 600)
   const snowDepth = L.tileLayer.wms(SNOW_DEPTH_WMS, {
     pane: 'snow', layers: '0', format: 'image/png', transparent: true, version: '1.3.0', opacity: 0.75,
   });
@@ -71,14 +72,21 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, home }) {
     if (pin) return pin;
     const root = document.createElement('div');
     root.className = 'pin';
-    root.innerHTML = `
-      <button type="button" class="pin-dot" tabindex="-1" aria-hidden="true"></button>
-      <button type="button" class="pin-bubble"><span class="pin-name"></span><b class="pin-val"></b></button>`;
-    root.addEventListener('click', (e) => {
-      if (!e.target.closest('button')) return;
-      L.DomEvent.stopPropagation(e);
-      onSelect(r.id);
-    });
+    root.innerHTML = '<button type="button" class="pin-bubble"><span class="pin-name"></span><b class="pin-val"></b></button>';
+    // Dots live on their own layer beneath every label, so no dot ever sits on top of a label.
+    const dot = document.createElement('button');
+    dot.type = 'button';
+    dot.className = 'pin-dot';
+    dot.tabIndex = -1;
+    dot.setAttribute('aria-hidden', 'true');
+    for (const el of [root, dot]) {
+      el.addEventListener('click', (e) => {
+        if (!e.target.closest('button')) return;
+        L.DomEvent.stopPropagation(e);
+        onSelect(r.id);
+      });
+    }
+    L.marker(r.at, { pane: 'dots', icon: L.divIcon({ html: dot, className: 'pin-host', iconSize: [0, 0] }), keyboard: false }).addTo(map);
     const marker = L.marker(r.at, { icon: L.divIcon({ html: root, className: 'pin-host', iconSize: [0, 0] }), keyboard: false }).addTo(map);
     pin = { marker, root, bubble: root.querySelector('.pin-bubble'), val: root.querySelector('.pin-val'), name: root.querySelector('.pin-name') };
     pins.set(r.id, pin);
@@ -90,21 +98,23 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, home }) {
   function layout() {
     for (const { pin } of order) pin.root.classList.remove('hidden');
     const items = order.map((o) => ({ ...o, p: map.latLngToContainerPoint(o.r.at), w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight }));
+    // Labels must land in the part of the map you can see, not under the panels.
     const size = map.getSize();
+    const pad = getPadding();
     const placed = [];
     const overlaps = (box) => placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]);
     const hidesDot = (box, self) => items.some((o) => o !== self &&
       o.p.x + DOT_R > box[0] && o.p.x - DOT_R < box[2] && o.p.y + DOT_R > box[1] && o.p.y - DOT_R < box[3]);
-    const offScreen = (box) => box[0] < 0 || box[2] > size.x || box[1] < 0 || box[3] > size.y;
+    const offScreen = (box) => box[0] < pad.left || box[2] > size.x - pad.right || box[1] < pad.top || box[3] > size.y;
 
     for (const it of items) {
       const spots = it.empty ? [[0, 0]] : spotsFor(it.w, it.h);
       const boxAt = ([dx, dy]) => [it.p.x + dx - it.w / 2 - GAP, it.p.y + dy - it.h / 2 - GAP, it.p.x + dx + it.w / 2 + GAP, it.p.y + dy + it.h / 2 + GAP];
+      const dotOnScreen = !offScreen([it.p.x - 1, it.p.y - 1, it.p.x + 1, it.p.y + 1]);
       const ok = (spot, strict) => {
         const box = boxAt(spot);
-        if (overlaps(box)) return false;
-        if (strict && (hidesDot(box, it) || offScreen(box))) return false;
-        return true;
+        if (overlaps(box) || (dotOnScreen && offScreen(box))) return false;
+        return !(strict && hidesDot(box, it));
       };
       // The selected resort always shows, even over a neighbour.
       const spot = spots.find((sp) => ok(sp, true)) ?? spots.find((sp) => ok(sp, false)) ?? (it.selected ? [0, 0] : null);
