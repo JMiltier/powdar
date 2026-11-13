@@ -1,28 +1,20 @@
 // The map view: one bubble per resort showing the chosen number, Snow Map style.
-// Bubbles that would overlap (the I-70 corridor at low zoom) are nudged apart with a
-// thin line back to the resort's real spot.
+// Every resort has a dot at its real spot. Its bubble sits on the dot or right beside it;
+// when there's no room the bubble hides (the dot stays tappable) until you zoom in.
 const L = window.L;
 
 // OpenTopoMap: free, no key, and its terrain shading suits mountains. Dark mode dims it in CSS.
 const TILES = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
 const ATTRIBUTION = 'Map: © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, SRTM | style © <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)';
-const GAP = 3;
-const CROWD_PX = 90;
+// NOAA's daily national snow analysis (NOHRSC): modelled snow depth on the ground, cloud-free.
+const SNOW_DEPTH_WMS = 'https://mapservices.weather.noaa.gov/raster/services/snow/NOHRSC_Snow_Analysis/MapServer/WMSServer';
+const GAP = 2;
+const DOT_R = 4;
 // First visit opens on the central mountains (I-70, Vail, Aspen, Steamboat, Crested Butte):
 // the whole state at phone width is too cramped to read. After that we remember the view.
 const START_VIEW = [[38.85, -107.12], [40.5, -105.5]];
 // Zoomed out, bubbles show just the number; names appear once there's room.
 export const NAMES_FROM_ZOOM = 7.75;
-// Candidate bubble offsets: rings around the resort, wider than tall like the bubbles.
-const RINGS = [28, 42, 58, 76, 96, 118];
-const ANGLES = 16;
-const SPOTS = [[0, 0]];
-for (const r of RINGS) {
-  for (let a = 0; a < ANGLES; a++) {
-    const t = (a / ANGLES) * Math.PI * 2;
-    SPOTS.push([Math.round(Math.cos(t) * r * 1.3), Math.round(Math.sin(t) * r)]);
-  }
-}
 
 const SHORT = {
   'arapahoe-basin': 'A-Basin', 'copper-mountain': 'Copper', breckenridge: 'Breck', 'beaver-creek': 'Beaver Creek',
@@ -30,11 +22,24 @@ const SHORT = {
   'aspen-highlands': 'Highlands', 'crested-butte': 'Crested Butte', cooper: 'Cooper',
 };
 
+// Where a bubble may sit, as its centre relative to the dot: on it, then touching it on each side.
+const spotsFor = (w, h) => {
+  const x = w / 2 + DOT_R + 2;
+  const y = h / 2 + DOT_R + 2;
+  return [[0, 0], [0, -y], [x, 0], [0, y], [-x, 0], [x, -y], [x, y], [-x, y], [-x, -y]];
+};
+
 export function createSnowMap(el, { onSelect, saved, onMove, onZoom }) {
   const map = L.map(el, { zoomControl: false, minZoom: 6, maxZoom: 12, zoomSnap: 0.25, zoomDelta: 0.5, maxBounds: [[35.5, -111], [42.5, -100]] });
   L.control.zoom({ position: 'bottomright' }).addTo(map);
-
   L.tileLayer(TILES, { attribution: ATTRIBUTION, subdomains: 'abc', maxZoom: 12 }).addTo(map);
+
+  // Its own pane so the colour-muting filter on the base map doesn't wash it out.
+  map.createPane('snow').style.zIndex = 250;
+  const snowDepth = L.tileLayer.wms(SNOW_DEPTH_WMS, {
+    pane: 'snow', layers: '0', format: 'image/png', transparent: true, version: '1.3.0', opacity: 0.75,
+    attribution: 'Snow depth: <a href="https://www.nohrsc.noaa.gov/nsa/">NOAA NOHRSC</a>',
+  });
 
   const pins = new Map();
   let order = [];
@@ -50,71 +55,59 @@ export function createSnowMap(el, { onSelect, saved, onMove, onZoom }) {
     const root = document.createElement('div');
     root.className = 'pin';
     root.innerHTML = `
-      <svg class="pin-line" width="1" height="1" aria-hidden="true"><line x1="0" y1="0" x2="0" y2="0"/></svg>
-      <span class="pin-dot"></span>
+      <button type="button" class="pin-dot" tabindex="-1" aria-hidden="true"></button>
       <button type="button" class="pin-bubble"><span class="pin-name"></span><b class="pin-val"></b></button>`;
-    root.querySelector('.pin-bubble').addEventListener('click', (e) => {
+    root.addEventListener('click', (e) => {
+      if (!e.target.closest('button')) return;
       L.DomEvent.stopPropagation(e);
       onSelect(r.id);
     });
     const marker = L.marker(r.at, { icon: L.divIcon({ html: root, className: 'pin-host', iconSize: [0, 0] }), keyboard: false }).addTo(map);
-    pin = {
-      marker,
-      root,
-      bubble: root.querySelector('.pin-bubble'),
-      val: root.querySelector('.pin-val'),
-      name: root.querySelector('.pin-name'),
-      line: root.querySelector('line'),
-      size: [0, 0],
-    };
+    pin = { marker, root, bubble: root.querySelector('.pin-bubble'), val: root.querySelector('.pin-val'), name: root.querySelector('.pin-name') };
     pins.set(r.id, pin);
     return pin;
   }
 
-  // Greedy placement in screen pixels. Lonely resorts keep their real spot; crowded ones
-  // lean outward from their cluster, avoiding other bubbles and, if possible, other dots.
+  // Greedy, in priority order: each bubble takes the first free spot by its dot, or hides.
   function layout() {
     el.classList.toggle('show-names', map.getZoom() >= NAMES_FROM_ZOOM);
+    for (const { pin } of order) pin.root.classList.remove('hidden');
     const items = order.map(({ r, pin, empty }) => ({
       r, pin, empty, p: map.latLngToContainerPoint(r.at), w: pin.bubble.offsetWidth, h: pin.bubble.offsetHeight,
     }));
-    for (const it of items) {
-      const near = items.filter((o) => o !== it && Math.hypot(o.p.x - it.p.x, o.p.y - it.p.y) < CROWD_PX);
-      it.crowd = near.length;
-      it.away = [0, 0];
-      if (near.length) {
-        const vx = it.p.x - near.reduce((s, o) => s + o.p.x, 0) / near.length;
-        const vy = it.p.y - near.reduce((s, o) => s + o.p.y, 0) / near.length;
-        const len = Math.hypot(vx, vy) || 1;
-        it.away = [vx / len, vy / len];
-      }
-    }
     const placed = [];
-    // Resorts with a number go first; empty dots fit in around them.
-    for (const it of [...items].sort((a, b) => a.empty - b.empty || a.crowd - b.crowd)) {
-      let best = [0, 0];
-      let bestScore = Infinity;
-      for (const [dx, dy] of it.empty ? [] : SPOTS) {
-        const box = [it.p.x + dx - it.w / 2 - GAP, it.p.y + dy - it.h / 2 - GAP, it.p.x + dx + it.w / 2 + GAP, it.p.y + dy + it.h / 2 + GAP];
-        if (placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) continue;
-        const hidesDot = items.some((o) => o !== it && o.p.x > box[0] && o.p.x < box[2] && o.p.y > box[1] && o.p.y < box[3]);
-        // Shorter lines win; pointing away from the cluster earns a small discount.
-        const score = Math.hypot(dx, dy) - 0.35 * (dx * it.away[0] + dy * it.away[1]) + (hidesDot ? 30 : 0);
-        if (score < bestScore) {
-          bestScore = score;
-          best = [dx, dy];
-        }
+    const overlaps = (box) => placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]);
+    const hidesDot = (box, self) => items.some((o) => o !== self &&
+      o.p.x + DOT_R > box[0] && o.p.x - DOT_R < box[2] && o.p.y + DOT_R > box[1] && o.p.y - DOT_R < box[3]);
+
+    for (const it of items) {
+      let spot = null;
+      for (const [dx, dy] of it.empty ? [[0, 0]] : spotsFor(it.w, it.h)) {
+        const cx = it.p.x + dx;
+        const cy = it.p.y + dy;
+        const box = [cx - it.w / 2 - GAP, cy - it.h / 2 - GAP, cx + it.w / 2 + GAP, cy + it.h / 2 + GAP];
+        if (overlaps(box) || hidesDot(box, it)) continue;
+        spot = [dx, dy, box];
+        break;
       }
-      const [dx, dy] = best;
-      placed.push([it.p.x + dx - it.w / 2 - GAP, it.p.y + dy - it.h / 2 - GAP, it.p.x + dx + it.w / 2 + GAP, it.p.y + dy + it.h / 2 + GAP]);
+      if (!spot) {
+        it.pin.root.classList.add('hidden');
+        continue;
+      }
+      const [dx, dy, box] = spot;
+      placed.push(box);
       it.pin.bubble.style.transform = `translate(${dx - it.w / 2}px, ${dy - it.h / 2}px)`;
-      it.pin.line.setAttribute('x2', dx);
-      it.pin.line.setAttribute('y2', dy);
       it.pin.root.classList.toggle('moved', dx !== 0 || dy !== 0);
     }
+    return items.filter((it) => !it.empty && it.pin.root.classList.contains('hidden')).length;
   }
 
-  // items: [{ r, value, text, level, open, selected }] in priority order.
+  let hiddenCount = 0;
+  const relayout = () => {
+    hiddenCount = layout();
+  };
+
+  // items: [{ r, text, label, level, open, selected }] in priority order (most important first).
   function update(items) {
     order = items.map((item, i) => {
       const pin = pinFor(item.r);
@@ -129,11 +122,11 @@ export function createSnowMap(el, { onSelect, saved, onMove, onZoom }) {
       map.fitBounds(START_VIEW, { padding: [30, 30] });
       fitted = true;
     }
-    layout();
+    relayout();
   }
 
   map.on('zoomend', () => {
-    layout();
+    relayout();
     onZoom?.();
   });
   map.on('moveend', () => {
@@ -145,9 +138,14 @@ export function createSnowMap(el, { onSelect, saved, onMove, onZoom }) {
   return {
     update,
     namesShown: () => map.getZoom() >= NAMES_FROM_ZOOM,
+    hiddenCount: () => hiddenCount,
+    setSnowDepth(on) {
+      if (on) snowDepth.addTo(map);
+      else snowDepth.remove();
+    },
     resize() {
       map.invalidateSize();
-      layout();
+      relayout();
     },
   };
 }

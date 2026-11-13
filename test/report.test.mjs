@@ -98,6 +98,8 @@ test('buildReport assembles every resort', async () => {
   assert.equal(byId.vail.status.label, 'Opens Fri, Nov 13');
   assert.equal(byId.breckenridge.status.state, 'likely');
   assert.equal(byId['wolf-creek'].status.state, 'tba');
+  assert.deepEqual(byId['arapahoe-basin'].dates, { open: '2026-10-28', close: '2027-05-10', when: null, planned: false });
+  assert.deepEqual(byId.vail.dates, { open: '2026-11-13', close: null, when: null, planned: true });
 });
 
 test('buildReport keeps going when a source fails', async () => {

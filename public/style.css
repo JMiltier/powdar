@@ -137,6 +137,7 @@ h1 { margin: 0; font-size: 1.35rem; letter-spacing: 0.2px; }
 .names { flex: 1; min-width: 0; }
 .names h3 { margin: 0; font-size: 1.1rem; }
 .sub { margin: 1px 0 0; font-size: 0.82rem; color: var(--muted); }
+.season { margin: 2px 0 0; font-size: 0.82rem; font-weight: 600; }
 
 .pill {
   flex: none; font-size: 0.8rem; font-weight: 700;
@@ -201,18 +202,35 @@ body.map-mode { overflow: hidden; }
 .map-metrics { align-self: center; margin: 8px 8px 0; max-width: calc(100% - 16px); overflow-x: auto; }
 .map-metrics button { padding: 8px 12px; white-space: nowrap; }
 .map-hint { margin: 4px 12px 6px; font-size: 0.78rem; color: var(--muted); text-align: center; }
-#map { flex: 1; min-height: 0; background: var(--bg); }
+.map-wrap { position: relative; flex: 1; min-height: 0; }
+#map { position: absolute; inset: 0; background: var(--bg); }
+.snow-toggle {
+  position: absolute; top: 10px; left: 10px; z-index: 900;
+  border: 0; border-radius: 999px; padding: 8px 14px; min-height: 38px;
+  font: inherit; font-size: 0.88rem; font-weight: 700; cursor: pointer;
+  background: var(--card); color: var(--text); box-shadow: 0 1px 5px rgba(0, 0, 0, 0.3);
+}
+.snow-toggle[aria-pressed="true"] { background: #6a3fc1; color: #fff; }
+.snow-legend {
+  position: absolute; left: 10px; top: 56px; z-index: 900; max-width: calc(100% - 20px);
+  background: var(--card); color: var(--text); border-radius: 10px; padding: 6px 8px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.3); font-size: 0.68rem;
+}
+.snow-legend[hidden] { display: none; }
+.snow-legend-title { font-weight: 700; margin-bottom: 3px; }
+.snow-legend-keys { display: flex; flex-wrap: wrap; gap: 2px 8px; }
+.snow-legend-keys span { display: inline-flex; align-items: center; gap: 3px; }
+.snow-legend-keys img { width: 12px; height: 12px; border-radius: 2px; }
 
 .pin-host { background: none; border: 0; }
 .pin { position: relative; width: 0; height: 0; }
 .pin-dot {
-  position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%;
-  background: #1b4f9c; box-shadow: 0 0 0 1.5px #fff; display: none;
+  position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; padding: 0; border-radius: 50%;
+  border: 1.5px solid #fff; background: #1b4f9c; cursor: pointer; pointer-events: auto;
 }
-.pin.moved .pin-dot { display: block; }
-.pin-line { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
-.pin-line line { stroke: #1b4f9c; stroke-width: 1.5; opacity: 0.7; }
-.pin:not(.moved) .pin-line { display: none; }
+/* Bigger invisible tap target around the dot. */
+.pin-dot::after { content: ""; position: absolute; inset: -9px; }
+.pin.hidden .pin-bubble { display: none; }
 .pin-bubble {
   position: absolute; left: 0; top: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -239,6 +257,12 @@ body.map-mode { overflow: hidden; }
 .pin-bubble.lvl-4 { background: #1f5fc4; color: #fff; }
 .pin-bubble.lvl-5 { background: #6a3fc1; color: #fff; }
 .pin-bubble.is-open { border-color: #1fa14f; }
+/* Dates view */
+.pin-bubble.lvl-open { background: #1f9d55; color: #fff; border-color: #fff; }
+.pin-bubble.lvl-soon { background: #dbe9fb; color: #143c78; }
+.pin-bubble.lvl-likely { background: #fbefd5; color: #7a4f00; }
+.pin-bubble.lvl-late { background: #fbe3d6; color: #8f3a0c; }
+.pin-bubble.lvl-tba { background: #eceff3; color: #5f6b7a; }
 .pin-bubble.is-selected { outline: 3px solid #e8a400; outline-offset: 1px; }
 
 .sheet {
@@ -256,3 +280,6 @@ body.map-mode { overflow: hidden; }
 /* Calm the terrain colours so the snow bubbles stand out. */
 .leaflet-tile-pane { filter: saturate(0.45) brightness(1.08); }
 @media (prefers-color-scheme: dark) { .leaflet-tile-pane { filter: saturate(0.4) brightness(0.6) contrast(1.1); } }
+/* With the snow layer on, a grey base map lets the snow colours read clearly. */
+#map.snow-on .leaflet-tile-pane { filter: grayscale(1) brightness(1.1); }
+@media (prefers-color-scheme: dark) { #map.snow-on .leaflet-tile-pane { filter: grayscale(1) brightness(0.55); } }
