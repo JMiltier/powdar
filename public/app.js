@@ -283,8 +283,7 @@ function legendFor(layer) {
   if (layer === 'outlook') {
     return `<span class="legend-title">${esc(seasonSpan(state.outlookSeason))} outlook</span><span class="legend-keys"><span>Drier</span><i class="ramp ramp-outlook" aria-hidden="true"></i><span>Wetter</span><span class="muted">· ${esc(seasonSpan(state.outlookSeason))}</span></span>`;
   }
-  return `<span class="legend-title">Snow on the ground</span><span class="legend-keys"><span>1″</span><i class="ramp" aria-hidden="true"></i><span>8 ft+</span>
-    <span class="contour-key" title="Depth contour lines at 10 inches, 20 inches and 5 feet"><svg viewBox="0 0 16 8" aria-hidden="true"><path d="M1 5.5C4 1 6 1 8 4s4 3 7-1.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>10″ 20″ 5′</span></span>`;
+  return `<span class="legend-title">Snow on the ground</span><span class="legend-keys"><span>1″</span><i class="ramp" aria-hidden="true"></i><span>8 ft+</span></span>`;
 }
 
 function seasonText(r, today) {
@@ -715,7 +714,7 @@ function renderOverview() {
       <button type="button" class="icon" data-back aria-label="Back to all resorts">${UI.back}</button>
       <div class="detail-title">
         <h2>Colorado <span class="pill pill-open">${t.open.length} open</span></h2>
-        <p>Statewide · ${d.resorts.length} resorts · ${list.length} snow stations</p>
+        <p>Ski country · ${d.resorts.length} resorts · ${list.length} mountain snow stations</p>
       </div>
     </div>`;
   const tile = (num, label, sub = '') => `<div class="stat"><b>${num}</b><span>${label}</span>${sub ? `<small>${sub}</small>` : ''}</div>`;
@@ -739,7 +738,7 @@ function renderOverview() {
     snowChart = `${seasonChart(st, null, null, bands)}
       <p class="legend-line"><i class="k-now"></i>This season <i class="k-median"></i>Normal</p>
       <p class="band-key"><span class="b-high">Snowiest 10%</span><span class="b-above">Above</span><span class="b-normal">Typical</span><span class="b-below">Below</span><span class="b-low">Driest 10%</span></p>`;
-    notes.push(`Statewide snowpack: the average of the ${list.length} SNOTEL stations Powdar uses (USDA NRCS Snow Survey), against the same average over the ${hist.seasons} winters ${esc(hist.first)} to ${esc(hist.last)}; % of normal is their total snow water against their total 1991–2020 median.`);
+    notes.push(`Ski-country snowpack: the average of the ${list.length} high-elevation SNOTEL stations near Colorado's resorts (not all of Colorado) (USDA NRCS Snow Survey), against the same average over the ${hist.seasons} winters ${esc(hist.first)} to ${esc(hist.last)}; % of normal is their total snow water against their total 1991–2020 median.`);
   }
 
   // Regions: their stations' snow water against normal.
@@ -766,11 +765,11 @@ function renderOverview() {
     const median = (dd) => tn.days[Math.min(tn.days.length - 1, Math.max(0, dd))]?.[2];
     const week = temps.slice(-7).filter(([dd]) => median(dd) != null);
     const diff = week.length >= 4 ? Math.round(week.reduce((a, [dd, v]) => a + v - median(dd), 0) / week.length) : null;
-    tempBlock = `<p class="season-head">${diff == null ? 'This season so far, against normal' : Math.abs(diff) <= 1 ? 'The last week has been <b>about normal</b> statewide'
-      : `The last week has been <span class="temp-diff ${diff > 0 ? 'warm' : 'cold'}">${Math.round(Math.abs(toUnit(diff, true)))}${unitLabel()} ${diff > 0 ? 'warmer' : 'colder'}</span> than normal statewide`}</p>
+    tempBlock = `<p class="season-head">${diff == null ? 'This season so far, against normal' : Math.abs(diff) <= 1 ? 'The last week has been <b>about normal</b> in ski country'
+      : `The last week has been <span class="temp-diff ${diff > 0 ? 'warm' : 'cold'}">${Math.round(Math.abs(toUnit(diff, true)))}${unitLabel()} ${diff > 0 ? 'warmer' : 'colder'}</span> than normal in ski country`}</p>
       ${tempChart(temps, ahead, tn.days)}
       <p class="legend-line"><i class="k-now"></i>This season <i class="k-proj"></i>Next 7 days <i class="k-median"></i>Normal</p>`;
-    notes.push(`Statewide temperature: the average of the stations' daily mean (high and low); normal range averaged from each station's ${tn.seasons} winters.`);
+    notes.push(`Ski-country temperature: the average daily mean (high and low) of the same ${list.length} mountain stations, roughly 9,000–11,500 ft (not Denver or the plains); normal range averaged from each station's ${tn.seasons} winters.`);
   }
 
   $('#detail').innerHTML = `
@@ -778,15 +777,15 @@ function renderOverview() {
       ${tile(`${t.open.length}`, 'resorts open', `of ${d.resorts.length}`)}
       ${tile(t.lifts[1] ? `${t.lifts[0]}` : '–', 'lifts spinning', t.lifts[1] ? `of ${t.lifts[1]} at open resorts` : '')}
       ${tile(t.runs[1] ? `${t.runs[0]}` : '–', 'runs open', t.runs[1] ? `of ${t.runs[1]}` : '')}
-      ${tile(pct != null ? `${pct}%` : '–', 'of normal snowpack', 'statewide')}
+      ${tile(pct != null ? `${pct}%` : '–', 'of normal snowpack', 'ski country')}
       ${tile(inches(t.fresh.v), 'most new snow', t.fresh.v >= 0.5 ? esc(t.fresh.r.name) : 'last 24 hrs')}
       ${tile(inches(t.week.v), 'most next 7 days', esc(t.week.r.name))}
     </div>
-    <h3 class="section">Snowpack, statewide</h3>
+    <h3 class="section">Snowpack, ski country <span class="section-note">${list.length} mountain stations</span></h3>
     ${snowChart}
     <h3 class="section">By region</h3>
     <ul class="regions">${regionRows}</ul>
-    <h3 class="section">Temperature, statewide</h3>
+    <h3 class="section">Temperature, ski country <span class="section-note">${list.length} mountain stations</span></h3>
     ${tempBlock}
     ${soon.length ? `<h3 class="section">Opening next</h3><ul class="report">${soon.map((r) => `<li><span>${esc(r.name)}</span><b>${esc(monthDay(r.status.date))}</b></li>`).join('')}</ul>` : ''}
     <h3 class="section">Most snow, next 7 days</h3>
