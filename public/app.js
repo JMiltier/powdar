@@ -307,9 +307,17 @@ function seasonChart(st, ahead, past, bands) {
       ${bands ? bandPaths(bands, x, y) : `<path class="normal" d="${area}"/>`}
       ${bands && st.normal.length ? `<path class="median" d="${line(st.normal)}"/>` : ''}
       ${past ? `<path class="now faint" d="${line(st.season)}"/>` : ''}
-      ${proj.length ? `<path class="proj" d="${line(proj)}"/>` : ''}
-      <path class="now" d="${line(shown)}"/>
-      ${end ? `<circle class="now-dot" cx="${x(end[0])}" cy="${y(end[1])}" r="3.5"/>` : ''}
+      ${proj.length ? `<path class="halo" d="${line(proj)}"/><path class="proj" d="${line(proj)}"/>` : ''}
+      <path class="halo" d="${line(shown)}"/><path class="now" d="${line(shown)}"/>
+      ${end ? `<circle class="now-dot" cx="${x(end[0])}" cy="${y(end[1])}" r="4"/>
+        <text class="now-label" text-anchor="end" x="${(x(end[0]) - 6).toFixed(1)}" y="${(y(end[1]) - 8).toFixed(1)}">now ${end[1].toFixed(1)}″</text>` : ''}
+      ${proj.length > 1 ? (() => {
+        const p = proj.at(-1);
+        // Keep the label inside the chart: it flips to the left near the right edge.
+        const flip = x(p[0]) > W - 70;
+        return `<circle class="proj-dot" cx="${x(p[0])}" cy="${y(p[1])}" r="3.5"/>
+          <text class="now-label" text-anchor="${flip ? 'end' : 'start'}" x="${(x(p[0]) + (flip ? -7 : 7)).toFixed(1)}" y="${(y(p[1]) - 6).toFixed(1)}">in 2 wks ${p[1].toFixed(1)}″</text>`;
+      })() : ''}
       ${st.peak ? `<text class="peak" x="${x(dayOfSeason(st.peak.date)).toFixed(1)}" y="${(y(st.peak.swe) - 4).toFixed(1)}">normal peak ${st.peak.swe}″</text>` : ''}
       ${months}
     </svg>`;
