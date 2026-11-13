@@ -2,7 +2,7 @@ import { createSnowMap, CREDITS } from './map.js?v=__V__';
 
 const DATA_URL = 'data.json';
 const STORE = {
-  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', home: 'cs:home', snowDepth: 'cs:snowDepth', openOnly: 'cs:openOnly',
+  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', home: 'cs:home', snowDepth: 'cs:snowCover', openOnly: 'cs:openOnly',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
 const STALE_AFTER_MS = 3 * 3_600_000;
@@ -45,7 +45,7 @@ const state = {
   favs: new Set(read(STORE.favs, [])),
   metric: METRICS[read(STORE.metric, 'new24')] ? read(STORE.metric, 'new24') : 'new24',
   openOnly: read(STORE.openOnly, false),
-  snowDepth: read(STORE.snowDepth, false),
+  snowDepth: read(STORE.snowDepth, true), // snow cover starts on
   selected: null,
   sheet: 'peek',
   map: null,
