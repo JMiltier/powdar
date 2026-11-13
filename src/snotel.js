@@ -18,7 +18,7 @@ export function waterYear(ymd) {
 export function snotelUrl(triplets, begin, end) {
   const q = new URLSearchParams({
     stationTriplets: triplets.join(','),
-    elements: 'WTEQ,SNWD',
+    elements: 'WTEQ,SNWD,TMAX,TMIN',
     duration: 'DAILY',
     beginDate: begin,
     endDate: end,
@@ -28,15 +28,17 @@ export function snotelUrl(triplets, begin, end) {
   return `${AWDB}?${q}`;
 }
 
-// → Map(triplet → { swe: [{date, value, median}], depth: [{date, value}] })
+// → Map(triplet → { swe: [{date, value, median}], depth: [{date, value}], tmax, tmin: [{date, value}] })
 export function parseSnotel(json) {
   const out = new Map();
   for (const station of json ?? []) {
-    const entry = { swe: [], depth: [] };
+    const entry = { swe: [], depth: [], tmax: [], tmin: [] };
     for (const series of station.data ?? []) {
       const code = series.stationElement?.elementCode;
       if (code === 'WTEQ') entry.swe = series.values ?? [];
       if (code === 'SNWD') entry.depth = series.values ?? [];
+      if (code === 'TMAX') entry.tmax = series.values ?? [];
+      if (code === 'TMIN') entry.tmin = series.values ?? [];
     }
     out.set(station.stationTriplet, entry);
   }
@@ -106,5 +108,18 @@ export function stationSeason({ current, normals, today }) {
   const pct = latest.normal >= MIN_NORMAL_FOR_PCT ? Math.round((latest.swe / latest.normal) * 100) : null;
   // Every other day is plenty for a small chart and keeps data.json light.
   const thin = (pts) => pts.filter((_, i) => i % 2 === 0 || i === pts.length - 1);
-  return { latest: { ...latest, depth }, pct, peak, season: thin(season), normal: thin(normal) };
+  return { latest: { ...latest, depth }, pct, peak, season: thin(season), normal: thin(normal), temps: seasonTemps(current, day0) };
+}
+
+// This season's daily mean temperature ((high + low) / 2, °F) as [day of season, °F]. Sensor faults
+// (impossible values, a low above the high) are left out.
+export function seasonTemps(current, day0) {
+  const lows = new Map((current?.tmin ?? []).filter((v) => v.value != null).map((v) => [v.date, v.value]));
+  const out = [];
+  for (const v of current?.tmax ?? []) {
+    const l = lows.get(v.date);
+    if (v.value == null || l == null || v.value < -50 || v.value > 95 || l < -60 || l > 75 || l > v.value) continue;
+    out.push([dayNum(v.date) - day0, Math.round(((v.value + l) / 2) * 10) / 10]);
+  }
+  return out;
 }

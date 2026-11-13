@@ -539,6 +539,7 @@ function renderDetail(r) {
   if (f) notes.push(`Snow forecast: the middle of ${sources.length > 1 ? `${sources.length} forecasts (${esc(sources.join(', '))})` : 'the National Weather Service forecast'}${sources.length > 1 ? `, via ${sourceLink('https://www.weather.gov', 'NWS')} and ${sourceLink('https://open-meteo.com', 'Open-Meteo')}` : ''}. Small numbers are the likely range.${state.data.sources.modelsReused ? ` Model forecast from ${esc(timeAgo(state.data.sources.modelsAt))}.` : ''}`);
   if (f) notes.push(`Weather: ${sourceLink(`https://forecast.weather.gov/MapClick.php?lat=${r.at[0]}&lon=${r.at[1]}`, 'National Weather Service forecast')}.`);
   const season = seasonSection(r, notes);
+  const temps = tempSection(r, notes);
   if (report) notes.push(`Snow report: ${rep.source ? sourceLink(rep.source, `${r.name}’s snow report`) : sourceLink('https://www.coloradoski.com/snow-report/', 'Colorado Ski Country USA')}${rep.updated ? `, updated ${esc(timeAgo(rep.updated))}` : ''}.`);
   if (r.dates?.planned && r.dates.open) notes.push('Opening date as announced by the resort.');
 
@@ -546,6 +547,7 @@ function renderDetail(r) {
     ${liftSection}
     ${report}
     ${season}
+    ${temps}
     ${notes.length ? `<h3 class="section">About the data</h3><ul class="notes">${notes.map((n) => `<li>${n}</li>`).join('')}</ul>` : ''}`;
 }
 
@@ -613,6 +615,77 @@ function dayOfSeason(ymd) {
   const start = Date.parse(`${m >= 10 ? yr : yr - 1}-10-01T12:00:00Z`);
   return Math.round((Date.parse(`${ymd}T12:00:00Z`) - start) / 864e5);
 }
+
+// ---------- temperature chart ----------
+// This season's daily temperature at the resort's snow station (mean of the day's high and low, °F)
+// against the normal range for each date (public/temps/, from 20+ past winters; scripts/temps.mjs),
+// plus the coming week's forecast.
+const tempNormals = new Map();
+function loadTemps(triplet) {
+  if (!tempNormals.has(triplet)) {
+    tempNormals.set(triplet, fetch(`temps/${triplet.split(':')[0]}.json`).then((res) => (res.ok ? res.json() : null)).catch(() => null)
+      .then((d) => { tempNormals.set(triplet, d); return d; }));
+  }
+  return tempNormals.get(triplet);
+}
+function tempSection(r, notes) {
+  const st = station(r);
+  if (!st?.temps?.length) return '';
+  const n = tempNormals.get(r.station);
+  if (!n) loadTemps(r.station).then(() => { if (state.selected === r.id) render(); });
+  if (!n || n instanceof Promise) return '<h3 class="section">Temperature</h3><p class="muted small">Loading…</p>';
+  const median = (d) => n.days[Math.min(n.days.length - 1, Math.max(0, d))]?.[2];
+  // How the last week compares with normal.
+  const week = st.temps.slice(-7).filter(([d]) => median(d) != null);
+  const diff = week.length >= 4 ? Math.round(week.reduce((a, [d, t]) => a + t - median(d), 0) / week.length) : null;
+  const head = diff == null ? 'This season so far, against normal'
+    : Math.abs(diff) <= 1 ? 'The last week has been <b>about normal</b>'
+      : `The last week has been <span class="temp-diff ${diff > 0 ? 'warm' : 'cold'}">${Math.abs(diff)}° ${diff > 0 ? 'warmer' : 'colder'}</span> than normal`;
+  const ahead = (r.forecast?.days ?? []).filter((d) => d.hi != null && d.lo != null).map((d) => [dayOfSeason(d.date), (d.hi + d.lo) / 2]);
+  notes.push(`Temperature: daily mean of the high and low at the ${sourceLink(SNOTEL_SITE(r.station), `${n.name} SNOTEL station`)} (USDA NRCS); normal range from the ${n.seasons} winters ${esc(n.first)} to ${esc(n.last)}. Forecast: the snow forecast's daily highs and lows at mid-mountain.`);
+  return `
+    <h3 class="section">Temperature</h3>
+    <p class="season-head">${head}</p>
+    ${tempChart(st.temps, ahead, n.days)}
+    <p class="legend-line"><i class="k-now"></i>This season <i class="k-proj"></i>Next 7 days <i class="k-median"></i>Normal</p>
+    <p class="band-key"><span class="t-band-wide">Coldest–warmest 10%</span><span class="t-band-mid">Typical half</span></p>`;
+}
+function tempChart(season, ahead, days) {
+  const W = 320;
+  const H = 128;
+  const pad = { l: 22, r: 4, t: 16, b: 18 };
+  const last = season.at(-1);
+  const proj = last && ahead.length ? [last, ...ahead.filter(([d]) => d > last[0])] : [];
+  const all = [...days.filter(Boolean).flatMap((p) => [p[0], p[4]]), ...season.map((p) => p[1]), ...proj.map((p) => p[1])];
+  const lo = Math.floor((Math.min(...all) - 2) / 10) * 10;
+  const hi = Math.ceil((Math.max(...all) + 2) / 10) * 10;
+  const x = (d) => pad.l + (d / SEASON_DAYS) * (W - pad.l - pad.r);
+  const y = (v) => H - pad.b - ((v - lo) / (hi - lo)) * (H - pad.t - pad.b);
+  const path = (pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p[0]).toFixed(1)} ${y(p[1]).toFixed(1)}`).join(' ');
+  const band = (a, b, cls) => {
+    const pts = days.map((v, d) => (v ? [d, v[a], v[b]] : null)).filter(Boolean);
+    return `<path class="${cls}" d="M${pts.map((p) => `${x(p[0]).toFixed(1)} ${y(p[2]).toFixed(1)}`).join(' L')} L${[...pts].reverse().map((p) => `${x(p[0]).toFixed(1)} ${y(p[1]).toFixed(1)}`).join(' L')} Z"/>`;
+  };
+  const med = days.map((v, d) => (v ? [d, v[2]] : null)).filter(Boolean);
+  const grid = [];
+  for (let t = Math.ceil(lo / 20) * 20; t <= hi; t += 20) grid.push(t);
+  const months = MONTHS.map((m, i) => `<text x="${x(MONTH_STARTS[i] + 2).toFixed(1)}" y="${H - 4}">${m}</text>`).join('');
+  const flip = last && x(last[0]) > W - 80;
+  return `
+    <svg class="chart temp-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily temperature this season compared with normal">
+      ${grid.map((t) => `<line class="grid" x1="${pad.l}" x2="${W - pad.r}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text class="t-axis" x="${pad.l - 4}" y="${(y(t) + 3).toFixed(1)}" text-anchor="end">${t}°</text>`).join('')}
+      ${t32(y, pad, W, lo, hi)}
+      ${band(0, 4, 't-band-wide')}${band(1, 3, 't-band-mid')}
+      <path class="median" d="${path(med)}"/>
+      ${proj.length > 1 ? `<path class="halo" d="${path(proj)}"/><path class="proj" d="${path(proj)}"/>` : ''}
+      <path class="halo" d="${path(season)}"/><path class="now" d="${path(season)}"/>
+      ${last ? `<circle class="now-dot" cx="${x(last[0])}" cy="${y(last[1])}" r="3"/>
+        <text class="now-label" text-anchor="${flip ? 'end' : 'start'}" x="${(x(last[0]) + (flip ? -7 : 7)).toFixed(1)}" y="${(y(last[1]) - 7).toFixed(1)}">now ${Math.round(last[1])}°</text>` : ''}
+      ${months}
+    </svg>`;
+}
+// The freezing line, faintly, when it's in range.
+const t32 = (y, pad, W, lo, hi) => (32 > lo && 32 < hi ? `<line class="freeze" x1="${pad.l}" x2="${W - pad.r}" y1="${y(32).toFixed(1)}" y2="${y(32).toFixed(1)}"/><text class="t-axis freeze-label" x="${W - pad.r - 2}" y="${(y(32) - 3).toFixed(1)}" text-anchor="end">32°</text>` : '');
 
 // Past seasons, one small file per snow station, loaded the first time someone picks one.
 const seasonHistory = new Map();
