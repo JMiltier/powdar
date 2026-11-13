@@ -1,0 +1,847 @@
+{
+    "open_resorts": [
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Arapahoe Basin",
+                "resort_opening_date": "2026-10-28",
+                "resort_closing_date": "2027-05-10",
+                "is_open": true,
+                "enable_status_override": true,
+                "status_override_start_date": null,
+                "status_override_end_date": null,
+                "status_override_text": "",
+                "website_url": "https://www.coloradoski.com/resorts/arapahoe-basin",
+                "snocountry_resort_id": "303001",
+                "snow_stake_elevation": "14253",
+                "available_lifts": 9,
+                "available_green_trails": 5,
+                "available_intermediate_trails": 36,
+                "available_black_trails": 54,
+                "available_expert_trails": 52,
+                "available_parks": 0,
+                "created": "2020-09-19T01:09:18.635634+00:00",
+                "modified": "2026-10-29T15:13:54.947190+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "arapahoe-basin"
+            },
+            "snow_report": {
+                "mid_mountain_snow_depth": 18,
+                "surface_conditions": "P/PP",
+                "secondary_surface_conditions": "PP",
+                "resort_conditions": "",
+                "open_lifts": 1,
+                "open_green_trails": 0,
+                "open_intermediate_trails": 1,
+                "open_black_trails": 0,
+                "open_expert_trails": 0,
+                "open_parks": 0,
+                "snow_total_24_hour": 0,
+                "updated": "2026-11-12T06:00:00-07:00",
+                "snow_total_48_hour": 0,
+                "overnight_snowfall": "",
+                "available_lifts": 9,
+                "available_green_trails": 5,
+                "available_intermediate_trails": 36,
+                "available_black_trails": 54,
+                "available_expert_trails": 52,
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Copper Mountain",
+                "resort_opening_date": "2026-11-08",
+                "resort_closing_date": "2027-04-20",
+                "is_open": true,
+                "enable_status_override": false,
+                "status_override_start_date": null,
+                "status_override_end_date": null,
+                "status_override_text": "",
+                "website_url": "https://www.coloradoski.com/resorts/copper-mountain",
+                "snocountry_resort_id": "303009",
+                "snow_stake_elevation": "11200",
+                "available_lifts": 24,
+                "available_green_trails": 37,
+                "available_intermediate_trails": 42,
+                "available_black_trails": 51,
+                "available_expert_trails": 27,
+                "available_parks": 10,
+                "created": "2020-09-19T01:09:18.640664+00:00",
+                "modified": "2026-11-08T10:58:40.801282+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "copper-mountain"
+            },
+            "snow_report": {
+                "open_lifts": 1,
+                "open_green_trails": 0,
+                "open_intermediate_trails": 3,
+                "open_black_trails": 0,
+                "open_expert_trails": 0,
+                "open_parks": 1,
+                "world_id": "dev",
+                "snow_total_24_hour": 0,
+                "snow_total_48_hour": 0,
+                "overnight_snowfall": 0,
+                "mid_mountain_snow_depth": 18,
+                "surface_conditions": "MM",
+                "secondary_surface_conditions": "MM",
+                "resort_conditions": "Hello! Happy Thursday November 12th.\r\n\r\nExpect another beautiful day on the hill today with clear skies and calm winds. We should see a high of around 45 F. One more day of warm weather tomorrow and then we shift into wintery weather for the weekend.\r\n\r\nHope to see you out there!\r\n\r\nLifts & terrain: American Eagle will be spinning at 9 AM with access to Rhapsody, Fair Play and Main Vein. Please note: NO green/beginner terrain is currently available.\r\n\r\nWoodward Copper: An early-season hike-to park is open at the top of American Eagle.\r\n\r\nUphill access: Uphill travel is CLOSED at Copper Mountain. Uphill access is expected to open mid-December.\r\n\r\nParking & transportation: All interior lots are paid parking lots. The Flyer Lot is restricted to parking pass holders only, while the Alpine Lot is free for day skier parking. The Copper Loop and Blue Route buses run starting at 5:30 AM.\r\n\r\nFood & beverage: Several restaurants are open for the season, including Sawmill Pizza and Taphouse, Aerie Food Hall, Downhill Dukes, plus Jack\u2019s Bar & Slopeside Grill. Hours are available on our website.",
+                "ytd_total_24_hour_override": null,
+                "updated": "2026-11-12T05:13:54.857873-07:00",
+                "available_lifts": 24,
+                "available_green_trails": 37,
+                "available_intermediate_trails": 42,
+                "available_black_trails": 51,
+                "available_expert_trails": 27,
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Loveland",
+                "resort_opening_date": "2026-11-06",
+                "resort_closing_date": null,
+                "is_open": true,
+                "enable_status_override": false,
+                "status_override_start_date": null,
+                "status_override_end_date": null,
+                "status_override_text": "",
+                "website_url": "https://www.coloradoski.com/resorts/loveland",
+                "snocountry_resort_id": "303015",
+                "snow_stake_elevation": "11411",
+                "available_lifts": 10,
+                "available_green_trails": 17,
+                "available_intermediate_trails": 43,
+                "available_black_trails": 18,
+                "available_expert_trails": 16,
+                "available_parks": 1,
+                "created": "2020-09-19T01:09:18.646955+00:00",
+                "modified": "2026-11-06T22:13:23.434716+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "loveland"
+            },
+            "snow_report": {
+                "open_lifts": 1,
+                "open_green_trails": 1,
+                "open_intermediate_trails": 0,
+                "open_black_trails": 0,
+                "open_expert_trails": 0,
+                "open_parks": 0,
+                "world_id": "dev",
+                "snow_total_24_hour": 0,
+                "snow_total_48_hour": 0,
+                "overnight_snowfall": 0,
+                "mid_mountain_snow_depth": 6,
+                "surface_conditions": "MM",
+                "secondary_surface_conditions": "",
+                "resort_conditions": "Sunny, with a high near 46. Northwest wind 6 to 8 mph.",
+                "ytd_total_24_hour_override": null,
+                "updated": "2026-11-12T05:07:47.978458-07:00",
+                "available_lifts": 10,
+                "available_green_trails": 17,
+                "available_intermediate_trails": 43,
+                "available_black_trails": 18,
+                "available_expert_trails": 16,
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        }
+    ],
+    "closed_resorts": [
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Aspen Highlands",
+                "resort_opening_date": "2026-12-12",
+                "resort_closing_date": "2027-04-20",
+                "is_open": false,
+                "enable_status_override": false,
+                "status_override_start_date": null,
+                "status_override_end_date": null,
+                "status_override_text": "",
+                "website_url": "https://www.coloradoski.com/resorts/aspen-highlands",
+                "snocountry_resort_id": "303004",
+                "snow_stake_elevation": "12392",
+                "available_lifts": 5,
+                "available_green_trails": 0,
+                "available_intermediate_trails": 37,
+                "available_black_trails": 21,
+                "available_expert_trails": 69,
+                "available_parks": 0,
+                "created": "2020-09-19T01:09:18.638067+00:00",
+                "modified": "2026-10-15T15:50:58.796345+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "aspen-highlands"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Aspen Mountain",
+                "resort_opening_date": "2026-11-26",
+                "resort_closing_date": "2027-04-20",
+                "is_open": false,
+                "enable_status_override": false,
+                "status_override_start_date": null,
+                "status_override_end_date": null,
+                "status_override_text": "",
+                "website_url": "https://www.coloradoski.com/resorts/aspen-mountain",
+                "snocountry_resort_id": "303003",
+                "snow_stake_elevation": "11212",
+                "available_lifts": 9,
+                "available_green_trails": 0,
+                "available_intermediate_trails": 52,
+                "available_black_trails": 25,
+                "available_expert_trails": 63,
+                "available_parks": 0,
+                "created": "2020-09-19T01:09:18.638884+00:00",
+                "modified": "2026-10-15T15:51:14.339070+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "aspen-mountain"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Buttermilk",
+                "resort_opening_date": "2026-12-12",
+                "resort_closing_date": "2027-04-20",
+                "is_open": false,
+                "enable_status_override": false,
+                "status_override_start_date": null,
+                "status_override_end_date": null,
+                "status_override_text": "",
+                "website_url": "https://www.coloradoski.com/resorts/buttermilk",
+                "snocountry_resort_id": "303027",
+                "snow_stake_elevation": "9900",
+                "available_lifts": 5,
+                "available_green_trails": 12,
+                "available_intermediate_trails": 21,
+                "available_black_trails": 9,
+                "available_expert_trails": 0,
+                "available_parks": 11,
+                "created": "2020-09-19T01:09:18.637189+00:00",
+                "modified": "2026-10-15T15:51:32.187432+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "aspen-buttermilk"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Cooper",
+                "resort_opening_date": "2025-12-10",
+                "resort_closing_date": "2026-03-22",
+                "is_open": false,
+                "enable_status_override": true,
+                "status_override_start_date": "2026-10-15",
+                "status_override_end_date": "2026-11-15",
+                "status_override_text": "Resort Opens TBD",
+                "website_url": "https://www.coloradoski.com/resorts/cooper",
+                "snocountry_resort_id": "719003",
+                "snow_stake_elevation": "11600",
+                "available_lifts": 5,
+                "available_green_trails": 12,
+                "available_intermediate_trails": 17,
+                "available_black_trails": 18,
+                "available_expert_trails": 17,
+                "available_parks": 0,
+                "created": "2020-09-19T01:09:18.639771+00:00",
+                "modified": "2026-10-15T15:52:12.518288+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "cooper"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Echo Mountain",
+                "resort_opening_date": "2025-12-13",
+                "resort_closing_date": "2026-03-29",
+                "is_open": false,
+                "enable_status_override": true,
+                "status_override_start_date": "2026-10-15",
+                "status_override_end_date": "2026-11-15",
+                "status_override_text": "Resort Opens TBD",
+                "website_url": "https://www.coloradoski.com/resorts/echo-mountain",
+                "snocountry_resort_id": "720001",
+                "snow_stake_elevation": "10350",
+                "available_lifts": 3,
+                "available_green_trails": 3,
+                "available_intermediate_trails": 2,
+                "available_black_trails": 1,
+                "available_expert_trails": null,
+                "available_parks": 1,
+                "created": "2020-09-19T01:09:18.641808+00:00",
+                "modified": "2026-10-15T15:54:14.060826+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "echo-mountain"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Eldora",
+                "resort_opening_date": "2026-11-20",
+                "resort_closing_date": "2027-04-20",
+                "is_open": false,
+                "enable_status_override": true,
+                "status_override_start_date": "2026-10-15",
+                "status_override_end_date": "2026-11-20",
+                "status_override_text": "Resort opens TBD",
+                "website_url": "https://www.coloradoski.com/resorts/eldora",
+                "snocountry_resort_id": "303011",
+                "snow_stake_elevation": "10,000",
+                "available_lifts": 10,
+                "available_green_trails": 12,
+                "available_intermediate_trails": 30,
+                "available_black_trails": 12,
+                "available_expert_trails": 9,
+                "available_parks": 4,
+                "created": "2020-09-19T01:09:18.642654+00:00",
+                "modified": "2026-11-10T20:27:20.895533+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "eldora"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Granby Ranch",
+                "resort_opening_date": "2026-11-25",
+                "resort_closing_date": "2027-04-20",
+                "is_open": false,
+                "enable_status_override": false,
+                "status_override_start_date": null,
+                "status_override_end_date": null,
+                "status_override_text": "",
+                "website_url": "https://www.coloradoski.com/resorts/granby-ranch",
+                "snocountry_resort_id": "303018",
+                "snow_stake_elevation": "8495",
+                "available_lifts": 5,
+                "available_green_trails": 14,
+                "available_intermediate_trails": 19,
+                "available_black_trails": 12,
+                "available_expert_trails": 0,
+                "available_parks": 5,
+                "created": "2020-09-19T01:09:18.643545+00:00",
+                "modified": "2026-10-15T15:56:16.301279+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "granby-ranch"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Howelsen Hill",
+                "resort_opening_date": null,
+                "resort_closing_date": null,
+                "is_open": false,
+                "enable_status_override": true,
+                "status_override_start_date": "2026-10-15",
+                "status_override_end_date": "2026-11-15",
+                "status_override_text": "Resort Opens TBD",
+                "website_url": "https://www.coloradoski.com/resorts/howelsen-hill",
+                "snocountry_resort_id": "303013",
+                "snow_stake_elevation": "6955",
+                "available_lifts": 3,
+                "available_green_trails": 3,
+                "available_intermediate_trails": 8,
+                "available_black_trails": 8,
+                "available_expert_trails": 0,
+                "available_parks": 1,
+                "created": "2020-09-19T01:09:18.645254+00:00",
+                "modified": "2026-10-15T15:56:58.688010+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "howelsen-hill"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Monarch",
+                "resort_opening_date": null,
+                "resort_closing_date": null,
+                "is_open": false,
+                "enable_status_override": true,
+                "status_override_start_date": "2026-10-15",
+                "status_override_end_date": "2026-11-15",
+                "status_override_text": "Resort Opens ASAP",
+                "website_url": "https://www.coloradoski.com/resorts/monarch",
+                "snocountry_resort_id": "719002",
+                "snow_stake_elevation": "11000",
+                "available_lifts": 8,
+                "available_green_trails": 15,
+                "available_intermediate_trails": 27,
+                "available_black_trails": 28,
+                "available_expert_trails": 7,
+                "available_parks": 3,
+                "created": "2020-09-19T01:09:18.647941+00:00",
+                "modified": "2026-10-15T15:58:09.267710+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "monarch"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Powderhorn",
+                "resort_opening_date": "2026-11-20",
+                "resort_closing_date": "2027-04-20",
+                "is_open": false,
+                "enable_status_override": false,
+                "status_override_start_date": null,
+                "status_override_end_date": null,
+                "status_override_text": "",
+                "website_url": "https://www.coloradoski.com/resorts/powderhorn",
+                "snocountry_resort_id": "303016",
+                "snow_stake_elevation": "",
+                "available_lifts": 5,
+                "available_green_trails": 11,
+                "available_intermediate_trails": 15,
+                "available_black_trails": 26,
+                "available_expert_trails": 2,
+                "available_parks": 3,
+                "created": "2020-09-19T01:09:18.648896+00:00",
+                "modified": "2026-10-15T15:58:32.399659+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "powderhorn"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Purgatory Resort",
+                "resort_opening_date": "2026-11-20",
+                "resort_closing_date": "2027-04-20",
+                "is_open": false,
+                "enable_status_override": false,
+                "status_override_start_date": null,
+                "status_override_end_date": null,
+                "status_override_text": "",
+                "website_url": "https://www.coloradoski.com/resorts/purgatory-resort",
+                "snocountry_resort_id": "303017",
+                "snow_stake_elevation": "",
+                "available_lifts": 11,
+                "available_green_trails": 24,
+                "available_intermediate_trails": 37,
+                "available_black_trails": 30,
+                "available_expert_trails": 16,
+                "available_parks": 4,
+                "created": "2020-09-19T01:09:18.649813+00:00",
+                "modified": "2026-10-15T15:59:20.464504+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "purgatory-resort"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Silverton",
+                "resort_opening_date": "2026-12-31",
+                "resort_closing_date": "2027-04-20",
+                "is_open": false,
+                "enable_status_override": false,
+                "status_override_start_date": null,
+                "status_override_end_date": null,
+                "status_override_text": "",
+                "website_url": "https://www.coloradoski.com/resorts/silverton",
+                "snocountry_resort_id": "303387",
+                "snow_stake_elevation": "",
+                "available_lifts": 1,
+                "available_green_trails": 0,
+                "available_intermediate_trails": 0,
+                "available_black_trails": 0,
+                "available_expert_trails": 69,
+                "available_parks": 0,
+                "created": "2020-09-19T01:09:18.650636+00:00",
+                "modified": "2026-10-15T16:00:21.329052+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "silverton"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Snowmass",
+                "resort_opening_date": "2026-11-26",
+                "resort_closing_date": "2027-04-20",
+                "is_open": false,
+                "enable_status_override": false,
+                "status_override_start_date": null,
+                "status_override_end_date": null,
+                "status_override_text": "",
+                "website_url": "https://www.coloradoski.com/resorts/snowmass",
+                "snocountry_resort_id": "303020",
+                "snow_stake_elevation": "12510",
+                "available_lifts": 20,
+                "available_green_trails": 10,
+                "available_intermediate_trails": 61,
+                "available_black_trails": 27,
+                "available_expert_trails": 26,
+                "available_parks": 6,
+                "created": "2020-09-19T01:09:18.651524+00:00",
+                "modified": "2026-10-15T16:00:43.565799+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "snowmass"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Steamboat",
+                "resort_opening_date": "2026-11-21",
+                "resort_closing_date": "2027-04-20",
+                "is_open": false,
+                "enable_status_override": false,
+                "status_override_start_date": null,
+                "status_override_end_date": null,
+                "status_override_text": "",
+                "website_url": "https://www.coloradoski.com/resorts/steamboat",
+                "snocountry_resort_id": "303021",
+                "snow_stake_elevation": "",
+                "available_lifts": 23,
+                "available_green_trails": 22,
+                "available_intermediate_trails": 68,
+                "available_black_trails": 73,
+                "available_expert_trails": 16,
+                "available_parks": 3,
+                "created": "2020-09-19T01:09:18.686079+00:00",
+                "modified": "2026-10-15T16:01:00.629484+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "steamboat"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Sunlight Mountain Resort",
+                "resort_opening_date": "2026-12-11",
+                "resort_closing_date": "2027-04-20",
+                "is_open": false,
+                "enable_status_override": false,
+                "status_override_start_date": null,
+                "status_override_end_date": null,
+                "status_override_text": "",
+                "website_url": "https://www.coloradoski.com/resorts/sunlight",
+                "snocountry_resort_id": "303019",
+                "snow_stake_elevation": "8,000 feet",
+                "available_lifts": 3,
+                "available_green_trails": 12,
+                "available_intermediate_trails": 22,
+                "available_black_trails": 13,
+                "available_expert_trails": 28,
+                "available_parks": 1,
+                "created": "2020-09-19T01:09:18.687125+00:00",
+                "modified": "2026-10-15T16:01:21.346063+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "sunlight"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Telluride",
+                "resort_opening_date": "2026-11-26",
+                "resort_closing_date": "2027-04-20",
+                "is_open": false,
+                "enable_status_override": false,
+                "status_override_start_date": null,
+                "status_override_end_date": null,
+                "status_override_text": "",
+                "website_url": "https://www.coloradoski.com/resorts/telluride",
+                "snocountry_resort_id": "303022",
+                "snow_stake_elevation": "10950",
+                "available_lifts": 17,
+                "available_green_trails": 21,
+                "available_intermediate_trails": 44,
+                "available_black_trails": 28,
+                "available_expert_trails": 55,
+                "available_parks": 6,
+                "created": "2020-09-19T01:09:18.687968+00:00",
+                "modified": "2026-10-15T16:02:13.991827+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "telluride"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        },
+        {
+            "resort": {
+                "is_active": true,
+                "resort_title": "Winter Park",
+                "resort_opening_date": "2026-11-13",
+                "resort_closing_date": null,
+                "is_open": false,
+                "enable_status_override": false,
+                "status_override_start_date": null,
+                "status_override_end_date": null,
+                "status_override_text": "",
+                "website_url": "https://www.coloradoski.com/resorts/winter-park",
+                "snocountry_resort_id": "303024",
+                "snow_stake_elevation": "",
+                "available_lifts": 23,
+                "available_green_trails": 39,
+                "available_intermediate_trails": 63,
+                "available_black_trails": 52,
+                "available_expert_trails": 7,
+                "available_parks": 7,
+                "created": "2020-09-19T01:09:18.688819+00:00",
+                "modified": "2026-11-12T17:15:47.121712+00:00",
+                "world_id": "dev",
+                "principal_id": null,
+                "key": "winter-park"
+            },
+            "snow_report": {
+                "forecasted_weather": [
+                    {
+                        "date": null,
+                        "weather_icon": "",
+                        "weather_condition": "",
+                        "forecated_high_temperature": "",
+                        "forecated_low_temperature": ""
+                    }
+                ]
+            },
+            "resort_status": "Closed"
+        }
+    ]
+}

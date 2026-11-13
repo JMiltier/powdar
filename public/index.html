@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Colorado Snow</title>
+  <meta name="description" content="Every Colorado ski resort: what's open, opening days, fresh snow and snow on the way.">
+  <meta name="theme-color" content="#1b4f9c">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="top-row">
+      <h1><span aria-hidden="true">❄</span> Colorado Snow</h1>
+      <button id="refresh" class="icon-btn" type="button" aria-label="Refresh">↻</button>
+    </div>
+    <p id="updated" class="updated">Loading…</p>
+  </header>
+
+  <main>
+    <p id="notice" class="notice" hidden></p>
+    <section id="summary" class="summary" aria-live="polite"></section>
+
+    <nav class="controls" aria-label="Sort and filter">
+      <div class="seg" role="group" aria-label="Sort by">
+        <button type="button" data-sort="snow" aria-pressed="true">Snow coming</button>
+        <button type="button" data-sort="opening" aria-pressed="false">Opening day</button>
+        <button type="button" data-sort="name" aria-pressed="false">A–Z</button>
+      </div>
+      <label class="toggle"><input id="open-only" type="checkbox"> Open only</label>
+    </nav>
+
+    <section id="favorites" hidden>
+      <h2 class="list-title">★ Your mountains</h2>
+      <div class="list" id="fav-list"></div>
+    </section>
+    <section>
+      <h2 class="list-title" id="all-title">All resorts</h2>
+      <div class="list" id="list"></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>Tap ☆ to pin a resort to the top. Tap a resort for its day-by-day forecast.</p>
+    <p>Snow forecast: National Weather Service. Open status, lifts and snow totals: Colorado Ski Country USA.
+      Vail, Beaver Creek, Breckenridge, Keystone, Crested Butte and Wolf Creek show planned dates only, so check their sites to be sure.</p>
+  </footer>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
