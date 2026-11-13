@@ -17,7 +17,7 @@ const SOURCE_NAMES = {
   nws: 'National Weather Service', ecmwf_ifs025: 'European ECMWF', gfs_seamless: 'American GFS/HRRR', gem_seamless: 'Canadian GEM', icon_seamless: 'German ICON',
 };
 
-// What the map and list show. `steps` are the upper bounds of each colour level.
+// What the map and list show. `steps` are the upper bounds of each color level.
 const METRICS = {
   // The resort's own report when it has one, otherwise the weather models' estimate.
   new24: {
@@ -127,7 +127,7 @@ function valueFor(r, metricKey = state.metric) {
 
 const station = (r) => (r.station ? state.data.snowpack?.[r.station] : null);
 
-// Colour band for "% of normal": well below → below → normal → above → well above.
+// Color band for "% of normal": well below → below → normal → above → well above.
 function seasonLevel(pct) {
   if (pct == null) return 'none';
   if (pct < 70) return 'pk-low';
@@ -369,7 +369,7 @@ async function loadHistory(triplet) {
   return req;
 }
 
-// Colour bands from the saved winters: for each day of the season, the 10th/25th/50th/75th/90th
+// Color bands from the saved winters: for each day of the season, the 10th/25th/50th/75th/90th
 // percentile and the snowiest year's value. Cached per station.
 const bandCache = new Map();
 function bandsFor(triplet, hist) {
@@ -417,7 +417,7 @@ function seasonSection(r) {
   const pick = state.pastSeason;
   let past = null;
   let head;
-  // Past winters (for the colour bands and the season picker) load in the background.
+  // Past winters (for the color bands and the season picker) load in the background.
   const h = st ? history.get(r.station) : null;
   const data = h && !(h instanceof Promise) ? h : null;
   if (st && !h) {
@@ -454,7 +454,9 @@ function seasonSection(r) {
         : '<i class="k-now"></i>This season <i class="k-proj"></i>Next 2 weeks'}${bands ? ' <i class="k-median"></i>Normal' : ' <i class="k-normal"></i>Normal'}</p>
       ${bands ? `<p class="band-key"><span class="b-high">Snowiest 10%</span><span class="b-above">Above</span><span class="b-normal">Typical</span><span class="b-below">Below</span><span class="b-low">Driest 10%</span></p>` : ''}
       <p class="source">Snow water at the ${sourceLink(SNOTEL_SITE(r.station), `${st.name} SNOTEL station`)}${st.latest.depth != null && !past ? ` (${st.latest.depth}″ of snow on the ground)` : ''}.
-        Normal is the 1991–2020 median${bands ? `; colour bands show how the ${bands.years} winters from ${esc(bands.first)} to ${esc(bands.last)} ranged` : ''}. Source: USDA NRCS Snow Survey.</p>` : ''}
+        Normal is the 1991–2020 median${bands ? `; color bands show how the ${bands.years} winters from ${esc(bands.first)} to ${esc(bands.last)} ranged` : ''}. Source: USDA NRCS Snow Survey.</p>` : ''}
+    ${r.noaa?.depth != null ? `<p class="avg">NOAA's snow model shows about <b>${Math.round(r.noaa.depth)}″</b> of snow on the ground here${r.noaa.water != null ? ` (${r.noaa.water}″ of water)` : ''}.
+      <span class="source">Source: ${sourceLink('https://www.nohrsc.noaa.gov/nsa/', 'NOAA NOHRSC')} SNODAS snow model, updated daily.</span></p>` : ''}
     ${r.avgSnow ? `<p class="avg">A typical season brings about <b>${r.avgSnow}″</b> of snow here.
       <span class="source">Source: ${sourceLink('https://www.zrankings.com/articles/best-snow-in-colorado', 'ZRankings')} (patrol and avalanche-center records).</span></p>` : ''}`;
 }
