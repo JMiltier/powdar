@@ -1,7 +1,7 @@
 // Saves past seasons of snowpack for every SNOTEL station the app uses, one small file per station
 // in public/history/. Past seasons never change, so run this once a year after the season ends
 // (each fall): `npm run history`.
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { RESORTS } from '../src/resorts.js';
 import { despike, parseSnotel, snotelUrl, waterYear } from '../src/snotel.js';
 
@@ -11,14 +11,29 @@ const dayNum = (ymd) => Date.parse(`${ymd}T12:00:00Z`) / DAY_MS;
 
 const today = new Date().toISOString().slice(0, 10);
 const { startYear } = waterYear(today); // the current, unfinished season starts this year
-const stations = new Map(RESORTS.map((r) => [r.snotel[0], r.snotel[1]]));
+// Every station the app uses: Colorado's hand-picked ones plus the rest of the country's.
+const us = JSON.parse(await readFile(new URL('../src/us-resorts.json', import.meta.url), 'utf8'));
+const stations = new Map([...RESORTS, ...us.resorts].filter((r) => r.snotel).map((r) => [r.snotel[0], r.snotel[1]]));
+// ONLY=780:CO:SNTL,505:CO:SNTL limits the run to those stations (e.g. after changing a resort's station).
+if (process.env.ONLY) for (const t of [...stations.keys()]) if (!process.env.ONLY.split(',').includes(t)) stations.delete(t);
 const outDir = new URL('../public/history/', import.meta.url);
 await mkdir(outDir, { recursive: true });
 
 for (const [triplet, name] of stations) {
+  const file = new URL(`${triplet.split(':')[0]}.json`, outDir);
+  // FRESH_HOURS=12 skips stations saved within the last 12 hours (to resume an interrupted run).
+  if (process.env.FRESH_HOURS) {
+    const age = await stat(file).then((f) => Date.now() - f.mtimeMs).catch(() => Infinity);
+    if (age < Number(process.env.FRESH_HOURS) * 3_600_000) continue;
+  }
   const url = snotelUrl([triplet], `${FIRST_SEASON}-10-01`, `${startYear}-07-31`);
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${res.status} for ${name}`);
+  // The snow-station service is sometimes slow or hangs: time out and retry.
+  let res;
+  for (let i = 0; i < 4 && !res?.ok; i++) {
+    res = await fetch(url, { signal: AbortSignal.timeout(60_000) }).catch(() => null);
+    if (!res?.ok) await new Promise((r) => setTimeout(r, 3000 * (i + 1)));
+  }
+  if (!res?.ok) { console.warn(`${name}: no response, skipped`); continue; }
   // Bad sensor readings (one-day spikes or dropouts) are removed before anything else.
   const raw = parseSnotel(await res.json()).get(triplet)?.swe ?? [];
   const values = despike(raw);
@@ -44,7 +59,6 @@ for (const [triplet, name] of stations) {
       peak: s.peak,
       points: s.points.filter((_, i) => i % 3 === 0 || i === s.points.length - 1).map(([d, w]) => [d, w]),
     }));
-  const file = new URL(`${triplet.split(':')[0]}.json`, outDir);
   await writeFile(file, JSON.stringify({ station: triplet, name, seasons: list }));
   console.log(`${name.padEnd(20)} ${list.length} seasons (${list.at(-1)?.season} – ${list[0]?.season}), ${raw.filter((r) => r.value != null).length - values.length} bad readings dropped`);
 }

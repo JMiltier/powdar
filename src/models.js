@@ -7,8 +7,9 @@ export const MODELS = [
   { id: 'ecmwf_ifs025', label: 'European (ECMWF)' },
   { id: 'gfs_seamless', label: 'American (GFS/HRRR)' },
   { id: 'gem_seamless', label: 'Canadian (GEM)' },
-  { id: 'icon_seamless', label: 'German (ICON)' },
 ];
+// ICON (German) was dropped: it adds the least for US mountains, and three models keep the nationwide
+// update inside Open-Meteo's free daily allowance.
 
 const FT_TO_M = 0.3048;
 const MM_PER_INCH = 25.4;

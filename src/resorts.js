@@ -35,7 +35,7 @@ export const RESORTS = [
   { id: 'monarch', at: [38.5122, -106.332], elev: 11400, snotel: ['701:CO:SNTL', 'Porphyry Creek'], avgSnow: 284, name: 'Monarch', region: 'Central', csc: 'monarch', nws: ['PUB', 36, 81], url: 'https://www.skimonarch.com' },
   { id: 'telluride', at: [37.9375, -107.8123], elev: 10900, snotel: ['538:CO:SNTL', 'Idarado'], avgSnow: 276, name: 'Telluride', region: 'Southwest', csc: 'telluride', nws: ['GJT', 116, 49], url: 'https://www.tellurideskiresort.com' },
   { id: 'silverton', at: [37.8846, -107.6659], elev: 11950, snotel: ['713:CO:SNTL', 'Red Mountain Pass'], name: 'Silverton', region: 'Southwest', csc: 'silverton', nws: ['GJT', 121, 46], url: 'https://silvertonmountain.com' },
-  { id: 'purgatory', at: [37.6303, -107.814], elev: 9800, snotel: ['387:CO:SNTL', 'Cascade #2'], avgSnow: 264, name: 'Purgatory', region: 'Southwest', csc: 'purgatory-resort', nws: ['GJT', 115, 35], url: 'https://www.purgatory.ski' },
+  { id: 'purgatory', at: [37.6303, -107.814], elev: 9800, snotel: ['780:CO:SNTL', 'Spud Mountain'], avgSnow: 264, name: 'Purgatory', region: 'Southwest', csc: 'purgatory-resort', nws: ['GJT', 115, 35], url: 'https://www.purgatory.ski' },
   { id: 'wolf-creek', at: [37.4722, -106.7933], elev: 11100, snotel: ['874:CO:SNTL', 'Wolf Creek Summit'], avgSnow: 387, name: 'Wolf Creek', region: 'Southwest', nws: ['PUB', 15, 36], url: 'https://wolfcreekski.com' },
 ];
 
