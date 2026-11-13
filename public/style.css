@@ -53,7 +53,7 @@ button { font: inherit; color: inherit; }
 /* The relief, softened and tinted by the app's own background showing through. */
 .leaflet-tile-pane { filter: grayscale(0.75) contrast(1.15) brightness(0.92); transition: filter 0.3s ease; }
 /* Light map with snow cover on: a darker, slate relief so the white snow stands out. */
-:root:not([data-theme="dark"]) #map[data-layer="snow"] .leaflet-tile-pane { filter: grayscale(0.6) contrast(1.15) brightness(0.68) sepia(0.15) hue-rotate(180deg); }
+:root:not([data-theme="dark"]) #map[data-layer="snow"] .leaflet-tile-pane { filter: grayscale(0.6) contrast(1.2) brightness(0.56) sepia(0.15) hue-rotate(180deg); }
 :root[data-theme="dark"] .leaflet-tile-pane { opacity: 0.9; filter: contrast(1.25) brightness(1.05); }
 /* NOAA's snow cover comes as coarse squares: a slight blur turns them into soft cover. */
 .leaflet-snow-pane { filter: none; }
@@ -130,7 +130,7 @@ body.sheet-up .legend, .legend.off { visibility: hidden; }
 .ramp {
   display: inline-block; width: 120px; height: 8px; border-radius: 4px;
   /* White snow over the map's grey, like on the map. */
-  background: linear-gradient(90deg, rgba(236, 244, 252, 0.27), rgba(240, 246, 253, 0.51), rgba(244, 248, 254, 0.73), rgba(250, 252, 255, 0.92), #fcfdff), #6f7886;
+  background: linear-gradient(90deg, rgba(196, 206, 219, 0.53), rgba(225, 231, 240, 0.75), rgba(244, 247, 251, 0.91), #fff), #6f7886;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 12%, transparent);
 }
 
@@ -750,3 +750,7 @@ button, .row, summary { -webkit-tap-highlight-color: transparent; }
 :root[data-theme="dark"] .uv-high { background: #45291a; color: #ffb37f; }
 :root[data-theme="dark"] .uv-vhigh { background: #4a1f22; color: #ff9b9b; }
 :root[data-theme="dark"] .uv-ext { background: #35214a; color: #d4abff; }
+
+.contour-key { display: inline-flex; align-items: center; gap: 3px; margin-left: 4px; color: var(--muted); font-weight: 650; white-space: nowrap; }
+.contour-key svg { width: 16px; height: 8px; color: #5a7090; }
+:root[data-theme="dark"] .contour-key svg { color: #7d93b3; }
