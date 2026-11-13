@@ -458,7 +458,7 @@ function renderList() {
       <span class="card-stats">${stats}</span>
     </button>`;
   }).join('');
-  $('#list').innerHTML = sortBar + (rows || `<p class="empty">${state.openOnly && !state.favsOnly && state.pass === 'all' ? 'Nothing open yet.' : 'No resorts match these filters.'} <button type="button" class="link" data-clear-filters>Show all</button></p>`);
+  $('#list').innerHTML = overviewCard() + sortBar + (rows || `<p class="empty">${state.openOnly && !state.favsOnly && state.pass === 'all' ? 'Nothing open yet.' : 'No resorts match these filters.'} <button type="button" class="link" data-clear-filters>Show all</button></p>`);
 }
 
 function renderDetail(r) {
@@ -615,6 +615,170 @@ function dayOfSeason(ymd) {
   const start = Date.parse(`${m >= 10 ? yr : yr - 1}-10-01T12:00:00Z`);
   return Math.round((Date.parse(`${ymd}T12:00:00Z`) - start) / 864e5);
 }
+
+// ---------- Colorado overview ----------
+// The whole state's winter at a glance: what's open, fresh snow and the week ahead, statewide snowpack
+// and temperature against normal (public/history/colorado.json and public/temps/colorado.json, made by
+// scripts/statewide.mjs), and each region's snowpack.
+const OVERVIEW = 'colorado';
+let stateHistory = null; // colorado.json (snowpack normals), once loaded
+function loadStateHistory() {
+  if (!stateHistory) {
+    stateHistory = fetch('history/colorado.json').then((res) => (res.ok ? res.json() : null)).catch(() => null)
+      .then((d) => { stateHistory = d ?? false; if (state.selected === OVERVIEW) render(); return d; });
+  }
+  return stateHistory;
+}
+// One entry per snow station (several resorts can share one).
+const stationsList = () => Object.entries(state.data.snowpack ?? {}).map(([id, s]) => ({ id, ...s }));
+// Statewide % of normal: all the stations' snow water against all their normals.
+// (minNormal: below this much normal water, a % swings wildly; a region with one station can go lower.)
+function statewidePct(list = stationsList(), minNormal = 2) {
+  const ok = list.filter((s) => s.latest?.normal != null);
+  const have = ok.reduce((a, s) => a + s.latest.swe, 0);
+  const normal = ok.reduce((a, s) => a + s.latest.normal, 0);
+  return normal >= minNormal ? Math.round((have / normal) * 100) : null;
+}
+// Average of the stations' curves, day by day ([day, value] points, filled in between).
+function averageCurve(curves) {
+  const at = (pts, d) => {
+    if (!pts.length || d < pts[0][0] || d > pts.at(-1)[0]) return null;
+    let i = 1;
+    while (i < pts.length && pts[i][0] < d) i++;
+    const [d0, v0] = pts[i - 1];
+    const [d1, v1] = pts[Math.min(i, pts.length - 1)];
+    return d1 === d0 ? v0 : v0 + ((v1 - v0) * (d - d0)) / (d1 - d0);
+  };
+  const last = Math.min(...curves.filter((c) => c.length).map((c) => c.at(-1)[0]));
+  const out = [];
+  for (let d = 0; d <= last; d++) {
+    const vals = curves.map((c) => at(c, d)).filter((v) => v != null);
+    if (vals.length >= curves.length * 0.7) out.push([d, Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100) / 100]);
+  }
+  return out;
+}
+function todayStats() {
+  const rs = state.data.resorts;
+  const open = rs.filter((r) => r.status.state === 'open');
+  const sum = (f) => rs.reduce((a, r) => { const v = f(r); return v ? [a[0] + v.open, a[1] + v.total] : a; }, [0, 0]);
+  const lifts = sum((r) => (r.status.state === 'open' ? (r.report?.lifts?.total ? r.report.lifts : r.lifts) : null));
+  const runs = sum((r) => (r.status.state === 'open' ? r.report?.trails : null));
+  const top = (key) => rs.map((r) => ({ r, v: METRICS[key].get(r) ?? 0 })).sort((a, b) => b.v - a.v)[0];
+  return { open, lifts, runs, fresh: top('new24'), week: top('next7') };
+}
+function overviewCard() {
+  if (!state.data?.snowpack || state.code !== 'CO') return '';
+  const t = todayStats();
+  const pct = statewidePct();
+  return `
+    <button type="button" class="row card overview-card" data-open="${OVERVIEW}">
+      <span class="card-top">
+        <span class="co-badge" aria-hidden="true">CO</span>
+        <span class="row-name">Colorado today</span>
+        <span class="card-more">Overview${UI.chevron}</span>
+      </span>
+      <span class="card-stats">
+        <span class="cs"><b>${t.open.length}/${state.data.resorts.length}</b><small>Open</small></span>
+        <span class="cs"><b>${t.lifts[1] ? `${t.lifts[0]}` : '–'}</b><small>Lifts spinning</small></span>
+        <span class="cs"><b class="lvl-${seasonLevel(pct)}">${pct != null ? `${pct}%` : '–'}</b><small>Snowpack</small></span>
+        <span class="cs"><b>${inches(t.week.v)}</b><small>Most +7d</small></span>
+      </span>
+    </button>`;
+}
+function renderOverview() {
+  const d = state.data;
+  const t = todayStats();
+  const list = stationsList();
+  const pct = statewidePct(list);
+  const notes = [];
+  $('#grab-detail').innerHTML = `
+    <div class="detail-head">
+      <button type="button" class="icon" data-back aria-label="Back to all resorts">${UI.back}</button>
+      <div class="detail-title">
+        <h2>Colorado <span class="pill pill-open">${t.open.length} open</span></h2>
+        <p>Statewide · ${d.resorts.length} resorts · ${list.length} snow stations</p>
+      </div>
+    </div>`;
+  const tile = (num, label, sub = '') => `<div class="stat"><b>${num}</b><span>${label}</span>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  const soon = d.resorts.filter((r) => r.status.state === 'soon' && r.status.date).sort((a, b) => a.status.date.localeCompare(b.status.date)).slice(0, 4);
+  const best = d.resorts.map((r) => ({ r, v: r.forecast?.next7 ?? 0 })).sort((a, b) => b.v - a.v).slice(0, 4);
+
+  // Statewide snowpack: the average station's snow water this season against past winters.
+  const h = loadStateHistory();
+  const hist = h && !(h instanceof Promise) ? h : null;
+  let snowChart = '<p class="muted small">Loading…</p>';
+  if (hist) {
+    const curve = (k) => hist.days.map((v, i) => (v ? [i, v[k]] : null)).filter(Boolean).filter((_, i) => i % 3 === 0);
+    const bands = { p10: curve(0), p25: curve(1), p75: curve(3), p90: curve(4), max: curve(5), years: hist.seasons, first: hist.first, last: hist.last };
+    const normal = curve(2);
+    const peakAt = normal.reduce((a, p) => (p[1] > a[1] ? p : a), [0, 0]);
+    const st = {
+      season: averageCurve(list.map((s) => s.season ?? [])).filter((_, i, a) => i % 2 === 0 || i === a.length - 1),
+      normal,
+      peak: { swe: Math.round(peakAt[1] * 10) / 10, date: dateOfSeason(peakAt[0]) },
+    };
+    snowChart = `${seasonChart(st, null, null, bands)}
+      <p class="legend-line"><i class="k-now"></i>This season <i class="k-median"></i>Normal</p>
+      <p class="band-key"><span class="b-high">Snowiest 10%</span><span class="b-above">Above</span><span class="b-normal">Typical</span><span class="b-below">Below</span><span class="b-low">Driest 10%</span></p>`;
+    notes.push(`Statewide snowpack: the average of the ${list.length} SNOTEL stations Powdar uses (USDA NRCS Snow Survey), against the same average over the ${hist.seasons} winters ${esc(hist.first)} to ${esc(hist.last)}; % of normal is their total snow water against their total 1991–2020 median.`);
+  }
+
+  // Regions: their stations' snow water against normal.
+  const regions = [...new Set(d.resorts.map((r) => r.region))].map((name) => {
+    const ids = [...new Set(d.resorts.filter((r) => r.region === name && r.station).map((r) => r.station))];
+    return { name, pct: statewidePct(ids.map((id) => ({ id, ...d.snowpack[id] })), 0.5), resorts: d.resorts.filter((r) => r.region === name).map((r) => r.name) };
+  }).filter((g) => g.pct != null).sort((a, b) => b.pct - a.pct);
+  const maxPct = Math.max(150, ...regions.map((g) => g.pct));
+  const regionRows = regions.map((g) => `
+    <li class="region">
+      <span class="region-name">${esc(g.name)}<small>${esc(g.resorts.join(', '))}</small></span>
+      <span class="region-bar"><i class="lvl-${seasonLevel(g.pct)}" style="width:${Math.max(3, (g.pct / maxPct) * 100).toFixed(0)}%"></i><em style="left:${((100 / maxPct) * 100).toFixed(0)}%"></em></span>
+      <b class="pct lvl-${seasonLevel(g.pct)}">${g.pct}%</b>
+    </li>`).join('');
+
+  // Statewide temperature.
+  const tn = tempNormals.get(OVERVIEW);
+  if (!tn) loadTemps(OVERVIEW).then(() => { if (state.selected === OVERVIEW) render(); });
+  let tempBlock = '<p class="muted small">Loading…</p>';
+  if (tn && !(tn instanceof Promise)) {
+    const temps = averageCurve(list.map((s) => s.temps ?? []));
+    const ahead = averageCurve(d.resorts.map((r) => (r.forecast?.days ?? []).filter((x) => x.hi != null && x.lo != null).map((x) => [dayOfSeason(x.date), (x.hi + x.lo) / 2])))
+      .map(([dd, v]) => [dd, v]);
+    const median = (dd) => tn.days[Math.min(tn.days.length - 1, Math.max(0, dd))]?.[2];
+    const week = temps.slice(-7).filter(([dd]) => median(dd) != null);
+    const diff = week.length >= 4 ? Math.round(week.reduce((a, [dd, v]) => a + v - median(dd), 0) / week.length) : null;
+    tempBlock = `<p class="season-head">${diff == null ? 'This season so far, against normal' : Math.abs(diff) <= 1 ? 'The last week has been <b>about normal</b> statewide'
+      : `The last week has been <span class="temp-diff ${diff > 0 ? 'warm' : 'cold'}">${Math.abs(diff)}° ${diff > 0 ? 'warmer' : 'colder'}</span> than normal statewide`}</p>
+      ${tempChart(temps, ahead, tn.days)}
+      <p class="legend-line"><i class="k-now"></i>This season <i class="k-proj"></i>Next 7 days <i class="k-median"></i>Normal</p>`;
+    notes.push(`Statewide temperature: the average of the stations' daily mean (high and low); normal range averaged from each station's ${tn.seasons} winters.`);
+  }
+
+  $('#detail').innerHTML = `
+    <div class="stats stats-6">
+      ${tile(`${t.open.length}`, 'resorts open', `of ${d.resorts.length}`)}
+      ${tile(t.lifts[1] ? `${t.lifts[0]}` : '–', 'lifts spinning', t.lifts[1] ? `of ${t.lifts[1]} at open resorts` : '')}
+      ${tile(t.runs[1] ? `${t.runs[0]}` : '–', 'runs open', t.runs[1] ? `of ${t.runs[1]}` : '')}
+      ${tile(pct != null ? `${pct}%` : '–', 'of normal snowpack', 'statewide')}
+      ${tile(inches(t.fresh.v), 'most new snow', t.fresh.v >= 0.5 ? esc(t.fresh.r.name) : 'last 24 hrs')}
+      ${tile(inches(t.week.v), 'most next 7 days', esc(t.week.r.name))}
+    </div>
+    <h3 class="section">Snowpack, statewide</h3>
+    ${snowChart}
+    <h3 class="section">By region</h3>
+    <ul class="regions">${regionRows}</ul>
+    <h3 class="section">Temperature, statewide</h3>
+    ${tempBlock}
+    ${soon.length ? `<h3 class="section">Opening next</h3><ul class="report">${soon.map((r) => `<li><span>${esc(r.name)}</span><b>${esc(monthDay(r.status.date))}</b></li>`).join('')}</ul>` : ''}
+    <h3 class="section">Most snow, next 7 days</h3>
+    <ul class="report">${best.map(({ r, v }) => `<li><span>${esc(r.name)}</span><b>${inches(v)}</b></li>`).join('')}</ul>
+    <h3 class="section">About the data</h3><ul class="notes">${notes.map((n) => `<li>${n}</li>`).join('')}<li>Open status, lifts and runs: the resorts' own reports and Colorado Ski Country USA.</li></ul>`;
+}
+const dateOfSeason = (d) => {
+  const [y, m] = state.data.today.split('-').map(Number);
+  const start = Date.parse(`${m >= 10 ? y : y - 1}-10-01T12:00:00Z`);
+  return new Date(start + d * 864e5).toISOString().slice(0, 10);
+};
 
 // ---------- temperature chart ----------
 // This season's daily temperature at the resort's snow station (mean of the day's high and low, °F)
@@ -836,13 +1000,16 @@ function render() {
   $('#legend').innerHTML = legendFor(state.layer);
   $('#updated').textContent = `Updated ${timeAgo(state.data.generated)}`;
 
-  const r = state.data.resorts.find((x) => x.id === state.selected);
-  $('#list').hidden = Boolean(r);
-  $('#detail').hidden = !r;
-  $('.foot').hidden = Boolean(r); // a resort's own sources sit at the bottom of its details
-  grabEl.classList.toggle('has-detail', Boolean(r));
-  if (!r) $('#grab-detail').innerHTML = '';
-  if (r) renderDetail(r);
+  const overview = state.selected === OVERVIEW;
+  const r = overview ? null : state.data.resorts.find((x) => x.id === state.selected);
+  const open = Boolean(r) || overview;
+  $('#list').hidden = open;
+  $('#detail').hidden = !open;
+  $('.foot').hidden = open; // a resort's own sources sit at the bottom of its details
+  grabEl.classList.toggle('has-detail', open);
+  if (!open) $('#grab-detail').innerHTML = '';
+  if (overview) renderOverview();
+  else if (r) renderDetail(r);
   else renderList();
   renderHeadline();
   renderMap();
@@ -1011,6 +1178,7 @@ bodyEl.addEventListener('touchcancel', (e) => endSwipe(e, true));
 
 // dir: +1 next, -1 previous (wraps around).
 function sideSwipe(dir) {
+  if (state.selected === OVERVIEW) return;
   if (state.selected) {
     const ids = ordered().map((o) => o.r.id);
     const i = ids.indexOf(state.selected);
