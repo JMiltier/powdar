@@ -70,7 +70,7 @@ button { font: inherit; color: inherit; }
 }
 .ribbon button {
   flex: none; border: 0; background: none; color: var(--muted); font-weight: 700; font-size: 0.9rem;
-  padding: 7px 12px; min-height: 36px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+  padding: 7px 10px; min-height: 36px; border-radius: 999px; cursor: pointer; white-space: nowrap;
 }
 .ribbon button[aria-pressed="true"] { background: var(--accent); color: #fff; }
 :root[data-theme="dark"] .ribbon button[aria-pressed="true"] { color: #0e141c; }
@@ -459,11 +459,11 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 
 /* ---------- Small phones (iPhone SE: 320–375px wide) ---------- */
 /* 390–410px phones (most iPhones): a little less padding so all six views and ❄ fit. */
-@media (max-width: 410px) {
-  .ribbon button { padding: 7px 10px; }
+@media (max-width: 430px) {
+  .ribbon button { padding: 7px 8px; }
 }
 @media (max-width: 380px) {
-  .ribbon button { padding: 7px 9px; font-size: 0.84rem; }
+  .ribbon button { padding: 7px 7px; font-size: 0.82rem; }
   .brand { flex-direction: column; align-items: flex-start; gap: 0; }
   h1 { font-size: 1.1rem; }
   .row { gap: 10px; padding: 10px 2px; }
@@ -477,7 +477,8 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
   .legend-keys { gap: 5px; }
 }
 @media (max-width: 340px) {
-  .ribbon button { padding: 6px 7px; font-size: 0.8rem; }
+  .ribbon button { padding: 6px 5px; font-size: 0.76rem; }
+  .ribbon { gap: 0; }
 }
 
 /* Where the numbers come from: small print at the very bottom of a resort's details. */

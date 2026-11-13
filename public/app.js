@@ -247,6 +247,11 @@ function valueFor(r, metricKey = state.metric) {
     if (s === 'late') return { text: 'Late', level: 'late', sort: 7e4 };
     return { text: s === 'done' ? 'Closed' : 'TBA', level: 'tba', sort: 0 };
   }
+  // Base at an open resort that doesn't report one (Vail Resorts' mountains): NOAA's natural snow
+  // says ~0 while the resort skis on machine-made snow, so say "not reported" rather than 0″.
+  if (m.kind === 'base' && r.report?.depth == null && isOpenish(r) && (r.noaa?.depth ?? 0) < 6) {
+    return { text: '–', sub: 'not reported', level: 'tba', sort: -0.5 };
+  }
   if (m.kind === 'season') {
     const pct = m.get(r);
     // A station whose normal is still near zero (early season, lower elevations): say so rather than
@@ -606,7 +611,7 @@ function seasonSection(r, notes) {
   const fact = (label, value) => `<li><span>${label}</span><b>${value}</b></li>`;
   const facts = [];
   if (r.noaa?.depth != null) {
-    facts.push(fact('Snow on the ground', `about ${Math.round(r.noaa.depth)}″`));
+    facts.push(fact('Natural snow on the ground', `about ${Math.round(r.noaa.depth)}″`));
     notes.push(`Snow on the ground: ${sourceLink('https://www.nohrsc.noaa.gov/nsa/', 'NOAA NOHRSC')} SNODAS snow model, updated daily${r.noaa.water != null ? ` (${r.noaa.water}″ of water here)` : ''}.`);
   } else if (st?.latest.depth != null && !past) {
     facts.push(fact('Snow on the ground', `${st.latest.depth}″ at the station`));
@@ -643,6 +648,8 @@ function renderMap() {
       r, text: v.text, label: v.text, level: v.level, selected, match: matches(r),
       open: open && !['dates', 'season'].includes(METRICS[state.metric].kind),
       important: selected || fav || open,
+      // Who keeps a full label when space runs out: filter matches, then favorites, then open resorts.
+      prio: (filtering() && matches(r) ? 4 : 0) + (fav ? 2 : 0) + (isOpenish(r) ? 1 : 0),
       rank: [selected, fav, open, v.sort],
     };
   });
