@@ -167,10 +167,13 @@ function segRect(seg, box) {
 // getPadding() → { top, right, bottom, left }: pixels covered by the app's bars and panels.
 // extend: an extra [lat, lon] to frame in (Colorado adds open plains east of the Front Range so its
 // labels have room to spread instead of piling onto I-70).
-// The blue depth scale (the "color" snow style), shallow to deep.
+// The depth color scale (the default "color" snow style): a different hue for every depth band, ice to
+// teal to violet to magenta, so a foot and three feet look clearly different. Kept clear of the resort
+// numbers' blue and the season's orange/tan. Per NOAA class: <2″, 2–4″, 4–10″, 10–20″, 20–39″, 39–59″,
+// 59–98″, 98″+ (deeper classes share the last).
 export const SNOW_COLOR = [
-  [214, 236, 255, 125], [186, 222, 255, 150], [150, 200, 252, 170], [108, 170, 246, 188], [72, 136, 236, 202],
-  [48, 104, 218, 214], [34, 76, 192, 224], [28, 54, 160, 232], [40, 40, 140, 236], [40, 40, 140, 236], [40, 40, 140, 236],
+  [214, 222, 232, 165], [176, 236, 243, 195], [104, 212, 225, 210], [20, 146, 172, 222], [96, 96, 210, 226],
+  [146, 74, 204, 232], [200, 64, 176, 238], [236, 80, 140, 244], [236, 80, 140, 244], [236, 80, 140, 244], [236, 80, 140, 244],
 ];
 
 export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [], onOutlook, onRadar, onCast }) {
@@ -222,7 +225,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // precipitation outlook) or 'none'. Snow and radar are one picture of the visible map from NOAA,
   // repainted pixel by pixel and smoothly upscaled; the outlook is NOAA's shapes, colored.
   let layerName = 'none';
-  let snowStyle = 'shaded';
+  let snowStyle = 'color';
   let overlay = null;
   let job = 0;
   let radarTimer = null;
@@ -455,7 +458,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         // surface), contours (shaded + depth lines), color (a blue depth scale).
         const shadow = isDark() ? 'rgba(0, 0, 0, 0.6)' : 'rgba(20, 32, 55, 0.85)';
         const depth = { classify: classOf };
-        if (snowStyle === 'color') next = await picture(snowExport, (r, g, b) => SNOW_COLOR[classOf(r, g, b)]);
+        if (snowStyle === 'color') next = await picture(snowExport, (r, g, b) => SNOW_COLOR[classOf(r, g, b)], { shadow: isDark() ? 'rgba(0, 0, 0, 0.5)' : 'rgba(20, 32, 55, 0.6)' });
         else if (snowStyle === 'volume') next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], { shadow, depth, relief: true });
         else if (snowStyle === 'contours') {
           next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], {

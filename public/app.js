@@ -11,7 +11,7 @@ const ALL_STATES = false;
 const STATE_CODES = !ALL_STATES ? new Set(['CO']) : new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
 const validCode = (c) => (c && STATE_CODES.has(String(c).toUpperCase()) ? String(c).toUpperCase() : null);
 const STORE = {
-  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', sort: 'cs:sort', unit: 'cs:unit', snowStyle: 'cs:snowStyle', panel: 'cs:panel',
+  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', sort: 'cs:sort', unit: 'cs:unit', snowStyle: 'cs:snowStyle2', panel: 'cs:panel',
   state: 'cs:state', states: 'cs:states', theme: 'cs:theme',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
@@ -79,7 +79,7 @@ const state = {
   openOnly: read(STORE.openOnly, false),
   favsOnly: read(STORE.favsOnly, false),
   pass: read(STORE.pass, 'all'), // 'all', 'epic', 'ikon', 'indy' or 'other'
-  snowStyle: read(STORE.snowStyle, 'shaded'), // how snow on the ground is drawn (tap its key to cycle)
+  snowStyle: read(STORE.snowStyle, 'color'), // how snow on the ground is drawn (tap its key to cycle)
   unit: read(STORE.unit, 'F'), // temperatures in 'F' or 'C' (the data is always °F)
   sort: read(STORE.sort, 'name'), // the list: 'name' (A–Z), 'value' (the map view's number) or 'open'
   // The map overlay: 'snow' (on the ground; the default), 'radar', 'outlook' or 'none'.
@@ -269,8 +269,8 @@ function seasonSpan(valid) {
   return i < 0 ? 'next 3 months' : `${MONTH_NAMES[i]}–${MONTH_NAMES[(i + 2) % 12]}`;
 }
 
-const SNOW_STYLES = ['shaded', 'volume', 'contours', 'color'];
-const SNOW_STYLE_NAMES = { shaded: 'Shaded', volume: 'Volume', contours: 'Contours', color: 'Color' };
+const SNOW_STYLES = ['color', 'shaded', 'volume', 'contours'];
+const SNOW_STYLE_NAMES = { color: 'Colors', shaded: 'Shaded', volume: 'Volume', contours: 'Contours' };
 
 // The key along the bottom of the map, for whichever overlay is showing.
 function legendFor(layer) {
@@ -1196,6 +1196,7 @@ function render() {
   // Hidden but still taking its space, so changing the overlay never shifts the map.
   $('#legend').classList.toggle('off', state.layer === 'none');
   $('#map').dataset.layer = state.layer; // (the light map dims a little under white snow)
+  $('#map').dataset.snowStyle = state.snowStyle;
   $('#legend').innerHTML = legendFor(state.layer);
   $('#updated').textContent = `Updated ${timeAgo(state.data.generated)}`;
 
