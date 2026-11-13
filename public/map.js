@@ -26,10 +26,12 @@ const NOAA_CLASSES = [
   [171, 193, 191], [102, 193, 196], [99, 169, 203], [80, 121, 200], [60, 63, 194], [87, 32, 195],
   [125, 1, 187], [180, 4, 177], [169, 19, 119], [153, 43, 80], [139, 69, 69],
 ];
-// Our ramp, one entry per class: [r, g, b, alpha 0–255]. The key's gradient (.ramp) matches it.
+// Our ramp, one entry per class: [r, g, b, alpha 0–255]. Snow is drawn as snow: white, thin and see-
+// through where it's shallow, solid where it's deep (a faint cool tint keeps it from reading as cloud).
+// Blue stays for the resort numbers. The key's gradient (.ramp) matches it.
 export const SNOW_RAMP = [
-  [214, 236, 255, 125], [186, 222, 255, 150], [150, 200, 252, 170], [108, 170, 246, 188], [72, 136, 236, 202],
-  [48, 104, 218, 214], [34, 76, 192, 224], [28, 54, 160, 232], [40, 40, 140, 236], [40, 40, 140, 236], [40, 40, 140, 236],
+  [236, 244, 252, 70], [238, 245, 252, 100], [240, 246, 253, 130], [242, 247, 253, 160], [244, 248, 254, 185],
+  [246, 250, 255, 205], [248, 251, 255, 222], [250, 252, 255, 235], [252, 253, 255, 245], [252, 253, 255, 245], [252, 253, 255, 245],
 ];
 const classOf = (r, g, b) => {
   let best = 0;
@@ -183,7 +185,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     bbox: [sw.x, sw.y, ne.x, ne.y].join(','), bboxSR: '3857', imageSR: '3857', size: `${w},${h}`, format: 'png32',
     transparent: 'true', layers: 'show:3', f: 'image', t: Math.floor(Date.now() / 3600000),
   })}`;
-  async function picture(src, recolor) {
+  // shadow: a soft edge color around what's drawn (white snow needs one on the light map).
+  async function picture(src, recolor, shadow = null) {
     const size = map.getSize();
     const b = map.getPixelBounds();
     const sw = map.options.crs.project(map.unproject(L.point(b.min.x, b.max.y)));
@@ -217,6 +220,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     const G = big.getContext('2d');
     G.imageSmoothingEnabled = true;
     G.imageSmoothingQuality = 'high';
+    if (shadow) Object.assign(G, { shadowColor: shadow, shadowBlur: 7 });
     G.drawImage(small, 0, 0, size.x, size.y);
     return L.imageOverlay(big.toDataURL('image/png'), map.getBounds(), { pane: 'snow', interactive: false });
   }
@@ -297,7 +301,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     let next = null;
     let nextFrames = [];
     try {
-      if (layerName === 'snow') next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)]);
+      if (layerName === 'snow') next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], isDark() ? null : 'rgba(45, 60, 85, 0.6)');
       else if (layerName === 'radar') {
         try {
           nextFrames = await radarLayer();
@@ -819,6 +823,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     // Light or dark relief to match the theme.
     setTheme() {
       base.setUrl(isDark() ? TILES.dark : TILES.light);
+      if (layerName === 'snow') drawLayer(); // its edge depends on the theme
     },
     // Radar loop: play or pause (paused shows the newest frame).
     playRadar(on) {
