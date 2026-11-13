@@ -10,7 +10,7 @@ const ALL_STATES = false;
 const STATE_CODES = !ALL_STATES ? new Set(['CO']) : new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
 const validCode = (c) => (c && STATE_CODES.has(String(c).toUpperCase()) ? String(c).toUpperCase() : null);
 const STORE = {
-  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', panel: 'cs:panel',
+  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', panel: 'cs:panel',
   state: 'cs:state', states: 'cs:states', theme: 'cs:theme',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
@@ -76,6 +76,8 @@ const state = {
   favs: new Set(read(STORE.favs, [])),
   metric: METRICS[read(STORE.metric, 'new24')] ? read(STORE.metric, 'new24') : 'new24',
   openOnly: read(STORE.openOnly, false),
+  favsOnly: read(STORE.favsOnly, false),
+  pass: read(STORE.pass, 'all'), // 'all', 'epic', 'ikon', 'indy' or 'other'
   // The map overlay: 'snow' (on the ground; the default), 'radar', 'outlook' or 'none'.
   layer: read(STORE.layer, null) ?? (read(STORE.snowDepth, true) ? 'snow' : 'none'),
   outlookSeason: null, // e.g. "NDJ 2026-2027", once the outlook has loaded
@@ -133,6 +135,42 @@ function level(value, steps) {
 const siteName = (url) => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return 'Website'; } };
 // The usual "opens in a new tab" icon: a box with an arrow leaving it.
 const EXT_ICON = '<svg class="ext-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+// ---------- filters ----------
+// Which multi-resort pass each Colorado resort is on, 2026–27 (the rest are "Other": their own passes).
+// Telluride is 7 days on Epic; Aspen Snowmass's four mountains share 7 days on Ikon.
+const PASSES = {
+  epic: ['vail', 'beaver-creek', 'breckenridge', 'keystone', 'crested-butte', 'telluride'],
+  ikon: ['arapahoe-basin', 'copper-mountain', 'winter-park', 'steamboat', 'eldora', 'aspen-mountain', 'aspen-highlands', 'buttermilk', 'snowmass'],
+  indy: ['loveland', 'sunlight', 'powderhorn', 'granby-ranch', 'echo-mountain', 'howelsen-hill'],
+};
+const PASS_NAMES = { all: 'All', epic: 'Epic', ikon: 'Ikon', indy: 'Indy', other: 'Other' };
+const passOf = (r) => Object.keys(PASSES).find((p) => PASSES[p].includes(r.id)) ?? 'other';
+const filtering = () => state.openOnly || state.favsOnly || state.pass !== 'all';
+function matches(r) {
+  return (!state.openOnly || isOpenish(r)) && (!state.favsOnly || state.favs.has(r.id)) && (state.pass === 'all' || passOf(r) === state.pass);
+}
+// The chip says what's on: "Filter", or e.g. "Ikon · Open · ★".
+function syncFilters() {
+  const parts = [state.pass !== 'all' && PASS_NAMES[state.pass], state.openOnly && 'Open', state.favsOnly && '★'].filter(Boolean);
+  const btn = $('#filter-btn');
+  btn.querySelector('span').textContent = parts.length ? parts.join(' · ') : 'Filter';
+  btn.classList.toggle('on', parts.length > 0);
+  $('#f-open').checked = state.openOnly;
+  $('#f-favs').checked = state.favsOnly;
+  for (const b of document.querySelectorAll('[data-pass]')) b.setAttribute('aria-pressed', String(b.dataset.pass === state.pass));
+}
+function openFilters(open) {
+  const pop = $('#filters');
+  pop.hidden = !open;
+  $('#filter-btn').setAttribute('aria-expanded', String(open));
+  if (!open) return;
+  // Below the chip when there's room, otherwise above it.
+  const r = $('#filter-btn').getBoundingClientRect();
+  const h = pop.offsetHeight;
+  pop.style.right = `${Math.max(8, innerWidth - r.right)}px`;
+  pop.style.top = r.bottom + 8 + h < innerHeight ? `${r.bottom + 8}px` : `${Math.max(8, r.top - 8 - h)}px`;
+}
 
 // ---------- map overlay ----------
 
@@ -272,7 +310,7 @@ const isOpenish = (r) => r.status.state === 'open' || r.status.state === 'likely
 // all: every resort regardless of "Open now" (the map always shows them all, so it never moves).
 function ordered(all = false) {
   return state.data.resorts
-    .filter((r) => all || !state.openOnly || isOpenish(r))
+    .filter((r) => all || matches(r))
     .map((r) => ({ r, v: valueFor(r) }))
     .sort((a, b) => state.favs.has(b.r.id) - state.favs.has(a.r.id) || b.v.sort - a.v.sort || a.r.name.localeCompare(b.r.name));
 }
@@ -325,7 +363,7 @@ function renderList() {
       </span>
       <span class="val lvl-${v.level}">${esc(v.text)}${v.sub ? `<small>${esc(v.sub)}</small>` : ''}</span>
     </button>`).join('');
-  $('#list').innerHTML = rows || '<p class="empty">Nothing open yet. Turn off “Open now” to see opening days.</p>';
+  $('#list').innerHTML = rows || `<p class="empty">${state.openOnly && !state.favsOnly && state.pass === 'all' ? 'Nothing open yet.' : 'No resorts match these filters.'} <button type="button" class="link" data-clear-filters>Show all</button></p>`;
 }
 
 function renderDetail(r) {
@@ -595,13 +633,13 @@ function seasonSection(r, notes) {
 function renderMap() {
   if (!state.map) return;
   // Every resort, always: "Open now" filters the list and only dims closed resorts on the map.
-  $('#map').classList.toggle('open-only', state.openOnly);
+  $('#map').classList.toggle('filtering', filtering());
   const items = ordered(true).map(({ r, v }) => {
     const selected = r.id === state.selected;
     const fav = state.favs.has(r.id);
     const open = r.status.state === 'open';
     return {
-      r, text: v.text, label: v.text, level: v.level, selected, openNow: isOpenish(r),
+      r, text: v.text, label: v.text, level: v.level, selected, match: matches(r),
       open: open && !['dates', 'season'].includes(METRICS[state.metric].kind),
       important: selected || fav || open,
       rank: [selected, fav, open, v.sort],
@@ -617,7 +655,7 @@ function render() {
   syncRibbon();
   $('#state-btn').textContent = `${state.data.stateName ?? 'Colorado'} ▾`;
   document.querySelectorAll('[data-metric]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.metric === state.metric)));
-  $('#open-only').checked = state.openOnly;
+  syncFilters();
   $('#snow-btn').setAttribute('aria-pressed', String(state.layer !== 'none'));
   for (const b of document.querySelectorAll('[data-layer]')) b.setAttribute('aria-checked', String(b.dataset.layer === state.layer));
   // Hidden but still taking its space, so changing the overlay never shifts the map.
@@ -1008,6 +1046,21 @@ document.addEventListener('click', (e) => {
     toast(state.favs.has(id) ? 'Pinned to the top of the list' : 'Unpinned');
     return render();
   }
+  if (t.closest('#filter-btn')) return openFilters($('#filters').hidden);
+  const passBtn = t.closest('[data-pass]');
+  if (passBtn) {
+    state.pass = passBtn.dataset.pass;
+    write(STORE.pass, state.pass);
+    return render();
+  }
+  if (t.closest('[data-clear-filters]')) {
+    Object.assign(state, { openOnly: false, favsOnly: false, pass: 'all' });
+    [STORE.openOnly, STORE.favsOnly].forEach((k) => write(k, false));
+    write(STORE.pass, 'all');
+    openFilters(false);
+    return render();
+  }
+  if (!t.closest('#filters')) openFilters(false);
   if (t.closest('#radar-play')) return state.map?.playRadar(!state.radar.playing);
   if (t.closest('#snow-btn')) return openLayers($('#layers').hidden);
   const layer = t.closest('[data-layer]');
@@ -1036,11 +1089,14 @@ document.addEventListener('change', (e) => {
   state.pastSeason = e.target.value || null;
   render();
 });
-$('#open-only').addEventListener('change', (e) => {
-  state.openOnly = e.target.checked;
-  write(STORE.openOnly, state.openOnly);
-  render();
-});
+
+for (const [id, key] of [['#f-open', 'openOnly'], ['#f-favs', 'favsOnly']]) {
+  $(id).addEventListener('change', (e) => {
+    state[key] = e.target.checked;
+    write(STORE[key], state[key]);
+    render();
+  });
+}
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (!$('#picker').hidden) openPicker(false);
