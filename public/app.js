@@ -299,6 +299,41 @@ function legendFor(layer) {
     <span class="legend-keys depth-steps">${step(0, '1″')}${step(2, '4″')}${step(3, '1′')}${step(4, '2′')}${step(6, '5′')}${step(7, '8′+')}</span>`;
 }
 
+// ---------- webcams ----------
+// A swipeable strip of each resort's cams (current stills, refreshed every few minutes); tap one for a
+// full-size view with a link to the live camera or the resort's cam page.
+const camBucket = () => Math.floor(Date.now() / 300000); // a fresh frame every 5 minutes
+const camSrc = (url) => `${url}${url.includes('?') ? '&' : '?'}t=${camBucket()}`;
+function camsSection(r, notes) {
+  const c = r.cams;
+  if (!c?.cams?.length) return '';
+  notes.push(`Webcams: ${sourceLink(c.page, `${r.name}’s cams`)}, refreshed every few minutes.`);
+  return `
+    <h3 class="section">Cams <span class="section-note">live from the mountain</span></h3>
+    <div class="cams" role="list">${c.cams.map((cam, i) => `
+      <button type="button" class="cam" role="listitem" data-cam="${i}" aria-label="${esc(cam.name)} webcam">
+        <img src="${esc(camSrc(cam.image))}" alt="" loading="lazy" decoding="async" onerror="this.closest('.cam').hidden = true">
+        <span>${esc(cam.name)}</span>
+      </button>`).join('')}
+    </div>`;
+}
+function openCam(r, i) {
+  const c = r.cams?.cams?.[i];
+  if (!c) return;
+  const box = $('#cam-view');
+  box.innerHTML = `
+    <div class="cam-view-inner">
+      <img src="${esc(camSrc(c.image))}" alt="${esc(`${r.name}: ${c.name} webcam`)}">
+      <div class="cam-view-bar">
+        <span><b>${esc(r.name)}</b> · ${esc(c.name)}</span>
+        <span>${c.live ? `<a href="${esc(c.live)}" target="_blank" rel="noopener">Live video${EXT_ICON}</a>` : ''}
+          <a href="${esc(r.cams.page)}" target="_blank" rel="noopener">All cams${EXT_ICON}</a></span>
+      </div>
+      <button type="button" class="cam-close" data-cam-close aria-label="Close">×</button>
+    </div>`;
+  box.hidden = false;
+}
+
 function seasonText(r, today) {
   const { open, close, when, planned } = r.dates ?? {};
   if (open && close) return `Season ${monthDay(open)} – ${monthDay(close)}`;
@@ -569,12 +604,14 @@ function renderDetail(r) {
   if (f) notes.push(`Snow forecast: the middle of ${sources.length > 1 ? `${sources.length} forecasts (${esc(sources.join(', '))})` : 'the National Weather Service forecast'}${sources.length > 1 ? `, via ${sourceLink('https://www.weather.gov', 'NWS')} and ${sourceLink('https://open-meteo.com', 'Open-Meteo')}` : ''}. Small numbers are the likely range.${state.data.sources.modelsReused ? ` Model forecast from ${esc(timeAgo(state.data.sources.modelsAt))}.` : ''}`);
   if (f?.days.some((d) => d.uv != null)) notes.push(`UV index: each day’s peak, from ${sourceLink('https://open-meteo.com', 'Open-Meteo')}. At ski-area elevations, with snow reflecting it back, sunburn comes fast even on cold days.`);
   if (f) notes.push(`Weather: ${sourceLink(`https://forecast.weather.gov/MapClick.php?lat=${r.at[0]}&lon=${r.at[1]}`, 'National Weather Service forecast')}.`);
+  const cams = camsSection(r, notes);
   const season = seasonSection(r, notes);
   const temps = tempSection(r, notes);
   if (report) notes.push(`Snow report: ${rep.source ? sourceLink(rep.source, `${r.name}’s snow report`) : sourceLink('https://www.coloradoski.com/snow-report/', 'Colorado Ski Country USA')}${rep.updated ? `, updated ${esc(timeAgo(rep.updated))}` : ''}.`);
   if (r.dates?.planned && r.dates.open) notes.push('Opening date as announced by the resort.');
 
   $('#detail').innerHTML = `${top}
+    ${cams}
     ${liftSection}
     ${report}
     ${season}
@@ -1528,6 +1565,13 @@ document.addEventListener('click', (e) => {
     return render();
   }
   if (!t.closest('#filters')) openFilters(false);
+  const camBtn = t.closest('[data-cam]');
+  if (camBtn) {
+    const r = state.data.resorts.find((x) => x.id === state.selected);
+    if (r) openCam(r, Number(camBtn.dataset.cam));
+    return;
+  }
+  if (t.closest('[data-cam-close]') || t.id === 'cam-view') { $('#cam-view').hidden = true; return; }
   if (t.closest('[data-snow-cycle]')) {
     state.snowStyle = SNOW_STYLES[(SNOW_STYLES.indexOf(state.snowStyle) + 1) % SNOW_STYLES.length];
     write(STORE.snowStyle, state.snowStyle);

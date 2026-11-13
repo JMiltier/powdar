@@ -1,0 +1,125 @@
+{
+ "vail": {
+  "page": "https://www.vail.com/the-mountain/mountain-conditions/mountain-cams.aspx",
+  "cams": [
+   {
+    "name": "Chair 11",
+    "image": "https://player.brownrice.com/snapshot/vailch11",
+    "live": "https://player.brownrice.com/embed/vailch11"
+   },
+   {
+    "name": "Chair 21",
+    "image": "https://player.brownrice.com/snapshot/vailch21",
+    "live": "https://player.brownrice.com/embed/vailch21"
+   },
+   {
+    "name": "Chair 2",
+    "image": "https://player.brownrice.com/snapshot/vailch2",
+    "live": "https://player.brownrice.com/embed/vailch2"
+   },
+   {
+    "name": "Eagles Nest",
+    "image": "https://player.brownrice.com/snapshot/vaileaglesnest",
+    "live": "https://player.brownrice.com/embed/vaileaglesnest"
+   },
+   {
+    "name": "Snow Summit",
+    "image": "https://player.brownrice.com/snapshot/vailsnowsummit",
+    "live": "https://player.brownrice.com/embed/vailsnowsummit"
+   }
+  ]
+ },
+ "beaver-creek": {
+  "page": "https://www.beavercreek.com/the-mountain/mountain-conditions/mountain-cams.aspx",
+  "cams": [
+   {
+    "name": "Snow Stake",
+    "image": "https://player.brownrice.com/snapshot/bcsnowstake2",
+    "live": "https://player.brownrice.com/embed/bcsnowstake2"
+   },
+   {
+    "name": "Spruce Saddle",
+    "image": "https://player.brownrice.com/snapshot/bcspruce",
+    "live": "https://player.brownrice.com/embed/bcspruce"
+   },
+   {
+    "name": "Red Buffalo",
+    "image": "https://player.brownrice.com/snapshot/bcredbuffalo",
+    "live": "https://player.brownrice.com/embed/bcredbuffalo"
+   },
+   {
+    "name": "McCoy Park",
+    "image": "https://player.brownrice.com/snapshot/bcmccoy",
+    "live": "https://player.brownrice.com/embed/bcmccoy"
+   },
+   {
+    "name": "Talons",
+    "image": "https://player.brownrice.com/snapshot/bctalons",
+    "live": "https://player.brownrice.com/embed/bctalons"
+   },
+   {
+    "name": "Outside Bar",
+    "image": "https://player.brownrice.com/snapshot/bcahoutsidebar",
+    "live": "https://player.brownrice.com/embed/bcahoutsidebar"
+   }
+  ]
+ },
+ "breckenridge": {
+  "page": "https://www.breckenridge.com/the-mountain/mountain-conditions/mountain-cams.aspx",
+  "cams": [
+   {
+    "name": "Snow Stake",
+    "image": "https://cache.snow.com/Mtncams/BreckSnowStake.jpg"
+   },
+   {
+    "name": "Peak 10",
+    "image": "https://player.brownrice.com/snapshot/breckenridge10",
+    "live": "https://player.brownrice.com/embed/breckenridge10"
+   },
+   {
+    "name": "Peak 9",
+    "image": "https://player.brownrice.com/snapshot/breckenridge9",
+    "live": "https://player.brownrice.com/embed/breckenridge9"
+   },
+   {
+    "name": "Peak 7",
+    "image": "https://player.brownrice.com/snapshot/breckenridge7",
+    "live": "https://player.brownrice.com/embed/breckenridge7"
+   }
+  ]
+ },
+ "keystone": {
+  "page": "https://www.keystoneresort.com/the-mountain/mountain-conditions/mountain-cams.aspx",
+  "cams": [
+   {
+    "name": "Snow Stake",
+    "image": "https://cache.snow.com/Mtncams/KeySnowStake.jpg"
+   },
+   {
+    "name": "Dercum",
+    "image": "https://player.brownrice.com/snapshot/keystonedercum",
+    "live": "https://player.brownrice.com/embed/keystonedercum"
+   },
+   {
+    "name": "North Peak",
+    "image": "https://player.brownrice.com/snapshot/keystonenorthpeak",
+    "live": "https://player.brownrice.com/embed/keystonenorthpeak"
+   },
+   {
+    "name": "Bergman",
+    "image": "https://player.brownrice.com/snapshot/keystonebergman",
+    "live": "https://player.brownrice.com/embed/keystonebergman"
+   },
+   {
+    "name": "River Run",
+    "image": "https://player.brownrice.com/snapshot/keystoneriverrun",
+    "live": "https://player.brownrice.com/embed/keystoneriverrun"
+   },
+   {
+    "name": "Lake Side",
+    "image": "https://player.brownrice.com/snapshot/keystonelakeside",
+    "live": "https://player.brownrice.com/embed/keystonelakeside"
+   }
+  ]
+ }
+}
