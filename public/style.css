@@ -350,8 +350,8 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .pin-bubble.is-selected { border-color: #e8a400; box-shadow: 0 0 0 2px #e8a400, 0 1px 4px rgba(0, 0, 0, 0.3); }
 /* Phones: a touch smaller so crowded areas fit. */
 @media (max-width: 600px) {
-  .pin-val { font-size: calc(0.66rem * var(--label-scale, 1)); padding: 2px 5px; }
-  .pin-name { font-size: calc(0.63rem * var(--label-scale, 1)); }
+  .pin-val { font-size: calc(0.7rem * var(--label-scale, 1)); padding: 2px 5px; }
+  .pin-name { font-size: calc(0.68rem * var(--label-scale, 1)); }
   .pin-bubble { gap: 4px; padding: 2px 7px 2px 2px; }
 }
 

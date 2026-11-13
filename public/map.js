@@ -173,11 +173,12 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
   // other, or pass over another point; everything stays in the visible map.
   // Distances scale with the map you can see: a hairline may be at most ~10% of the visible map's
   // smaller side (28–90 px), so a small window never gets long, sprawling lines. If labels still don't
-  // fit, the whole set is retried at 88% and then 78% size; a label that can't fit even then shows just
+  // fit, the whole set is retried at 90% and then 82% size; a label that can't fit even then shows just
   // its number, and only failing that, hides (its dot stays).
   // Finished layouts are remembered (by screen size, padding and label texts), so switching back to
   // a view or re-rendering the same data is instant.
-  const LABEL_SCALES = [1, 0.88, 0.78];
+  // Never below ~9 px text: past that, a label shows just its number chip instead.
+  const LABEL_SCALES = [1, 0.9, 0.82];
   const layoutCache = new Map();
   function layout() {
     const size = map.getSize();
