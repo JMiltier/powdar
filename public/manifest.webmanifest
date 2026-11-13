@@ -1,6 +1,6 @@
 {
-  "name": "PowScout",
-  "short_name": "PowScout",
+  "name": "Powdar",
+  "short_name": "Powdar",
   "description": "Colorado ski resorts on one map: snow on the way, base depth, and opening and closing days.",
   "start_url": "./",
   "scope": "./",

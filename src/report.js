@@ -5,7 +5,7 @@ import { MODELS, modelUrl, snowHours } from './models.js';
 
 export const CSC_FEED = 'https://snow.coloradoski.com/view/publicreport-feed';
 const NWS = 'https://api.weather.gov/gridpoints';
-const USER_AGENT = 'PowScout (github.com/JMiltier/powscout)';
+const USER_AGENT = 'Powdar (github.com/JMiltier/powdar)';
 const TZ = 'America/Denver';
 const FORECAST_DAYS = 7;
 const MM_PER_INCH = 25.4;
@@ -88,12 +88,16 @@ export function blendForecast({ sources, nws }, now) {
   const totals = usable.map(({ hours }) => {
     const daily = new Map(dates.map((d) => [d, 0]));
     let next72 = 0;
+    let past24 = 0;
     for (const { t, v } of hours) {
       const d = localDate(new Date(t));
       if (daily.has(d)) daily.set(d, daily.get(d) + v);
       if (t >= nowMs - 3_600_000 && t < nowMs + 72 * 3_600_000) next72 += v;
+      if (t >= nowMs - 24 * 3_600_000 && t < nowMs) past24 += v;
     }
-    return { daily, next72, next7: [...daily.values()].reduce((a, b) => a + b, 0) };
+    // Only sources that reach back a full day (the models, not NWS) can estimate the last 24 hours.
+    const coversPast = hours.some((h) => h.t <= nowMs - 23 * 3_600_000);
+    return { daily, next72, next7: [...daily.values()].reduce((a, b) => a + b, 0), past24: coversPast ? past24 : null };
   });
 
   const temps = nwsTemps(nws, dates);
@@ -103,8 +107,11 @@ export function blendForecast({ sources, nws }, now) {
   });
   const n72 = spread(totals.map((x) => x.next72));
   const n7 = spread(totals.map((x) => x.next7));
+  const p24 = spread(totals.map((x) => x.past24).filter((v) => v != null));
   return {
     days,
+    past24: p24?.mid ?? null,
+    past24Range: p24 ? [p24.lo, p24.hi] : null,
     next72: n72.mid,
     next72Range: [n72.lo, n72.hi],
     next7: n7.mid,
@@ -125,6 +132,8 @@ export function parseCsc(feed, season) {
       ['green_trails', 'intermediate_trails', 'black_trails', 'expert_trails'].reduce((t, k) => t + (num(s?.[`${prefix}_${k}`]) ?? 0), 0);
     byKey.set(r.key, {
       isOpen: r.is_open === true,
+      // e.g. "Resort Opens ASAP"; used only when there's no opening date.
+      note: (r.enable_status_override && r.status_override_text?.trim()) || null,
       open: inSeason(r.resort_opening_date, season),
       close: inSeason(r.resort_closing_date, season),
       report: s && {
@@ -135,6 +144,7 @@ export function parseCsc(feed, season) {
         lifts: { open: num(s.open_lifts) ?? 0, total: num(s.available_lifts) ?? num(r.available_lifts) },
         trails: { open: sum('open'), total: sum('available') },
         updated: s.updated ?? null,
+        message: s.resort_conditions?.trim() || null,
       },
     });
   }
@@ -151,7 +161,9 @@ export function statusFor({ live, isOpen, open, close, when, opened, note, repor
     const parts = [];
     if (report?.lifts?.total) parts.push(`${report.lifts.open} of ${report.lifts.total} lifts`);
     if (report?.trails?.total) parts.push(`${report.trails.open} of ${report.trails.total} runs`);
-    return { state: 'open', label: 'Open', detail: parts.join(' · ') || null };
+    // How much of the mountain is open, by runs.
+    const pct = report?.trails?.total ? Math.round((report.trails.open / report.trails.total) * 100) : null;
+    return { state: 'open', label: 'Open', pct, detail: parts.join(' · ') || null };
   }
   if (open && open > today) {
     return { state: 'soon', label: `Opens ${when ?? shortDate(open)}`, date: open, detail: live ? null : 'Planned date' };
@@ -160,7 +172,8 @@ export function statusFor({ live, isOpen, open, close, when, opened, note, repor
   if (open && live) return { state: 'late', label: 'Not open yet', date: open, detail: `Was planned for ${shortDate(open)}` };
   // Planned date has passed but we can't read this resort's site to confirm it.
   if (open) return { state: 'likely', label: 'Probably open', date: open, detail: `Set to open ${when ?? shortDate(open)} · can't confirm live` };
-  return { state: 'tba', label: 'Opening date TBA', detail: note ?? null };
+  if (note && /asap/i.test(note)) return { state: 'tba', label: 'Opening ASAP', detail: null };
+  return { state: 'tba', label: 'Opening date TBA', detail: null };
 }
 
 async function getJson(fetchFn, url, tries = 2) {
@@ -239,7 +252,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     const live = Boolean(c);
     const p = planned[r.id] ?? {};
     const facts = live
-      ? { live, isOpen: c.isOpen, open: c.open, close: c.close, report: c.report }
+      ? { live, isOpen: c.isOpen, open: c.open, close: c.close, note: c.note, report: c.report }
       : { live, isOpen: false, open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when, opened: p.opened, note: p.note };
     // A report from a closed resort is usually last season's leftovers.
     const report = live && c.isOpen ? c.report : null;

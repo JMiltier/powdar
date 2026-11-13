@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>PowScout</title>
+  <title>Powdar</title>
   <meta name="description" content="Colorado ski resorts on one map: snow on the way, base depth, and opening and closing days.">
   <!-- Status and navigation bars match the app instead of a blue band (installed app). -->
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
@@ -21,8 +21,9 @@
 
   <div class="top">
     <div class="metrics" role="group" aria-label="Show on map">
-      <button type="button" data-metric="next72" aria-pressed="true">3-day snow</button>
-      <button type="button" data-metric="next7" aria-pressed="false">7-day</button>
+      <button type="button" data-metric="new24" aria-pressed="true">24 hr</button>
+      <button type="button" data-metric="next72" aria-pressed="false">3 days</button>
+      <button type="button" data-metric="next7" aria-pressed="false">7 days</button>
       <button type="button" data-metric="depth" aria-pressed="false">Base</button>
       <button type="button" data-metric="dates" aria-pressed="false">Dates</button>
     </div>
@@ -45,7 +46,7 @@
       <span class="handle" aria-hidden="true"></span>
       <div class="sheet-head">
         <div class="brand">
-          <h1>PowScout</h1>
+          <h1>Powdar</h1>
           <button id="updated" class="updated" type="button" title="Refresh">Loading…</button>
         </div>
         <label class="chip"><input id="open-only" type="checkbox"> Open now</label>
@@ -57,6 +58,7 @@
       <div id="list" class="list"></div>
       <div id="detail" class="detail" hidden></div>
       <footer class="foot">
+        Last 24 hrs: the resort's own report when it has one, otherwise a weather-model estimate (est.).
         Forecast: a blend of the National Weather Service and the European, American, Canadian and German weather models,
         run for each resort's mid-mountain elevation. Open status, lifts and snow totals: Colorado Ski Country USA.
         Vail, Beaver Creek, Breckenridge, Keystone, Crested Butte and Wolf Creek show announced dates only.
