@@ -493,7 +493,7 @@ function renderHeadline() {
     }
   }
   // When the data is from rides along at the end (tap it to refresh, as the old "Updated" line did).
-  $('#headline').innerHTML = `${text} <span class="when" data-refresh title="Refresh">· ${esc(timeAgo(data.generated))}</span>`;
+  $('#headline').innerHTML = `${text} <button type="button" class="when" data-refresh title="Refresh now" aria-label="Updated ${esc(timeAgo(data.generated))}. Refresh now">· <span class="when-text">${esc(timeAgo(data.generated))}</span><svg class="refresh-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
 }
 
 // "Open · 3 of 24 lifts · 2% of runs", "Opens Fri, Nov 20", …
@@ -525,6 +525,17 @@ function rowSub(r) {
   return ['Open', lifts?.total ? `${lifts.open} of ${lifts.total} lifts` : null, s.pct != null ? `${s.pct}% of runs` : null].filter(Boolean).join(' · ');
 }
 
+// The next five days' snow as tiny bars with day letters (grey when none), like a ski app's list.
+function miniDays(r) {
+  const days = (r.forecast?.days ?? []).slice(0, 5);
+  if (!days.length) return '';
+  const max = Math.max(4, ...days.map((d) => d.snow ?? 0));
+  return `<span class="rr-days" aria-label="Next 5 days: ${days.map((d) => `${weekday(d.date, state.data.today)} ${d.snow >= 0.5 ? inches(d.snow) : 'none'}`).join(', ')}">${days.map((d) => {
+    const h = d.snow > 0.2 ? Math.max(5, Math.round((d.snow / max) * 22)) : 3;
+    return `<span class="rd${d.snow > 0.2 ? ' snow' : ''}"><i style="height:${h}px"></i><small>${esc(new Date(`${d.date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'narrow', timeZone: 'UTC' }))}</small></span>`;
+  }).join('')}</span>`;
+}
+
 // Each resort as a card: status, then the numbers that matter side by side (the map's current view
 // highlighted).
 const CARD_STATS = [['new24', '−24h'], ['next72', '+3d'], ['next7', '+7d'], ['base', 'Base'], ['season', 'Season']];
@@ -547,19 +558,37 @@ function renderList() {
     </div>`;
   const rows = ordered().map(({ r }) => {
     const fav = state.favs.has(r.id);
-    const stats = CARD_STATS.filter(([k]) => views.includes(k)).map(([k, label]) => {
-      const v = valueFor(r, k);
-      return `<span class="cs${k === state.metric ? ' on' : ''}"><b class="lvl-${esc(v.level)}">${esc(v.text)}</b><small>${label}</small></span>`;
-    }).join('');
-    return `
-    <button type="button" class="row card" data-open="${esc(r.id)}">
-      <span class="card-top">
+    const open = r.status.state === 'open';
+    const sub = [r.region, PASS_NAMES[passOf(r)] !== 'Other' ? PASS_NAMES[passOf(r)] : null].filter(Boolean).join(' · ');
+    const head = `
+      <span class="rr-head">
         <span class="dot dot-${esc(r.status.state)}" aria-hidden="true"></span>
         <span class="row-name">${esc(r.name)}</span>${fav ? `<span class="card-fav" aria-label="Favorite">${UI.starFilled}</span>` : ''}
-        <span class="pill pill-${esc(r.status.state)}">${esc(shortStatus(r))}</span>
+        ${open ? '' : `<span class="pill pill-${esc(r.status.state)}">${esc(shortStatus(r))}</span>`}
+      </span>`;
+    if (!open) {
+      return `
+    <button type="button" class="row rrow rrow-closed" data-open="${esc(r.id)}">
+      ${head}
+      <span class="rr-line"><span class="rr-sub">${esc(sub)}</span>${miniDays(r)}</span>
+    </button>`;
+    }
+    const lifts = r.report?.lifts?.total ? r.report.lifts : r.lifts?.total ? r.lifts : null;
+    // The first number follows the map's view (highlighted); then base and lifts.
+    const lead = ['dates', 'base'].includes(state.metric) ? 'new24' : state.metric;
+    const v = valueFor(r, lead);
+    const label = { new24: '24 hr', next72: 'Next 3d', next7: 'Next 7d', season: 'Snowpack' }[lead];
+    const base = valueFor(r, 'base');
+    return `
+    <button type="button" class="row rrow" data-open="${esc(r.id)}">
+      ${head}
+      <span class="rr-sub">${esc(sub)}</span>
+      <span class="rr-stats">
+        <span class="rs${state.metric === lead ? ' on' : ''}"><b>${esc(v.text)}</b><small>${label}</small></span>
+        <span class="rs${state.metric === 'base' ? ' on' : ''}"><b>${esc(base.text)}</b><small>Base</small></span>
+        <span class="rs"><b>${lifts ? `${lifts.open}/${lifts.total}` : '–'}</b><small>Open lifts</small></span>
+        ${miniDays(r)}
       </span>
-      <span class="row-sub">${esc(cardSub(r))}</span>
-      <span class="card-stats">${stats}</span>
     </button>`;
   }).join('');
   $('#list').innerHTML = overviewCard() + sortBar + (rows || `<p class="empty">${state.openOnly && !state.favsOnly && state.pass === 'all' ? 'Nothing open yet.' : 'No resorts match these filters.'} <button type="button" class="link" data-clear-filters>Show all</button></p>`);
@@ -1474,6 +1503,7 @@ function startMap() {
 }
 
 async function load() {
+  document.body.classList.add('refreshing');
   const code = state.code;
   try {
     const res = await fetch(`${dataUrl(code)}?t=${Date.now()}`, { cache: 'no-store' });
@@ -1492,12 +1522,21 @@ async function load() {
       state.data = saved;
       showNotice(`You're offline. Showing data from ${timeAgo(saved.generated)}.`);
     } else {
-      showNotice("Couldn't load snow data. Check your connection, then tap “Updated” to retry.");
+      showNotice("Couldn't load snow data. Check your connection, then tap the refresh arrow to retry.");
     }
   }
   startMap();
   render();
+  // (The spin shows for at least a moment, so a quick refresh still reads as one.)
+  setTimeout(() => document.body.classList.remove('refreshing'), 500);
 }
+// The "N min ago" ticks along, and the data refreshes itself every 10 minutes while the app is open.
+setInterval(() => {
+  if (document.visibilityState !== 'visible' || !state.data) return;
+  if (Date.now() - state.loadedAt > RELOAD_AFTER_MS) return load();
+  const t = $('.when-text');
+  if (t) t.textContent = timeAgo(state.data.generated);
+}, 60_000);
 
 // ---------- states ----------
 
@@ -1687,13 +1726,14 @@ document.addEventListener('visibilitychange', () => {
 });
 let lastSize = [innerWidth, innerHeight];
 const onResize = () => {
-  // A phone's address bar sliding in and out only nudges the height: the map below stays as it is.
-  const [w, h] = lastSize;
-  if (innerWidth === w && Math.abs(innerHeight - h) < 120 && !WIDE.matches) return;
-  lastSize = [innerWidth, innerHeight];
+  // The panel and the snow key always follow the new height (Chrome's address bar sliding away makes
+  // the screen taller and the panel with it); only the map's layout skips small height-only changes.
   setSheet(state.sheet, false);
   document.body.classList.toggle('panel-hidden', WIDE.matches && !state.panelOpen);
   $('#panel-open').hidden = !WIDE.matches || state.panelOpen;
+  const [w, h] = lastSize;
+  if (innerWidth === w && Math.abs(innerHeight - h) < 120 && !WIDE.matches) return;
+  lastSize = [innerWidth, innerHeight];
   state.map?.refit();
 };
 // Laying labels out takes ~0.1 s, so while a window is being dragged to a new size, wait for a pause.

@@ -846,3 +846,35 @@ button, .row, summary { -webkit-tap-highlight-color: transparent; }
 }
 .cam-age i, .live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #34d058; box-shadow: 0 0 0 2px rgba(52, 208, 88, 0.3); }
 .live-dot { margin: 0 4px 1px 0; vertical-align: middle; }
+
+/* "· 9 min ago ↻": tap to refresh; the arrow spins while it does. */
+.when { border: 0; background: none; padding: 0; font: inherit; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.refresh-ic { width: 13px; height: 13px; color: var(--accent); }
+body.refreshing .refresh-ic { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- Resort rows (the list), ski-app style ---------- */
+.rrow { display: flex; flex-direction: column; align-items: stretch; gap: 2px; text-align: left; width: 100%;
+  padding: 13px 4px 12px; border: 0; border-bottom: 1px solid var(--line); background: none; border-radius: 0; margin: 0; }
+.rrow:last-child { border-bottom: 0; }
+.rr-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rr-head .row-name { font-size: 1.02rem; font-weight: 700; }
+.rr-head .pill { margin-left: auto; flex: none; font-size: 0.7rem; }
+.rr-sub { font-size: 0.78rem; color: var(--muted); padding-left: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rr-stats { display: grid; grid-template-columns: 1fr 1fr 1fr auto; align-items: end; gap: 6px; padding: 6px 0 0 18px; }
+.rs { display: flex; flex-direction: column; line-height: 1.15; }
+.rs b { font-size: 1.08rem; font-weight: 750; color: var(--accent); font-variant-numeric: tabular-nums; }
+.rs small { font-size: 0.7rem; color: var(--muted); font-weight: 600; }
+.rs.on b { color: var(--text); }
+.rs.on small { color: var(--accent); }
+.rr-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.rr-line .rr-sub { flex: 1; min-width: 0; }
+.rr-days { display: inline-flex; align-items: flex-end; gap: 4px; flex: none; }
+.rd { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 13px; }
+.rd i { display: block; width: 11px; border-radius: 3px; background: color-mix(in srgb, var(--muted) 45%, transparent); }
+.rd.snow i { background: var(--snow); }
+.rd small { font-size: 0.56rem; font-weight: 700; color: var(--muted); line-height: 1; }
+.rrow-closed { padding-top: 11px; padding-bottom: 10px; }
+.rr-days { gap: 5px; }
+.rd { width: 17px; }
+.rd i { width: 16px; min-height: 5px; border-radius: 3px; }
