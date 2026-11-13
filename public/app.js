@@ -28,6 +28,7 @@ function applyTheme(pick) {
   const dark = choice === 'dark' || (choice === 'auto' && DARK.matches);
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   document.querySelector('meta[name=theme-color]').content = dark ? '#161e29' : '#ffffff';
+  state.map?.setTheme(); // (only called once `state` exists: at startup's end and on changes)
   for (const b of document.querySelectorAll('[data-theme-pick]')) b.setAttribute('aria-pressed', String(b.dataset.themePick === choice));
 }
 
@@ -322,7 +323,7 @@ function renderDetail(r) {
   const new24Label = rep?.new24 != null ? 'last 24 hrs' : f?.past24 != null ? 'last 24 hrs (est.)' : 'last 24 hrs';
 
   const sources = f?.sources?.map((s) => SOURCE_NAMES[s] ?? s) ?? [];
-  const top = `
+  $('#grab-detail').innerHTML = `
     <div class="detail-head">
       <button type="button" class="icon" data-back aria-label="Back to all resorts">‹</button>
       <div class="detail-title">
@@ -330,7 +331,8 @@ function renderDetail(r) {
         <p><span class="pill pill-${esc(r.status.state)}">${esc(r.status.label)}</span> ${esc(seasonText(r, today))}</p>
       </div>
       <button type="button" class="icon star" data-fav="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Unpin' : 'Pin'} ${esc(r.name)}">${fav ? '★' : '☆'}</button>
-    </div>
+    </div>`;
+  const top = `
     ${r.status.detail && r.status.state !== 'open' ? `<p class="muted small">${esc(r.status.detail)}</p>` : ''}
     <div class="stats">
       ${stat(inches(new24), new24Label)}
@@ -563,6 +565,7 @@ function render() {
   $('#list').hidden = Boolean(r);
   $('#detail').hidden = !r;
   $('.foot').hidden = Boolean(r); // a resort's own sources sit at the bottom of its details
+  grabEl.classList.toggle('has-detail', Boolean(r));
   if (r) renderDetail(r);
   else renderList();
   renderHeadline();
@@ -576,18 +579,25 @@ const sheetEl = $('#sheet');
 const grabEl = $('#grab');
 let sheetY = 0;
 
+let peekHeight = 0;
 function sheetSizes() {
   const h = sheetEl.offsetHeight;
-  const peek = grabEl.offsetHeight + 12;
+  // The collapsed sheet's height comes from the list header, so opening a resort (whose header is
+  // a little different) never shifts the map.
+  if (!grabEl.classList.contains('has-detail') || !peekHeight) peekHeight = grabEl.offsetHeight + 12;
+  const peek = peekHeight;
   return { h, visible: { peek, half: Math.round(window.innerHeight * 0.5), full: h } };
 }
 
 // Pixels of map covered by the top bar and the list, so the map fits every resort in what's left:
 // above the collapsed sheet on phones, beside the side panel (if open) on wide screens.
+let legendHeight = 0;
 function coveredPadding() {
-  const top = $('.top').getBoundingClientRect().bottom;
+  const top = $('.ribbon').getBoundingClientRect().bottom; // (not .top: a toast there would shift the map)
   // The snow-cover key sits along the bottom of the map: keep resorts and labels clear of it.
-  const legend = state.snowDepth ? $('#legend').offsetHeight + 12 : 0;
+  // (Measured while shown: it hides while the sheet is pulled up, and the map mustn't shift for that.)
+  legendHeight = $('#legend').offsetHeight || legendHeight;
+  const legend = state.snowDepth ? legendHeight + 12 : 0;
   if (WIDE.matches) return { top, left: state.panelOpen ? sheetEl.offsetWidth + 24 : 0, right: 0, bottom: legend };
   return { top, left: 0, right: 0, bottom: sheetSizes().visible.peek + legend };
 }
@@ -608,6 +618,8 @@ function setSheet(name, animate = true) {
   sheetEl.dataset.state = name;
   // With the sheet all the way up there's no map to caption: tuck the key and ⓘ away.
   document.body.classList.toggle('sheet-full', name === 'full' && !WIDE.matches);
+  // The snow key only while the sheet is down: pulled up, it would ride over the labels.
+  document.body.classList.toggle('sheet-up', name !== 'peek' && !WIDE.matches);
   if (WIDE.matches) return setSheetY(0, false);
   const { h, visible } = sheetSizes();
   setSheetY(h - visible[name], animate);
@@ -615,7 +627,7 @@ function setSheet(name, animate = true) {
 
 let drag = null;
 grabEl.addEventListener('pointerdown', (e) => {
-  if (WIDE.matches || e.target.closest('input, label, button')) return;
+  if (WIDE.matches || e.target.closest('input, label, button, a')) return;
   drag = { y: e.clientY, t: performance.now(), start: sheetY, moved: false };
   grabEl.setPointerCapture(e.pointerId);
 });
@@ -682,6 +694,9 @@ function showNotice(text) {
   $('#notice').textContent = text ?? '';
 }
 
+// Colorado is (almost) a rectangle: 37°–41° N, 102°03′–109°03′ W.
+const CO_BORDER = [[41, -109.05], [41, -102.05], [37, -102.05], [37, -109.05], [41, -109.05]];
+
 function startMap() {
   if (state.map || !state.data) return;
   state.map = createSnowMap($('#map'), {
@@ -689,6 +704,7 @@ function startMap() {
     getPadding: coveredPadding,
     onSelect: (id) => select(id),
     extend: state.code === 'CO' ? [39.8, -105.1] : null,
+    outline: state.code === 'CO' ? CO_BORDER : null,
   });
   state.map.setSnowDepth(state.snowDepth);
 }
