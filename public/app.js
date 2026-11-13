@@ -72,6 +72,9 @@ function rangeText(range) {
 const monthDay = (ymd) => new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
 const weekday = (ymd, today) => (ymd === today ? 'Today' : new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short' }));
 
+// "10:42 AM" in Colorado time.
+const clock = (iso) => new Date(iso).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit' });
+
 function timeAgo(iso) {
   const mins = Math.round((Date.now() - Date.parse(iso)) / 60_000);
   if (mins < 2) return 'just now';
@@ -247,6 +250,21 @@ function renderDetail(r) {
       ${rep.updated ? `<li class="muted"><span>Resort report</span><b>${esc(timeAgo(rep.updated))}</b></li>` : ''}
     </ul>
     ${rep.message ? `<p class="message">“${esc(rep.message.length > 260 ? `${rep.message.slice(0, 257).trimEnd()}…` : rep.message)}”</p>` : ''}` : '';
+  // Live lift-by-lift status (when the resort publishes it): open, on hold and scheduled first.
+  const L = r.lifts;
+  const LIFT_WORDS = { open: 'Open', hold: 'On hold', scheduled: 'Scheduled', closed: 'Closed' };
+  const liftRow = (l) => `<li class="lift lift-${esc(l.status)}"><i aria-hidden="true"></i><span>${esc(l.name)}</span>
+    <small>${LIFT_WORDS[l.status]}${l.hours && l.status !== 'closed' ? ` · ${esc(l.hours)}` : ''}</small></li>`;
+  const activeLifts = L ? L.lifts.filter((l) => l.status !== 'closed') : [];
+  const closedLifts = L ? L.lifts.filter((l) => l.status === 'closed') : [];
+  const recent = (iso) => iso && Date.now() - Date.parse(iso) < 2 * 864e5;
+  const liftSection = L ? `
+    <h3 class="section">Lifts <span class="section-count">${L.open} of ${L.total} open${L.hold ? ` · ${L.hold} on hold` : ''}${L.scheduled ? ` · ${L.scheduled} scheduled` : ''}</span></h3>
+    ${activeLifts.length ? `<ul class="lifts">${activeLifts.map(liftRow).join('')}</ul>` : ''}
+    ${closedLifts.length ? `<details class="more-lifts"><summary>${activeLifts.length ? `${closedLifts.length} closed` : `All ${closedLifts.length} lifts closed`}</summary>
+      <ul class="lifts">${closedLifts.map(liftRow).join('')}</ul></details>` : ''}
+    <p class="source">Live from ${sourceLink(L.page, `${r.name}’s lift status`)}, checked ${esc(clock(L.checked))}${recent(L.updated) ? `; the resort last changed it ${esc(timeAgo(L.updated))}` : ''}.</p>` : '';
+
   const new24 = rep?.new24 ?? f?.past24;
   const new24Label = rep?.new24 != null ? 'last 24 hrs' : f?.past24 != null ? 'last 24 hrs (est.)' : 'last 24 hrs';
 
@@ -270,6 +288,7 @@ function renderDetail(r) {
     ${f ? `<p class="source">Snow forecast: the middle of ${sources.length > 1 ? `${sources.length} forecasts (${esc(sources.join(', '))})` : 'the National Weather Service forecast'}${sources.length > 1 ? `, via ${sourceLink('https://www.weather.gov', 'NWS')} and ${sourceLink('https://open-meteo.com', 'Open-Meteo')}` : ''}. Small numbers are the likely range.${state.data.sources.modelsReused ? ` Model forecast from ${esc(timeAgo(state.data.sources.modelsAt))}.` : ''}</p>` : ''}
     ${weather ? `<h3 class="section">Weather</h3><ul class="weather">${weather}</ul>
       <p class="source">Source: ${sourceLink(`https://forecast.weather.gov/MapClick.php?lat=${r.at[0]}&lon=${r.at[1]}`, 'National Weather Service forecast')}.</p>` : ''}
+    ${liftSection}
     ${seasonSection(r)}
     ${report}
     ${report ? `<p class="source">Source: ${sourceLink('https://www.coloradoski.com/snow-report/', 'Colorado Ski Country USA')} snow report.</p>` : ''}

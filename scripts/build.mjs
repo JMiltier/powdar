@@ -7,9 +7,9 @@ const REUSE_FOR_MS = 12 * 3_600_000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const modelsOk = (rep) => Object.values(rep.sources.models).some(Boolean);
 const summary = (rep) => {
-  const { coloradoSki, forecasts, resorts, nws, models, snotel } = rep.sources;
+  const { coloradoSki, forecasts, resorts, nws, models, snotel, lifts } = rep.sources;
   const list = Object.entries(models).map(([id, ok]) => `${id} ${ok ? 'ok' : 'FAILED'}`).join(', ');
-  return `Colorado Ski Country ${coloradoSki ? 'ok' : 'FAILED'}, NWS ${nws}/${resorts}, SNOTEL ${snotel} stations, models: ${list}, forecasts ${forecasts}/${resorts}`;
+  return `Colorado Ski Country ${coloradoSki ? 'ok' : 'FAILED'}, NWS ${nws}/${resorts}, SNOTEL ${snotel} stations, live lifts ${lifts} resorts, models: ${list}, forecasts ${forecasts}/${resorts}`;
 };
 
 let report = await buildReport({ log: (msg) => console.warn(msg) });

@@ -43,6 +43,38 @@ export function parseSnotel(json) {
   return out;
 }
 
+// Drops bad sensor readings using what snow can physically do: snow water can't gain more than
+// ~4″ in a day or lose more than ~3″. A stretch that starts with an impossible jump (up or down)
+// and comes back to where it was within ~10 days is a sensor fault, however long it lasted (e.g.
+// 0″ → 9.0″ for four days → 0″). Real storms, which stay, are kept.
+export function despike(values, { maxRise = 4, maxDrop = 3, back = 10 } = {}) {
+  const v = values.filter((x) => x.value != null);
+  const out = [];
+  let i = 0;
+  while (i < v.length) {
+    const prev = out.at(-1);
+    const last = prev?.value;
+    const jump = last == null ? 0 : v[i].value - last;
+    // Limits scale with the days between readings (records sometimes have gaps).
+    const days = prev ? Math.max(1, Math.round((Date.parse(v[i].date) - Date.parse(prev.date)) / 86_400_000)) : 1;
+    if (jump > maxRise * days || -jump > maxDrop * days) {
+      // Find where the readings return to the level before the jump.
+      let j = i;
+      while (j < v.length && j - i < back && Math.abs(v[j].value - last) > Math.max(maxDrop, 0.25 * last)) j++;
+      const returned = j < v.length && j - i < back;
+      // At the very end of the record we can't see a return yet: drop only truly absurd jumps.
+      const atEnd = j >= v.length && Math.abs(jump) > maxRise * 1.5 * days;
+      if (returned || atEnd) {
+        i = j;
+        continue;
+      }
+    }
+    out.push(v[i]);
+    i++;
+  }
+  return out;
+}
+
 // One station's season so far against normal. `normals` comes from last season's request:
 // medians are by calendar day, and the API only returns them for dates that have passed.
 export function stationSeason({ current, normals, today }) {
@@ -65,8 +97,7 @@ export function stationSeason({ current, normals, today }) {
 
   const season = [];
   let latest = null;
-  for (const v of current?.swe ?? []) {
-    if (v.value == null) continue;
+  for (const v of despike(current?.swe ?? [])) {
     season.push([dayNum(v.date) - day0, v.value]);
     latest = { date: v.date, swe: v.value, normal: v.median ?? null };
   }

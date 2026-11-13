@@ -3,7 +3,7 @@
 // (each fall): `npm run history`.
 import { mkdir, writeFile } from 'node:fs/promises';
 import { RESORTS } from '../src/resorts.js';
-import { parseSnotel, snotelUrl, waterYear } from '../src/snotel.js';
+import { despike, parseSnotel, snotelUrl, waterYear } from '../src/snotel.js';
 
 const FIRST_SEASON = 2005; // 2005-06 onward: 20+ winters
 const DAY_MS = 86_400_000;
@@ -19,7 +19,9 @@ for (const [triplet, name] of stations) {
   const url = snotelUrl([triplet], `${FIRST_SEASON}-10-01`, `${startYear}-07-31`);
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${res.status} for ${name}`);
-  const values = parseSnotel(await res.json()).get(triplet)?.swe ?? [];
+  // Bad sensor readings (one-day spikes or dropouts) are removed before anything else.
+  const raw = parseSnotel(await res.json()).get(triplet)?.swe ?? [];
+  const values = despike(raw);
 
   // Group by season (Oct 1 – Jul 31), as [day of season, inches of water] every 3rd day.
   const seasons = new Map();
@@ -44,5 +46,5 @@ for (const [triplet, name] of stations) {
     }));
   const file = new URL(`${triplet.split(':')[0]}.json`, outDir);
   await writeFile(file, JSON.stringify({ station: triplet, name, seasons: list }));
-  console.log(`${name.padEnd(20)} ${list.length} seasons (${list.at(-1)?.season} – ${list[0]?.season})`);
+  console.log(`${name.padEnd(20)} ${list.length} seasons (${list.at(-1)?.season} – ${list[0]?.season}), ${raw.filter((r) => r.value != null).length - values.length} bad readings dropped`);
 }

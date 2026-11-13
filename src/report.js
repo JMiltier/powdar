@@ -3,6 +3,7 @@
 import { RESORTS, PLANNED } from './resorts.js';
 import { MODELS, modelUrl, snowHours } from './models.js';
 import { parseSnotel, snotelUrl, stationSeason, waterYear } from './snotel.js';
+import { LIFT_SOURCES, summarizeLifts } from './lifts.js';
 
 export const CSC_FEED = 'https://snow.coloradoski.com/view/publicreport-feed';
 const NWS = 'https://api.weather.gov/gridpoints';
@@ -246,6 +247,27 @@ async function getJson(fetchFn, url, { tries = 3, backoff = 2000 } = {}) {
   throw lastErr;
 }
 
+async function getText(fetchFn, url, { tries = 3, backoff = 2000 } = {}) {
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    if (i) await sleep(backoff * i);
+    try {
+      const res = await fetchFn(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' } });
+      if (!res.ok) throw new Error(`${res.status} ${url}`);
+      return await res.text();
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr;
+}
+
+// The resort's live lift feed beats the once-a-morning snow report for lift counts.
+function withLiveLifts(report, live) {
+  if (!report || !live?.total) return report;
+  return { ...report, lifts: { open: live.open, total: live.total } };
+}
+
 // Run tasks a few at a time so we're polite to api.weather.gov.
 async function pool(items, limit, fn) {
   const out = new Array(items.length);
@@ -280,7 +302,8 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
   const stations = [...new Set(RESORTS.map((r) => r.snotel[0]))];
   const wy = waterYear(today);
   const lastSeasonEnd = `${wy.startYear}-07-31`;
-  const [modelData, nwsData, nwsText, snowNow, snowNormal] = await Promise.all([
+  const liftIds = Object.keys(LIFT_SOURCES);
+  const [modelData, nwsData, nwsText, snowNow, snowNormal, liftData] = await Promise.all([
     Promise.all(MODELS.map(async (m) => {
       try {
         const data = await getJson(fetchFn, modelUrl(m.id, RESORTS, MODEL_DAYS), { backoff });
@@ -314,7 +337,21 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       log(`SNOTEL (normals) failed: ${err.message}`);
       return null;
     }),
+    // Live lift-by-lift status from each resort's own lift data.
+    pool(liftIds, 4, async (id) => {
+      const src = LIFT_SOURCES[id];
+      try {
+        const body = src.type === 'json' ? await getJson(fetchFn, src.url, { backoff }) : await getText(fetchFn, src.url, { backoff });
+        const lifts = src.parse(body);
+        if (!lifts.length) throw new Error('no lifts found');
+        return summarizeLifts(lifts, src.page, now.toISOString());
+      } catch (err) {
+        log(`Lift status failed for ${id}: ${err.message}`);
+        return null;
+      }
+    }),
   ]);
+  const liftsById = Object.fromEntries(liftIds.map((id, i) => [id, liftData[i]]));
   const snowpack = Object.fromEntries(stations.map((t) => {
     const name = RESORTS.find((r) => r.snotel[0] === t).snotel[1];
     const s = snowNow && stationSeason({ current: snowNow.get(t), normals: snowNormal?.get(t), today });
@@ -334,10 +371,10 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     const live = Boolean(c);
     const p = planned[r.id] ?? {};
     const facts = live
-      ? { live, isOpen: c.isOpen, open: c.open, close: c.close, note: c.note, report: c.report }
+      ? { live, isOpen: c.isOpen, open: c.open, close: c.close, note: c.note, report: withLiveLifts(c.report, liftsById[r.id]) }
       : { live, isOpen: false, open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when, opened: p.opened, note: p.note };
     // A report from a closed resort is usually last season's leftovers.
-    const report = live && c.isOpen ? c.report : null;
+    const report = live && c.isOpen ? withLiveLifts(c.report, liftsById[r.id]) : null;
     return {
       id: r.id,
       name: r.name,
@@ -350,6 +387,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       dates: { open: facts.open ?? null, close: facts.close ?? null, when: facts.when ?? null, planned: !live },
       report,
       forecast: forecasts[i],
+      lifts: liftsById[r.id] ?? null,
       avgSnow: r.avgSnow ?? null,
       // Key into `snowpack` (resorts can share a station).
       station: snowpack[r.snotel[0]] ? r.snotel[0] : null,
@@ -369,6 +407,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       // When the model forecasts were fetched (carried forward if a later update reuses them).
       modelsAt: modelData.some(Boolean) ? now.toISOString() : null,
       snotel: Object.keys(snowpack).length,
+      lifts: liftData.filter(Boolean).length,
     },
     resorts,
     snowpack,

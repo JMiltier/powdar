@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSnotel, stationSeason, waterYear } from '../src/snotel.js';
+import { despike, parseSnotel, stationSeason, waterYear } from '../src/snotel.js';
 import { blendForecast, nwsDaily } from '../src/report.js';
 
 test('waterYear starts Oct 1', () => {
@@ -53,4 +53,14 @@ test('nwsDaily splits day and night periods by local date', () => {
     { startTime: '2026-11-14T18:00:00-07:00', isDaytime: false, shortForecast: 'Mostly Cloudy', probabilityOfPrecipitation: { value: 20 } },
   ]);
   assert.deepEqual(d.get('2026-11-14'), { sky: 'Snow Showers', wind: '10 to 15 mph', pop: 97, night: 'Mostly Cloudy', nightPop: 20 });
+});
+
+test('despike drops one-off sensor spikes and dropouts but keeps real storms', () => {
+  const day = (i, value) => ({ date: `2026-03-${String(i + 1).padStart(2, '0')}`, value });
+  const spike = [0.5, 0.6, 0.6, 9, 0.7, 0.7, 0.8].map((v, i) => day(i, v));
+  assert.deepEqual(despike(spike).map((x) => x.value), [0.5, 0.6, 0.6, 0.7, 0.7, 0.8]);
+  const dropout = [14, 14.2, 14.3, 0, 14.5, 14.6, 14.6].map((v, i) => day(i, v));
+  assert.ok(!despike(dropout).some((x) => x.value === 0));
+  const storm = [5, 5, 5.1, 8, 8.4, 8.6, 8.7, 8.8].map((v, i) => day(i, v));
+  assert.equal(despike(storm).length, storm.length, 'a 3″ storm that stays is real');
 });

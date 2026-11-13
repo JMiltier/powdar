@@ -1,8 +1,12 @@
 name: Update snow data
 
 on:
+  # Every 15 minutes during lift hours (~6 AM–7 PM Colorado time), hourly overnight. Odd minutes
+  # because GitHub delays or skips scheduled jobs most at the top of the hour.
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '7,22,37,52 13-23 * * *'
+    - cron: '7,22,37,52 0-1 * * *'
+    - cron: '7 2-12 * * *'
   push:
     branches: [main]
   workflow_dispatch:

@@ -279,6 +279,18 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .chart .now.faint { stroke-opacity: 0.4; stroke-width: 2; }
 .k-faint { border-top: 2.5px solid color-mix(in srgb, var(--text) 40%, transparent); }
 
+.section-count { text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--text); margin-left: 6px; }
+.lifts { list-style: none; margin: 0 0 4px; padding: 0; font-size: 0.88rem; }
+.lift { display: flex; align-items: baseline; gap: 8px; padding: 6px 2px; border-top: 1px solid var(--line); }
+.lift i { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--tba); transform: translateY(-1px); }
+.lift span { flex: 1; min-width: 0; font-weight: 600; }
+.lift small { flex: none; color: var(--muted); font-size: 0.78rem; text-align: right; }
+.lift-open i { background: var(--open); }
+.lift-hold i { background: var(--likely); }
+.lift-scheduled i { background: var(--soon); }
+.lift-closed span { font-weight: 500; color: var(--muted); }
+.more-lifts { margin: 0 0 4px; }
+.more-lifts summary { cursor: pointer; padding: 7px 2px; font-size: 0.85rem; font-weight: 650; color: var(--accent); border-top: 1px solid var(--line); }
 .report { list-style: none; margin: 0 0 10px; padding: 0; font-size: 0.88rem; }
 .report li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 2px; border-top: 1px solid var(--line); }
 .report li span { color: var(--muted); }
