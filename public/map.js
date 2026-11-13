@@ -301,7 +301,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     let next = null;
     let nextFrames = [];
     try {
-      if (layerName === 'snow') next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], isDark() ? null : 'rgba(45, 60, 85, 0.6)');
+      if (layerName === 'snow') next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], isDark() ? null : 'rgba(25, 40, 65, 0.7)');
       else if (layerName === 'radar') {
         try {
           nextFrames = await radarLayer();
@@ -545,7 +545,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         // (Relaxed, for the number-only fallback: a hairline may pass beside other points, and reach further.)
         if (!relaxed && tail && dots.some((d) => d !== it.p && segPointDist(tail.seg, d) < DOT_R + 3)) continue;
         // Labels that matter (open, favorite, filter match) may reach further when they must.
-        if (lead.len > ((it.prio ?? 0) > 0 ? maxLead * 2.6 : relaxed ? maxLead * 1.5 : maxLead)) continue;
+        if (lead.len > ((it.prio ?? 0) > 0 ? maxLead * 2.3 : relaxed ? maxLead * 1.5 : maxLead)) continue;
         // Distance from the dot (squared), a small preference for the classic spots, and a big one for
         // touching the dot: a hairline is only worth it when there's no room right beside it.
         it.cands.push({ s, box, tail, cost: lead.len * lead.len + (s[2] ?? 60) + (tail ? 1200 : 0) });
