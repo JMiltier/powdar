@@ -50,8 +50,8 @@ button { font: inherit; color: inherit; }
 #map { position: fixed; inset: 0; background: var(--bg); touch-action: manipulation; }
 .leaflet-container { font: inherit; background: var(--bg); }
 /* The relief, softened and tinted by the app's own background showing through. */
-.leaflet-tile-pane { opacity: 0.75; filter: contrast(0.85); }
-:root[data-theme="dark"] .leaflet-tile-pane { opacity: 0.6; filter: none; }
+.leaflet-tile-pane { filter: grayscale(0.7) contrast(1.15) brightness(1.08); }
+:root[data-theme="dark"] .leaflet-tile-pane { opacity: 0.9; filter: contrast(1.6) brightness(1.15); }
 /* NOAA's snow cover comes as coarse squares: a slight blur turns them into soft cover. */
 .leaflet-snow-pane { filter: blur(1.5px); }
 /* Outside Colorado: dimmed toward the background, so the state stands out. */
