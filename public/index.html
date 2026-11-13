@@ -43,9 +43,11 @@
     <!-- Map layers: one at a time. -->
     <div id="layers" class="layers" role="menu" aria-label="Map layer" hidden>
       <button type="button" role="menuitemradio" data-layer="snow"><i class="sw sw-snow"></i><span><b>Snow on the ground</b><small>Today's depth, NOAA</small></span></button>
+      <button type="button" role="menuitemradio" data-layer="sat"><i class="sw sw-sat"></i><span><b>Satellite</b><small>The real view from space, latest clear-ish day</small></span></button>
+      <button type="button" role="menuitemradio" data-layer="satsnow"><i class="sw sw-satsnow"></i><span><b>Snow vs clouds</b><small>Satellite false color: snow cyan, clouds white</small></span></button>
       <button type="button" role="menuitemradio" data-layer="radar"><i class="sw sw-radar"></i><span><b>Live radar</b><small>Snow falling now</small></span></button>
       <button type="button" role="menuitemradio" data-layer="outlook"><i class="sw sw-outlook"></i><span><b>Season outlook</b><small>Wetter or drier than normal, next 3 months</small></span></button>
-      <button type="button" role="menuitemradio" data-layer="none"><i class="sw sw-none"></i><span><b>Off</b></span></button>
+      <button type="button" role="menuitemradio" data-layer="none"><i class="sw sw-none"></i><span><b>Terrain only</b></span></button>
     </div>
     <p id="toast" class="toast" hidden></p>
   </div>

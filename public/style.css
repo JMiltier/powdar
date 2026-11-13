@@ -598,3 +598,20 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .f-note { margin: 8px 8px 4px; font-size: 0.7rem; color: var(--muted); line-height: 1.4; }
 .link { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; font-weight: 650; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .f-clear { margin: 2px 8px 4px; font-size: 0.8rem; }
+
+/* Satellite photo backgrounds: natural colors, with fine terrain shading multiplied over them. */
+#map[data-base="sat"] .leaflet-tile-pane, #map[data-base="satsnow"] .leaflet-tile-pane,
+:root[data-theme="dark"] #map[data-base="sat"] .leaflet-tile-pane, :root[data-theme="dark"] #map[data-base="satsnow"] .leaflet-tile-pane { filter: saturate(1.1) contrast(1.08); opacity: 1; }
+.leaflet-shade-pane { mix-blend-mode: multiply; opacity: 0.5; }
+
+/* Satellite views: day stepper in the key, and the menu swatches. */
+.day-step {
+  width: 26px; height: 26px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; cursor: pointer;
+  background: var(--accent-soft); color: var(--accent); font-size: 1.1rem; font-weight: 800; line-height: 1; padding: 0 0 2px;
+}
+.day-step:disabled { opacity: 0.35; cursor: default; }
+.sw-sat { background: radial-gradient(circle at 35% 35%, #f4f6f8 0 18%, #7d8a6a 40%, #4b5a3c 70%, #2d3a2a); }
+.sw-satsnow { background: radial-gradient(circle at 35% 35%, #3fe0f0 0 22%, #f5f7fa 23% 34%, #8a5a3c 55%, #5a3a2a); }
+.sw-mini { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: middle; }
+.sw-cyan { background: #35d4ec; }
+.sw-white { background: #f5f7fa; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2); }
