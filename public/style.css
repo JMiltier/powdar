@@ -822,3 +822,6 @@ button, .row, summary { -webkit-tap-highlight-color: transparent; }
 .cast-key i { display: inline-block; width: 14px; height: 10px; border-radius: 3px; background: #8b5cf6; }
 .cast-key .c1 { opacity: 0.3; } .cast-key .c2 { opacity: 0.55; } .cast-key .c3 { opacity: 0.85; }
 .cast-key span { margin-left: 4px; }
+
+/* The cams strip scrolls sideways inside the vertically-scrolling panel. */
+.cams { touch-action: pan-x pan-y; overscroll-behavior-x: contain; }
