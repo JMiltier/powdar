@@ -52,13 +52,21 @@
 
   <section id="map-view" class="map-view" hidden aria-label="Snow map">
     <div class="map-metrics seg" role="group" aria-label="Show on map">
-      <button type="button" data-metric="next72" aria-pressed="true">Next 3 days</button>
+      <button type="button" data-metric="next72" aria-pressed="true">3 days</button>
       <button type="button" data-metric="next7" aria-pressed="false">7 days</button>
-      <button type="button" data-metric="new24" aria-pressed="false">Last 24 hrs</button>
+      <button type="button" data-metric="new24" aria-pressed="false">24 hrs</button>
       <button type="button" data-metric="depth" aria-pressed="false">Base</button>
+      <button type="button" data-metric="dates" aria-pressed="false">Dates</button>
     </div>
     <p id="map-hint" class="map-hint"></p>
-    <div id="map"></div>
+    <div class="map-wrap">
+      <div id="map"></div>
+      <button id="snow-toggle" class="snow-toggle" type="button" aria-pressed="false">❄ Snow on the ground</button>
+      <div id="snow-legend" class="snow-legend" hidden>
+        <div class="snow-legend-title">Snow depth today (NOAA)</div>
+        <div class="snow-legend-keys"><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBqw/u/0+JQaH2jowoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAAD5FwUnUj+h+wAAAABJRU5ErkJggg==" alt="">1″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmByStP/6fEoLnhpowoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAAAWWgV7xtUzQAAAAABJRU5ErkJggg==" alt="">4″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBAZUn/lNi0IZ2C0YUA6kFWEYNpBiwUG4EKhg1kHLAQgUzUMCogZQDeBjCyjOqGUgtAAAuegXB6J66owAAAABJRU5ErkJggg==" alt="">10″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBNvaH/lNi0JGDdowoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAABLaAYVAQvwcAAAAABJRU5ErkJggg==" alt="">20″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmB4QqH/1Ni0MoHtowoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAABMVgYYSfe//gAAAABJRU5ErkJggg==" alt="">40″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBtYy7/1NiUPN/V0YUA6kFWEYNpBiwUG4EKhg1kHLAQgUzUMCogZQDeBjCyjOqGUgtAABMgAYZ9VqjPQAAAABJRU5ErkJggg==" alt="">60″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBW1g2/qfEIJ8//owoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAAA7vwXpWDxieAAAAABJRU5ErkJggg==" alt="">100″+</span></div>
+      </div>
+    </div>
     <div id="sheet" class="sheet" hidden>
       <button id="sheet-close" class="sheet-close" type="button" aria-label="Close">×</button>
       <div id="sheet-body"></div>

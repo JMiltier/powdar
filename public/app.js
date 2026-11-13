@@ -3,7 +3,7 @@ import { createSnowMap } from './map.js';
 const DATA_URL = 'data.json';
 const STORE = {
   data: 'cs:data', favs: 'cs:favs', sort: 'cs:sort', openOnly: 'cs:openOnly',
-  view: 'cs:view', metric: 'cs:metric', mapView: 'cs:mapView',
+  view: 'cs:view', metric: 'cs:metric', mapView: 'cs:mapView', snowDepth: 'cs:snowDepth',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
 const STALE_AFTER_MS = 3 * 3_600_000;
@@ -19,6 +19,7 @@ const METRICS = {
   next7: { get: (r) => r.forecast?.next7, steps: [1, 3, 6, 12], hint: 'Snow forecast for the next 7 days' },
   new24: { get: (r) => r.report?.new24, steps: [1, 3, 6, 12], hint: 'New snow in the last 24 hours (open resorts report it)' },
   depth: { get: (r) => r.report?.depth, steps: [12, 24, 36, 60], hint: 'Base depth, mid-mountain (open resorts report it)', base: true },
+  dates: { hint: 'Green = open (until closing day) · blue = opening day', dates: true },
 };
 // Lower comes first when sorting by opening day.
 const STATE_ORDER = { open: 0, likely: 1, soon: 2, late: 3, tba: 4, done: 5 };
@@ -43,6 +44,7 @@ const state = {
   metric: read(STORE.metric, 'next72'),
   selected: null,
   map: null,
+  snowDepth: read(STORE.snowDepth, false),
 };
 
 // 0 → 0″, a dusting → <1″, otherwise whole inches.
@@ -51,6 +53,29 @@ function inches(v) {
   if (v === 0) return '0″';
   if (v < 1) return '<1″';
   return `${Math.round(v)}″`;
+}
+
+const monthDay = (ymd) => new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
+
+// "Season: Oct 28 – May 10", or as much of it as we know.
+function seasonText(r, today) {
+  const { open, close, when, planned } = r.dates ?? {};
+  if (open && close) return `Season: ${monthDay(open)} – ${monthDay(close)}`;
+  if (open) return `${open > today ? 'Opens' : 'Opened'} ${when ?? monthDay(open)}${planned ? ' (planned)' : ''} · closing day TBA`;
+  if (close) return `Opening day TBA · closes ${monthDay(close)}`;
+  return '';
+}
+
+// Map bubble for the Dates view.
+function dateBubble(r) {
+  const { state: s, date } = r.status;
+  const close = r.dates?.close;
+  if (s === 'open') return { text: close ? `til ${monthDay(close)}` : 'Open', level: 'open', rank: 0 };
+  if (s === 'likely') return { text: 'Likely open', level: 'likely', rank: 1 };
+  if (s === 'soon') return { text: r.dates?.when ?? monthDay(date), level: 'soon', rank: 2 };
+  if (s === 'late') return { text: 'Delayed', level: 'late', rank: 3 };
+  if (s === 'done') return { text: 'Closed', level: 'tba', rank: 5 };
+  return { text: 'TBA', level: 'tba', rank: 4 };
 }
 
 const dayName = (ymd, today, style = 'short') =>
@@ -151,6 +176,7 @@ function card(r, today, scale) {
           <div class="names">
             <h3>${esc(r.name)}</h3>
             <p class="sub">${esc(r.region)}${r.status.detail ? ` · ${esc(r.status.detail)}` : ''}</p>
+            ${seasonText(r, today) ? `<p class="season">${esc(seasonText(r, today))}</p>` : ''}
           </div>
           <span class="pill pill-${esc(r.status.state)}">${esc(r.status.label)}</span>
         </div>
@@ -209,21 +235,27 @@ function renderMap() {
         renderMap();
       },
     });
+    state.map.setSnowDepth(state.snowDepth);
   }
+  $('#snow-toggle').setAttribute('aria-pressed', String(state.snowDepth));
+  $('#snow-legend').hidden = !state.snowDepth;
+  $('#map').classList.toggle('snow-on', state.snowDepth);
   const metric = METRICS[state.metric] ?? METRICS.next72;
-  const withValues = data.resorts.map((r) => ({ r, value: metric.get(r) ?? null }));
-  withValues.sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
-  state.map.update(withValues.map(({ r, value }) => {
+  const items = data.resorts.map((r) => {
+    const base = { r, open: r.status.state === 'open', selected: r.id === state.selected, fav: state.favs.has(r.id) };
+    if (metric.dates) {
+      const b = dateBubble(r);
+      // Open resorts first, then the soonest opening days.
+      const daysOut = r.status.date ? (Date.parse(r.status.date) - Date.parse(data.today)) / 864e5 : 0;
+      return { ...base, text: b.text, label: b.text, level: b.level, sortKey: -b.rank * 1e4 - daysOut };
+    }
+    const value = metric.get(r) ?? null;
     const text = value == null ? '–' : metric.base ? `${Math.round(value)}″` : inches(value);
-    return {
-      r,
-      text,
-      label: value == null ? 'not reported' : text,
-      level: level(value, metric.steps),
-      open: r.status.state === 'open',
-      selected: r.id === state.selected,
-    };
-  }));
+    return { ...base, text, label: value == null ? 'not reported' : text, level: level(value, metric.steps), sortKey: value ?? -1 };
+  });
+  // Most important first (pinned, then open resorts), so they win the space on a crowded map.
+  items.sort((a, b) => b.selected - a.selected || b.fav - a.fav || b.open - a.open || b.sortKey - a.sortKey);
+  state.map.update(items);
   renderHint();
 
   const r = data.resorts.find((x) => x.id === state.selected);
@@ -238,10 +270,15 @@ function renderHint() {
   const data = state.data;
   if (!data || !state.map) return;
   const metric = METRICS[state.metric] ?? METRICS.next72;
-  const reporting = data.resorts.filter((r) => metric.get(r) != null).length;
   const parts = [metric.hint];
-  if (reporting < data.resorts.length) parts.push(`${reporting} of ${data.resorts.length} resorts`);
-  parts.push(state.map.namesShown() ? 'green ring = open' : 'zoom in for names');
+  if (metric.get) {
+    const reporting = data.resorts.filter((r) => metric.get(r) != null).length;
+    if (reporting < data.resorts.length) parts.push(`${reporting} of ${data.resorts.length} resorts`);
+  }
+  if (!metric.dates) parts.push('green ring = open');
+  const hidden = state.map.hiddenCount();
+  if (!state.map.namesShown()) parts.push('zoom in for names');
+  else if (hidden) parts.push(`zoom in to see ${hidden} more`);
   $('#map-hint').textContent = parts.join(' · ');
 }
 
@@ -327,6 +364,13 @@ document.addEventListener('click', (e) => {
   if (metricBtn) {
     state.metric = metricBtn.dataset.metric;
     write(STORE.metric, state.metric);
+    renderMap();
+    return;
+  }
+  if (e.target.closest('#snow-toggle')) {
+    state.snowDepth = !state.snowDepth;
+    write(STORE.snowDepth, state.snowDepth);
+    state.map?.setSnowDepth(state.snowDepth);
     renderMap();
     return;
   }

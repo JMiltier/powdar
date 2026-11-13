@@ -193,6 +193,8 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       url: r.url,
       live,
       status: statusFor(facts, today),
+      // Opening and closing days for this season; null when unknown.
+      dates: { open: facts.open ?? null, close: facts.close ?? null, when: facts.when ?? null, planned: !live },
       report,
       forecast: forecasts[i],
     };
