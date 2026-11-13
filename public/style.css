@@ -48,10 +48,10 @@ button { font: inherit; color: inherit; }
 /* ---------- Map: the whole screen ---------- */
 #map { position: fixed; inset: 0; background: var(--bg); }
 .leaflet-container { font: inherit; background: var(--bg); }
-/* Calm the terrain colours so the snow bubbles stand out. */
+/* Calm the terrain colors so the snow bubbles stand out. */
 .leaflet-tile-pane { filter: saturate(0.18) brightness(1.12) contrast(0.92); }
 @media (prefers-color-scheme: dark) { .leaflet-tile-pane { filter: saturate(0.15) brightness(0.5) contrast(1.15); } }
-/* With the snow layer on, a grey base map lets the snow colours read clearly. */
+/* With the snow layer on, a grey base map lets the snow colors read clearly. */
 #map.snow-on .leaflet-tile-pane { filter: grayscale(1) brightness(1.1); }
 @media (prefers-color-scheme: dark) { #map.snow-on .leaflet-tile-pane { filter: grayscale(1) brightness(0.55); } }
 
@@ -169,7 +169,7 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .row-sub { font-size: 0.8rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .empty { text-align: center; color: var(--muted); padding: 24px 12px; }
 
-/* Value pills share their colours with the map bubbles. */
+/* Value pills share their colors with the map bubbles. */
 .val {
   flex: none; min-width: 58px; padding: 5px 10px; border-radius: 12px; text-align: center;
   font-weight: 800; font-size: 1.05rem; line-height: 1.1; background: var(--bg);
@@ -235,7 +235,7 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .chart text { font-size: 9px; fill: var(--muted); }
 .chart .grid { stroke: var(--line); stroke-width: 1; }
 .chart .normal { fill: color-mix(in srgb, var(--muted) 18%, transparent); stroke: var(--muted); stroke-width: 1; stroke-opacity: 0.5; }
-/* This season and its projection: their own high-contrast colour, with a halo, so they never blend
+/* This season and its projection: their own high-contrast color, with a halo, so they never blend
    into the blue/orange history bands. */
 .chart { --series: #111827; --halo: rgba(255, 255, 255, 0.9); }
 @media (prefers-color-scheme: dark) { .chart { --series: #ffffff; --halo: rgba(10, 14, 22, 0.85); } }
@@ -261,7 +261,7 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
   border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; cursor: pointer;
 }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-/* Historical range bands, in the same colours as the Season map view. */
+/* Historical range bands, in the same colors as the Season map view. */
 .chart .band { stroke: none; }
 .b-low { fill: #f2b48a; background: #f2b48a; }
 .b-below { fill: #f8dc9a; background: #f8dc9a; }
@@ -328,7 +328,7 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 }
 .pin-bubble.is-open { border-color: var(--open); }
 .pin-bubble.is-selected { outline: 3px solid #e8a400; outline-offset: 1px; }
-/* Pointer from a label to its dot, drawn in the label's own colours. */
+/* Pointer from a label to its dot, drawn in the label's own colors. */
 .pin-tail { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 .pin-tail polygon { stroke-width: 1.5; stroke-linejoin: round; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.25)); }
 
@@ -336,7 +336,7 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .pin-bubble.lvl-none { min-width: 0; width: 14px; height: 14px; padding: 0; border-radius: 50%; background: #c3cad3; border-color: #fff; }
 .pin-bubble.lvl-none > * { display: none; }
 
-/* Colour levels, shared by bubbles and list values: white for nothing, deepening blues, purple for a foot+. */
+/* Color levels, shared by bubbles and list values: white for nothing, deepening blues, purple for a foot+. */
 .lvl-0 { background: #fff; color: #5f6b7a; }
 .val.lvl-0, .val.lvl-none { background: var(--bg); color: var(--muted); }
 .lvl-1 { background: #dbe9fb; color: #15202e; }

@@ -4,6 +4,7 @@ import { RESORTS, PLANNED } from './resorts.js';
 import { MODELS, modelUrl, snowHours } from './models.js';
 import { parseSnotel, snotelUrl, stationSeason, waterYear } from './snotel.js';
 import { LIFT_SOURCES, summarizeLifts } from './lifts.js';
+import { nohrscUrl, parseNohrsc } from './noaa.js';
 
 export const CSC_FEED = 'https://snow.coloradoski.com/view/publicreport-feed';
 const NWS = 'https://api.weather.gov/gridpoints';
@@ -303,7 +304,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
   const wy = waterYear(today);
   const lastSeasonEnd = `${wy.startYear}-07-31`;
   const liftIds = Object.keys(LIFT_SOURCES);
-  const [modelData, nwsData, nwsText, snowNow, snowNormal, liftData] = await Promise.all([
+  const [modelData, nwsData, nwsText, snowNow, snowNormal, liftData, noaaSnow] = await Promise.all([
     Promise.all(MODELS.map(async (m) => {
       try {
         const data = await getJson(fetchFn, modelUrl(m.id, RESORTS, MODEL_DAYS), { backoff });
@@ -350,6 +351,15 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
         return null;
       }
     }),
+    // NOAA's modelled snow depth and snow water at each resort.
+    pool(RESORTS, 4, async (r) => {
+      try {
+        return parseNohrsc(await getJson(fetchFn, nohrscUrl(r.at), { backoff }));
+      } catch (err) {
+        log(`NOAA snow model failed for ${r.name}: ${err.message}`);
+        return null;
+      }
+    }),
   ]);
   const liftsById = Object.fromEntries(liftIds.map((id, i) => [id, liftData[i]]));
   const snowpack = Object.fromEntries(stations.map((t) => {
@@ -388,6 +398,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       report,
       forecast: forecasts[i],
       lifts: liftsById[r.id] ?? null,
+      noaa: noaaSnow[i] ?? null,
       avgSnow: r.avgSnow ?? null,
       // Key into `snowpack` (resorts can share a station).
       station: snowpack[r.snotel[0]] ? r.snotel[0] : null,
@@ -408,6 +419,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       modelsAt: modelData.some(Boolean) ? now.toISOString() : null,
       snotel: Object.keys(snowpack).length,
       lifts: liftData.filter(Boolean).length,
+      noaa: noaaSnow.filter(Boolean).length,
     },
     resorts,
     snowpack,

@@ -3,7 +3,7 @@
 // labels fan out around the cluster, each with a short pointer reaching all the way to its dot.
 const L = window.L;
 
-// OpenTopoMap: free, no key, and its terrain shading suits mountains. Colours are muted in CSS.
+// OpenTopoMap: free, no key, and its terrain shading suits mountains. Colors are muted in CSS.
 const TILES = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
 // Shown behind the ⓘ button instead of a permanent banner.
 export const CREDITS = 'Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM · '
@@ -13,7 +13,7 @@ export const CREDITS = 'Map data © <a href="https://www.openstreetmap.org/copyr
 const SNOW_DEPTH_WMS = 'https://mapservices.weather.noaa.gov/raster/services/snow/NOHRSC_Snow_Analysis/MapServer/WMSServer';
 const GAP = 2;
 // Longest pointer allowed, in pixels: labels stay near their dots.
-const MAX_POINTER = 120;
+const MAX_POINTER = 170;
 const DOT_R = 4;
 // Margin around the resorts when fitting them (labels stick out sideways more than up and down).
 const EDGE_X = 30;
@@ -25,17 +25,16 @@ const SHORT = {
   'aspen-highlands': 'Highlands', 'crested-butte': 'Crested Butte', cooper: 'Cooper', 'winter-park': 'Winter Park',
 };
 
-// Places a label may sit, as its centre relative to the dot: on the dot, touching it on any side,
-// then a grid further out (for crowded clusters).
+// Places a label may sit, as its center relative to the dot, on a fine grid around it (10 px across,
+// half a label-height down). Spots where the label would cover its own point are left out: the label
+// always sits beside its resort, never on top of it.
 function spotsFor(w, h) {
-  const a = w / 2 + DOT_R + 2;
-  const b = h / 2 + DOT_R + 1;
-  const out = [[0, 0], [a, 0], [-a, 0], [0, -b], [0, b], [a, -b], [a, b], [-a, -b], [-a, b]];
-  for (let i = -4; i <= 4; i++) {
-    for (let j = -6; j <= 6; j++) {
-      const dx = i * (w / 2 + 3);
-      const dy = j * (h + GAP);
-      if (Math.abs(i) <= 1 && Math.abs(j) <= 1) continue;
+  const out = [];
+  const clear = DOT_R + 3;
+  for (let dx = -Math.round(1.6 * w); dx <= 1.6 * w; dx += 10) {
+    for (let j = -10; j <= 10; j++) {
+      const dy = j * (h / 2 + 1);
+      if (Math.abs(dx) < w / 2 + clear && Math.abs(dy) < h / 2 + clear) continue; // would cover its own dot
       out.push([dx, dy]);
     }
   }
@@ -105,7 +104,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
   });
   L.tileLayer(TILES, { subdomains: 'abc', maxZoom: 12 }).addTo(map);
 
-  // Snow cover gets its own pane so the colour-muting filter on the base map doesn't wash it out.
+  // Snow cover gets its own pane so the color-muting filter on the base map doesn't wash it out.
   map.createPane('snow').style.zIndex = 250;
   map.createPane('dots').style.zIndex = 590; // just under the labels (markerPane is 600)
   const snowDepth = L.tileLayer.wms(SNOW_DEPTH_WMS, {
@@ -152,7 +151,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
   }
 
   // Label layout by simulated annealing. Each label sits on its dot or nearby; a label that isn't on
-  // its dot gets a pointer (a wedge in the label's colour) running all the way to the dot.
+  // its dot gets a pointer (a wedge in the label's color) running all the way to the dot.
   // Hard rules: labels never overlap; a pointer never crosses another label, another pointer, or
   // passes over another resort's dot; everything stays in the visible map.
   // Cost: pointer length (squared, so one long pointer costs more than several short ones).
@@ -178,14 +177,13 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
       for (const s of spots) {
         const box = boxOf(it, s);
         if (box[0] < area[0] || box[2] > area[2] || box[1] < area[1] || box[3] > area[3]) continue;
-        const tail = s[0] === 0 && s[1] === 0 ? null : pointer(it, s);
-        // Covering another resort's dot, or a pointer passing over one, is confusing: allowed only
-        // when there's no other way (the tightest clusters, on the smallest screens).
-        const covers = dots.filter((d) => d !== it.p && d.x + DOT_R > box[0] && d.x - DOT_R < box[2] && d.y + DOT_R > box[1] && d.y - DOT_R < box[3]).length;
-        const passes = tail ? dots.filter((d) => d !== it.p && segPointDist(tail.seg, d) < DOT_R + 3).length : 0;
+        // Hard rules: never cover another resort's point, and no pointer passing over one.
+        if (dots.some((d) => d !== it.p && d.x + DOT_R + 1 > box[0] && d.x - DOT_R - 1 < box[2] && d.y + DOT_R + 1 > box[1] && d.y - DOT_R - 1 < box[3])) continue;
+        const tail = it.empty ? null : pointer(it, s);
+        if (tail && dots.some((d) => d !== it.p && segPointDist(tail.seg, d) < DOT_R + 3)) continue;
         const len = tail ? Math.hypot(tail.seg[2] - tail.seg[0], tail.seg[3] - tail.seg[1]) : 0;
         if (len > MAX_POINTER) continue;
-        it.cands.push({ s, box, tail, cost: (tail ? 30 : 0) + len * len + 80000 * (covers + passes) });
+        it.cands.push({ s, box, tail, cost: len * len });
       }
       it.cands.sort((a, b) => a.cost - b.cost);
     }
@@ -339,7 +337,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
       if (!transform) continue;
       pin.bubble.style.transform = transform;
       if (!tail) continue;
-      // The wedge takes the label's own colours.
+      // The wedge takes the label's own colors.
       const cs = getComputedStyle(pin.bubble);
       pin.tail.style.fill = cs.backgroundColor;
       pin.tail.style.stroke = cs.borderTopColor;

@@ -64,3 +64,13 @@ test('despike drops one-off sensor spikes and dropouts but keeps real storms', (
   const storm = [5, 5, 5.1, 8, 8.4, 8.6, 8.7, 8.8].map((v, i) => day(i, v));
   assert.equal(despike(storm).length, storm.length, 'a 3″ storm that stays is real');
 });
+
+test('parseNohrsc converts NOAA snow model values to inches', async () => {
+  const { parseNohrsc } = await import('../src/noaa.js');
+  const json = { results: [
+    { layerId: 3, attributes: { 'Service Pixel Value': '0.69' } },
+    { layerId: 7, attributes: { 'Service Pixel Value': '218' } },
+  ] };
+  assert.deepEqual(parseNohrsc(json), { depth: 27.2, water: 8.6 });
+  assert.equal(parseNohrsc({ results: [] }), null);
+});
