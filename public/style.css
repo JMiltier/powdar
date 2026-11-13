@@ -562,8 +562,8 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 @media (max-width: 380px) { .ramp { width: 72px; } }
 
 /* "Open now": closed resorts stay in place, just faded. */
-#map.open-only .pin.closed-now, #map.open-only .pin-dot.closed-now { opacity: 0.28; }
-#map.open-only .pin { transition: opacity 0.2s ease; }
+#map.filtering .pin.filtered-out, #map.filtering .pin-dot.filtered-out { opacity: 0.25; }
+.pin, .pin-dot { transition: opacity 0.2s ease; }
 
 /* Swiping between resorts (or map views): the new content slides in from that side. */
 @keyframes slide-next { from { transform: translateX(36px); opacity: 0.2; } to { transform: none; opacity: 1; } }
@@ -572,3 +572,25 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .slide-prev { animation: slide-prev 0.22s ease-out; }
 #list, #detail { transition: transform 0.15s ease-out; }
 .sheet-body { touch-action: pan-y; }
+
+/* Filter chip and its menu. */
+.filter-chip { gap: 5px; background: none; color: inherit; font: inherit; font-size: 0.82rem; font-weight: 650; }
+.filter-chip svg { width: 15px; height: 15px; }
+.filter-chip.on { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+.filters {
+  position: fixed; z-index: 1200; width: min(300px, calc(100vw - 16px)); padding: 8px;
+  background: var(--card); color: var(--text); border-radius: 16px; box-shadow: var(--shadow);
+}
+.f-row { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 10px; cursor: pointer; }
+.f-row input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.f-row b { display: block; font-size: 0.88rem; }
+.f-row small, .f-head small { display: block; font-size: 0.72rem; color: var(--muted); font-weight: 500; }
+.f-head { margin: 8px 8px 6px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); display: flex; gap: 6px; align-items: baseline; }
+.f-head small { display: inline; text-transform: none; letter-spacing: 0; }
+.f-passes { display: flex; gap: 4px; padding: 0 6px; }
+.f-passes button { flex: 1; border: 1px solid var(--line); background: none; color: inherit; font: inherit; font-size: 0.8rem; font-weight: 650; padding: 6px 0; border-radius: 999px; cursor: pointer; }
+.f-passes button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+:root[data-theme="dark"] .f-passes button[aria-pressed="true"] { color: #0e141c; }
+.f-note { margin: 8px 8px 4px; font-size: 0.7rem; color: var(--muted); line-height: 1.4; }
+.link { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; font-weight: 650; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.f-clear { margin: 2px 8px 4px; font-size: 0.8rem; }

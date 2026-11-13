@@ -804,8 +804,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       pin.marker.setZIndexOffset(item.selected ? 1000 : -i);
       if (item.selected) selectedPin = pin;
       // (Dimmed by CSS under "Open now"; not part of the layout, so nothing moves.)
-      pin.root.classList.toggle('closed-now', !item.openNow);
-      pin.dot.classList.toggle('closed-now', !item.openNow);
+      pin.root.classList.toggle('filtered-out', !item.match);
+      pin.dot.classList.toggle('filtered-out', !item.match);
       return { ...item, pin, empty: item.level === 'none' };
     });
     layout();

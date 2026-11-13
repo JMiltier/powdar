@@ -90,7 +90,7 @@
           <button id="state-btn" class="state-btn" type="button" aria-haspopup="dialog" aria-expanded="false">Colorado ▾</button>
         </div>
         <div class="head-actions">
-          <label class="chip"><input id="open-only" type="checkbox"> Open now</label>
+          <button id="filter-btn" class="chip filter-chip" type="button" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span>Filter</span></button>
           <button id="panel-close" class="panel-close" type="button" aria-label="Hide resort list" title="Hide list">‹</button>
         </div>
       </div>
@@ -111,6 +111,22 @@
       </footer>
     </div>
   </section>
+
+  <!-- Filters (opened from the chip in the sheet's header). -->
+  <div id="filters" class="filters" role="dialog" aria-label="Filter resorts" hidden>
+    <label class="f-row"><input id="f-open" type="checkbox"> <span><b>Open now</b><small>Resorts spinning lifts today</small></span></label>
+    <label class="f-row"><input id="f-favs" type="checkbox"> <span><b>Favorites</b><small>Resorts you've starred</small></span></label>
+    <p class="f-head">Pass <small>2026–27</small></p>
+    <div class="f-passes" role="group" aria-label="Pass">
+      <button type="button" data-pass="all" aria-pressed="true">All</button>
+      <button type="button" data-pass="epic" aria-pressed="false">Epic</button>
+      <button type="button" data-pass="ikon" aria-pressed="false">Ikon</button>
+      <button type="button" data-pass="indy" aria-pressed="false">Indy</button>
+      <button type="button" data-pass="other" aria-pressed="false">Other</button>
+    </div>
+    <p class="f-note">Telluride: 7 days on Epic. Aspen's four mountains: 7 days on Ikon. Other: the resort's own pass.</p>
+    <button type="button" class="link f-clear" data-clear-filters>Clear filters</button>
+  </div>
 
   <script src="vendor/leaflet/leaflet.js"></script>
   <script src="app.js?v=__V__" type="module"></script>
