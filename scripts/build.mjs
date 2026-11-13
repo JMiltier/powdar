@@ -86,8 +86,11 @@ const REGIONS = {
 };
 const regionOf = (code) => Object.keys(REGIONS).find((k) => REGIONS[k].includes(code)) ?? 'Other';
 const us = JSON.parse(await readFile(new URL('../src/us-resorts.json', import.meta.url), 'utf8'));
+// Powdar is Colorado-only for now. US_STATES=1 builds every other state too (the code and resort
+// list are kept ready); without it, states.json lists just Colorado.
+const US_STATES = process.env.US_STATES === '1';
 const byState = new Map();
-for (const r of us.resorts) {
+for (const r of US_STATES ? us.resorts : []) {
   if (!byState.has(r.state)) byState.set(r.state, []);
   byState.get(r.state).push(r);
 }

@@ -3,8 +3,11 @@ import { createSnowMap, CREDITS } from './map.js?v=__V__';
 // One data file per state (data/co.json, data/ut.json…), plus an index of states for the picker.
 const dataUrl = (code) => `data/${code.toLowerCase()}.json`;
 const STATES_URL = 'states.json';
+// Colorado only for now. Set to true (and build with US_STATES=1) to bring back the state picker and
+// every other state's map.
+const ALL_STATES = false;
 // Every state with resorts. Anything else in the address or storage is ignored (e.g. an old bad "#half").
-const STATE_CODES = new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
+const STATE_CODES = !ALL_STATES ? new Set(['CO']) : new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
 const validCode = (c) => (c && STATE_CODES.has(String(c).toUpperCase()) ? String(c).toUpperCase() : null);
 const STORE = {
   data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', openOnly: 'cs:openOnly', panel: 'cs:panel',
@@ -77,7 +80,7 @@ const state = {
   // Which state: from the address, else the one picked last time on this device. A first-time visitor
   // gets the state picker (Colorado shows behind it).
   code: validCode(location.hash.slice(1)) ?? validCode(read(STORE.state, null)) ?? 'CO',
-  firstVisit: !validCode(location.hash.slice(1)) && !validCode(read(STORE.state, null)),
+  firstVisit: ALL_STATES && !validCode(location.hash.slice(1)) && !validCode(read(STORE.state, null)),
   states: read(STORE.states, null), // the picker's list
 };
 
@@ -880,4 +883,5 @@ state.data = read(`${STORE.data}:${state.code}`, null) ?? (state.code === 'CO' ?
 startMap();
 render();
 load();
-loadStates().then(() => { if (state.firstVisit) openPicker(true); });
+$('#state-btn').hidden = !ALL_STATES;
+if (ALL_STATES) loadStates().then(() => { if (state.firstVisit) openPicker(true); });
