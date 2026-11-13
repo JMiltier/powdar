@@ -42,6 +42,7 @@ for (const [id, entry] of Object.entries(out)) {
   const ok = await Promise.all(entry.cams.map((c) => fetch(c.image, { headers: { ...UA, Referer: 'https://jmiltier.github.io/' }, signal: AbortSignal.timeout(20000) })
     .then((r) => r.ok && /^image\//.test(r.headers.get('content-type') ?? '')).catch(() => false)));
   entry.cams = entry.cams.filter((_, i) => ok[i]).slice(0, 6);
+  if (!entry.cams.length && !entry.video?.length && !entry.page) delete out[id];
   console.log(`${id.padEnd(16)} ${entry.cams.length} cams  ${entry.cams.map((c) => c.name).join(' | ')}`);
 }
 await writeFile(new URL('../src/cams.json', import.meta.url), `${JSON.stringify(out, null, 1)}\n`);

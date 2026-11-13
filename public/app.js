@@ -316,7 +316,16 @@ const camBucket = () => Math.floor(Date.now() / 300000); // a fresh frame every 
 const camSrc = (url) => `${url}${url.includes('?') ? '&' : '?'}t=${camBucket()}`;
 function camsSection(r, notes) {
   const c = r.cams;
-  if (!c?.cams?.length) return '';
+  if (!c) return '';
+  // No stills: live video streams (or just the resort's cam page) as buttons that open them.
+  if (!c.cams?.length) {
+    const links = c.video?.length ? c.video : c.page ? [{ name: 'Resort cams', live: c.page }] : [];
+    if (!links.length) return '';
+    notes.push(`Webcams: ${sourceLink(c.page ?? links[0].live, `${r.name}’s cams`)} (live video).`);
+    return `
+    <h3 class="section">Cams <span class="section-note">live video on the resort's player</span></h3>
+    <div class="cam-links">${links.map((v) => `<a class="cam-link" href="${esc(v.live)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>${esc(v.name)}</a>`).join('')}</div>`;
+  }
   notes.push(`Webcams: ${sourceLink(c.page, `${r.name}’s cams`)}, refreshed every few minutes.`);
   return `
     <h3 class="section">Cams <span class="section-note">live from the mountain</span></h3>
@@ -463,7 +472,8 @@ function renderHeadline() {
       text = v >= 1 ? `${m.top}: <strong>${esc(best.name)} ${inches(v)}</strong>` : quiet[state.metric];
     }
   }
-  $('#headline').innerHTML = text;
+  // When the data is from rides along at the end (tap it to refresh, as the old "Updated" line did).
+  $('#headline').innerHTML = `${text} <span class="when" data-refresh title="Refresh">· ${esc(timeAgo(data.generated))}</span>`;
 }
 
 // "Open · 3 of 24 lifts · 2% of runs", "Opens Fri, Nov 20", …
@@ -1629,7 +1639,7 @@ document.addEventListener('click', (e) => {
     return render();
   }
   if (t.closest('[data-theme-pick]')) return applyTheme(t.closest('[data-theme-pick]').dataset.themePick);
-  if (t.closest('#updated')) return load();
+  if (t.closest('#updated') || t.closest('[data-refresh]')) return load();
 });
 
 document.addEventListener('change', (e) => {
