@@ -703,9 +703,6 @@ function showNotice(text) {
   $('#notice').textContent = text ?? '';
 }
 
-// Colorado is (almost) a rectangle: 37°–41° N, 102°03′–109°03′ W.
-const CO_BORDER = [[41, -109.05], [41, -102.05], [37, -102.05], [37, -109.05], [41, -109.05]];
-
 function startMap() {
   if (state.map || !state.data) return;
   state.map = createSnowMap($('#map'), {
@@ -713,7 +710,6 @@ function startMap() {
     getPadding: coveredPadding,
     onSelect: (id) => select(id),
     extend: state.code === 'CO' ? [39.8, -105.1] : null,
-    outline: state.code === 'CO' ? CO_BORDER : null,
   });
   state.map.setSnowDepth(state.snowDepth);
 }

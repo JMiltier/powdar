@@ -54,9 +54,7 @@ button { font: inherit; color: inherit; }
 :root[data-theme="dark"] .leaflet-tile-pane { opacity: 0.9; filter: contrast(1.6) brightness(1.15); }
 /* NOAA's snow cover comes as coarse squares: a slight blur turns them into soft cover. */
 .leaflet-snow-pane { filter: blur(1.5px); }
-/* Outside Colorado: dimmed toward the background, so the state stands out. */
-.outside { fill: var(--bg); fill-opacity: 0.6; }
-.state-line { fill: none; stroke: var(--text); stroke-width: 1; opacity: 0.25; }
+
 
 /* ---------- Floating controls along the top ---------- */
 .top {
