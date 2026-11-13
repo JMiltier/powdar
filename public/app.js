@@ -1,4 +1,4 @@
-import { createSnowMap, CREDITS, satTile, SNOW_RAMP, SNOW_COLOR } from './map.js?v=__V__';
+import { createSnowMap, CREDITS, satTile, SNOW_RAMP, SNOW_COLOR, CAST_AMOUNTS } from './map.js?v=__V__';
 import { weatherIcon, UI } from './icons.js?v=__V__';
 
 // One data file per state (data/co.json, data/ut.json…), plus an index of states for the picker.
@@ -86,6 +86,7 @@ const state = {
   layer: read(STORE.layer, null) ?? (read(STORE.snowDepth, true) ? 'snow' : 'none'),
   outlookSeason: null, // e.g. "NDJ 2026-2027", once the outlook has loaded
   radar: { time: null, playing: false, count: 0 }, // the radar loop's current frame
+  cast: { day: 1, amount: 4, areas: null }, // the snow forecast's period and amount
   satDate: null, // the satellite views' day (YYYY-MM-DD), newest real one by default
   satLatest: null,
   selected: null,
@@ -279,6 +280,15 @@ function legendFor(layer) {
       <span class="radar-time">${esc(satDayText(state.satDate))}</span>
       <button type="button" class="day-step" data-sat-step="1" aria-label="Day after" ${newest ? 'disabled' : ''}>›</button>
       <span class="legend-keys">${layer === 'satsnow' ? '<i class="sw-mini sw-cyan"></i><span>Snow</span><i class="sw-mini sw-white"></i><span>Cloud</span>' : '<span>NASA satellite photo</span>'}</span>`;
+  }
+  if (layer === 'snowcast') {
+    const { day, amount, areas } = state.cast;
+    const period = ['Next 24h', '24–48h', '48–72h'][day - 1];
+    return `<button type="button" class="day-step" data-cast-day="-1" aria-label="Earlier" ${day <= 1 ? 'disabled' : ''}>‹</button>
+      <span class="radar-time">${period}</span>
+      <button type="button" class="day-step" data-cast-day="1" aria-label="Later" ${day >= 3 ? 'disabled' : ''}>›</button>
+      <button type="button" class="snow-style" data-cast-amount aria-label="Chance of at least ${amount} inches; tap for another amount">${amount}″+<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 0 1 8.6-3.5M13 8a5 5 0 0 1-8.6 3.5M11.5 2v2.7H8.8M4.5 14v-2.7h2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <span class="legend-keys cast-key">${areas === 0 ? '<span class="muted">None expected</span>' : '<i class="c1"></i><i class="c2"></i><i class="c3"></i><span>10% → 70%+</span>'}</span>`;
   }
   if (layer === 'radar') {
     return `<button type="button" class="radar-play" id="radar-play" aria-label="Play the last hour" ${state.radar.count > 1 ? '' : 'disabled'}>${state.radar.playing ? PAUSE_ICON : PLAY_ICON}</button>
@@ -1418,6 +1428,7 @@ function startMap() {
     onOutlook: (season) => { state.outlookSeason = season; render(); },
     // Each radar frame: just update the key's button and time (no full re-render while playing).
     onRadar: (r) => { state.radar = r; syncRadarKey(); },
+    onCast: (c) => { state.cast = { ...state.cast, ...c }; if (state.layer === 'snowcast') $('#legend').innerHTML = legendFor('snowcast'); },
     places: state.code === 'CO' ? CO_TOWNS : [],
   });
   applyLayer();
@@ -1572,6 +1583,15 @@ document.addEventListener('click', (e) => {
     return;
   }
   if (t.closest('[data-cam-close]') || t.id === 'cam-view') { $('#cam-view').hidden = true; return; }
+  const castDay = t.closest('[data-cast-day]');
+  if (castDay || t.closest('[data-cast-amount]')) {
+    const c = state.cast;
+    if (castDay) c.day = Math.min(3, Math.max(1, c.day + Number(castDay.dataset.castDay)));
+    else c.amount = CAST_AMOUNTS[(CAST_AMOUNTS.indexOf(c.amount) + 1) % CAST_AMOUNTS.length];
+    state.map?.setCast(c.day, c.amount);
+    $('#legend').innerHTML = legendFor('snowcast');
+    return;
+  }
   if (t.closest('[data-snow-cycle]')) {
     state.snowStyle = SNOW_STYLES[(SNOW_STYLES.indexOf(state.snowStyle) + 1) % SNOW_STYLES.length];
     write(STORE.snowStyle, state.snowStyle);

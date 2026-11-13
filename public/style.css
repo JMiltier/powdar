@@ -550,7 +550,7 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .layers b { display: block; font-size: 0.88rem; }
 .layers small { display: block; font-size: 0.72rem; color: var(--muted); }
 .sw { width: 26px; height: 26px; border-radius: 8px; flex: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 12%, transparent); }
-.sw-snow { background: linear-gradient(135deg, #d6ecff, #5c98f0 60%, #1a3aa0); }
+.sw-snow { background: linear-gradient(135deg, #8a96a6, #dfe6ee 55%, #ffffff); }
 .sw-radar { background: radial-gradient(circle at 40% 40%, #ebfaff, #6eb4ff 45%, #9650dc); }
 .sw-outlook { background: linear-gradient(90deg, #cf9548 0 50%, #4f93d8 50% 100%); }
 .sw-none { background: var(--bg); }
@@ -811,3 +811,14 @@ button, .row, summary { -webkit-tap-highlight-color: transparent; }
 .cam-view-bar a { display: inline-flex; align-items: center; gap: 4px; color: #8ab4ff; font-weight: 650; margin-left: 10px; }
 .cam-view-bar .ext-icon { width: 14px; height: 14px; }
 .cam-close { position: absolute; top: 8px; right: 8px; width: 34px; height: 34px; border: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.55); color: #fff; font-size: 1.4rem; line-height: 1; cursor: pointer; }
+
+/* Layer menu: grouped. */
+.layers { gap: 0; padding: 4px 6px 6px; }
+.layers-head { margin: 8px 10px 2px; font-size: 0.68rem; font-weight: 750; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+.layers button { padding: 6px 10px; }
+.sw-snowcast { background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(139, 92, 246, 0.75)); }
+/* Snow forecast key: slight, moderate, high. */
+.cast-key { gap: 3px; }
+.cast-key i { display: inline-block; width: 14px; height: 10px; border-radius: 3px; background: #8b5cf6; }
+.cast-key .c1 { opacity: 0.3; } .cast-key .c2 { opacity: 0.55; } .cast-key .c3 { opacity: 0.85; }
+.cast-key span { margin-left: 4px; }

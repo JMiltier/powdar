@@ -24,6 +24,7 @@ export const CREDITS = 'Hillshade © <a href="https://www.esri.com">Esri</a> and
   + 'satellite: <a href="https://earthdata.nasa.gov/gibs">NASA GIBS</a> (VIIRS, NOAA-20) · '
   + 'highways © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · '
   + 'snow cover: <a href="https://www.nohrsc.noaa.gov/nsa/">NOAA NOHRSC</a> · radar: <a href="https://www.nssl.noaa.gov/projects/mrms/">NOAA MRMS</a> · '
+  + 'snow forecast: <a href="https://www.wpc.ncep.noaa.gov/wwd/winter_wx.shtml">NWS Weather Prediction Center</a> · '
   + 'season outlook: <a href="https://www.cpc.ncep.noaa.gov/products/predictions/long_range/seasonal.php">NOAA Climate Prediction Center</a> · <a href="https://leafletjs.com">Leaflet</a>';
 // NOAA's daily national snow analysis (NOHRSC): modelled snow depth on the ground, cloud-free.
 // NOAA's snow depth as an image in its official legend colors, one per depth class (inches):
@@ -75,6 +76,13 @@ const radarColor = (r, g, b) => {
   });
   return RADAR_RAMP[best];
 };
+// NWS Weather Prediction Center: chance of at least 4″, 8″ or 12″ of snow in each of the next three
+// 24-hour periods (layers: day 1 → 1, 2, 3; day 2 → 6, 7, 8; day 3 → 11, 12, 13), as areas rated
+// slight (10–39%), moderate (40–69%) or high (70%+).
+const SNOWCAST = 'https://mapservices.weather.noaa.gov/vector/rest/services/precip/wpc_prob_winter_precip/MapServer';
+export const CAST_AMOUNTS = [4, 8, 12];
+const CAST_SHADES = { 1: 0.28, 2: 0.48, 3: 0.7 };
+
 // NOAA Climate Prediction Center: odds of a wetter or drier than normal next 3 months (lead 1).
 const OUTLOOK = 'https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/cpc_sea_precip_outlk/MapServer/0/query';
 // Shades by probability (33–40%, 40–50%, 50–60%, 60%+): wetter in blues, drier in tans.
@@ -165,7 +173,7 @@ export const SNOW_COLOR = [
   [48, 104, 218, 214], [34, 76, 192, 224], [28, 54, 160, 232], [40, 40, 140, 236], [40, 40, 140, 236], [40, 40, 140, 236],
 ];
 
-export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [], onOutlook, onRadar }) {
+export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [], onOutlook, onRadar, onCast }) {
   const bounds = L.latLngBounds(resorts.map((r) => r.at));
   if (extend) bounds.extend(extend);
   // A state with a single resort still needs some area around it.
@@ -415,6 +423,26 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     return built;
   }
 
+  // Snow forecast areas for a day (1–3) and amount (4, 8, 12), cached per pair.
+  let cast = { day: 1, amount: 4 };
+  const castCache = new Map();
+  async function snowcastLayer() {
+    const layer = (cast.day - 1) * 5 + 1 + CAST_AMOUNTS.indexOf(cast.amount);
+    if (!castCache.has(layer)) {
+      const q = new URLSearchParams({
+        where: '1=1', outFields: 'dn,start_time,end_time,issue_time', f: 'geojson', outSR: '4326', maxAllowableOffset: '0.01',
+        geometry: '-112,34,-99,44', geometryType: 'esriGeometryEnvelope', inSR: '4326',
+      });
+      castCache.set(layer, await (await fetch(`${SNOWCAST}/${layer}/query?${q}`)).json());
+    }
+    const data = castCache.get(layer);
+    onCast?.({ ...cast, areas: data.features?.length ?? 0, start: data.features?.[0]?.properties?.start_time ?? null });
+    return L.geoJSON(data, {
+      pane: 'snow', interactive: false,
+      style: (f) => ({ className: 'snowcast', stroke: true, weight: 0.8, color: '#7c3aed', opacity: 0.6, fillColor: '#8b5cf6', fillOpacity: CAST_SHADES[f.properties.dn] ?? 0.25 }),
+    });
+  }
+
   async function drawLayer() {
     const mine = ++job;
     clearInterval(radarTimer);
@@ -443,6 +471,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
           next = await picture(wms(RADAR_WMS), radarColor); // just the latest
         }
       } else if (layerName === 'outlook') next = await outlookLayer();
+      else if (layerName === 'snowcast') next = await snowcastLayer();
     } catch { next = null; }
     if (mine !== job) return;
     overlay?.remove();
@@ -1008,6 +1037,11 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       if (style === snowStyle) return;
       snowStyle = style;
       if (layerName === 'snow') drawLayer();
+    },
+    // The snow forecast's day (1–3) and amount (4, 8 or 12 inches).
+    setCast(day, amount) {
+      cast = { day, amount };
+      if (layerName === 'snowcast') drawLayer();
     },
     setLayer(name) {
       if (name === layerName && (overlay || name === 'none')) return;
