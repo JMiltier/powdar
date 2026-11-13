@@ -79,6 +79,7 @@ const state = {
   // The map overlay: 'snow' (on the ground; the default), 'radar', 'outlook' or 'none'.
   layer: read(STORE.layer, null) ?? (read(STORE.snowDepth, true) ? 'snow' : 'none'),
   outlookSeason: null, // e.g. "NDJ 2026-2027", once the outlook has loaded
+  radar: { time: null, playing: false, count: 0 }, // the radar loop's current frame
   selected: null,
   sheet: 'peek',
   pastSeason: null, // a past season like '2024-25' to show in the season chart, or null for this one
@@ -140,6 +141,24 @@ function openLayers(open) {
   $('#snow-btn').setAttribute('aria-expanded', String(open));
 }
 
+const PLAY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>';
+const PAUSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" fill="currentColor"/></svg>';
+// "3:05 PM" for the frame showing, plus "now" on the newest.
+function radarTimeText() {
+  const { time, index, count } = state.radar;
+  if (!time) return 'Latest';
+  const t = new Date(time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return index === count - 1 ? `${t} · now` : t;
+}
+function syncRadarKey() {
+  const btn = $('#radar-play');
+  if (!btn) return;
+  btn.innerHTML = state.radar.playing ? PAUSE_ICON : PLAY_ICON;
+  btn.setAttribute('aria-label', state.radar.playing ? 'Pause' : 'Play the last hour');
+  btn.disabled = state.radar.count < 2;
+  $('#radar-time').textContent = radarTimeText();
+}
+
 // "NDJ 2026-2027" → "Nov–Jan".
 const MONTH_LETTERS = ['JFM', 'FMA', 'MAM', 'AMJ', 'MJJ', 'JJA', 'JAS', 'ASO', 'SON', 'OND', 'NDJ', 'DJF'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -151,7 +170,9 @@ function seasonSpan(valid) {
 // The key along the bottom of the map, for whichever overlay is showing.
 function legendFor(layer) {
   if (layer === 'radar') {
-    return '<span class="legend-title">Live radar</span><span class="legend-keys"><span>Light</span><i class="ramp ramp-radar" aria-hidden="true"></i><span>Heavy</span></span>';
+    return `<button type="button" class="radar-play" id="radar-play" aria-label="Play the last hour" ${state.radar.count > 1 ? '' : 'disabled'}>${state.radar.playing ? PAUSE_ICON : PLAY_ICON}</button>
+      <span class="radar-time" id="radar-time">${radarTimeText()}</span>
+      <span class="legend-keys"><span>Light</span><i class="ramp ramp-radar" aria-hidden="true"></i><span>Heavy</span></span>`;
   }
   if (layer === 'outlook') {
     return `<span class="legend-title">${esc(seasonSpan(state.outlookSeason))} outlook</span><span class="legend-keys"><span>Drier</span><i class="ramp ramp-outlook" aria-hidden="true"></i><span>Wetter</span><span class="muted">· ${esc(seasonSpan(state.outlookSeason))}</span></span>`;
@@ -248,9 +269,10 @@ function syncRibbon() {
 const isOpenish = (r) => r.status.state === 'open' || r.status.state === 'likely';
 
 // Pinned first, then by the current metric.
-function ordered() {
+// all: every resort regardless of "Open now" (the map always shows them all, so it never moves).
+function ordered(all = false) {
   return state.data.resorts
-    .filter((r) => !state.openOnly || isOpenish(r))
+    .filter((r) => all || !state.openOnly || isOpenish(r))
     .map((r) => ({ r, v: valueFor(r) }))
     .sort((a, b) => state.favs.has(b.r.id) - state.favs.has(a.r.id) || b.v.sort - a.v.sort || a.r.name.localeCompare(b.r.name));
 }
@@ -573,12 +595,14 @@ function seasonSection(r, notes) {
 
 function renderMap() {
   if (!state.map) return;
-  const items = ordered().map(({ r, v }) => {
+  // Every resort, always: "Open now" filters the list and only dims closed resorts on the map.
+  $('#map').classList.toggle('open-only', state.openOnly);
+  const items = ordered(true).map(({ r, v }) => {
     const selected = r.id === state.selected;
     const fav = state.favs.has(r.id);
     const open = r.status.state === 'open';
     return {
-      r, text: v.text, label: v.text, level: v.level, selected,
+      r, text: v.text, label: v.text, level: v.level, selected, openNow: isOpenish(r),
       open: open && !['dates', 'season'].includes(METRICS[state.metric].kind),
       important: selected || fav || open,
       rank: [selected, fav, open, v.sort],
@@ -769,6 +793,8 @@ function startMap() {
     getPadding: coveredPadding,
     onSelect: (id) => select(id),
     onOutlook: (season) => { state.outlookSeason = season; render(); },
+    // Each radar frame: just update the key's button and time (no full re-render while playing).
+    onRadar: (r) => { state.radar = r; syncRadarKey(); },
     places: state.code === 'CO' ? CO_TOWNS : [],
   });
   state.map.setLayer(state.layer);
@@ -896,6 +922,7 @@ document.addEventListener('click', (e) => {
     toast(state.favs.has(id) ? 'Pinned to the top of the list' : 'Unpinned');
     return render();
   }
+  if (t.closest('#radar-play')) return state.map?.playRadar(!state.radar.playing);
   if (t.closest('#snow-btn')) return openLayers($('#layers').hidden);
   const layer = t.closest('[data-layer]');
   if (layer) {

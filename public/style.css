@@ -112,7 +112,7 @@ body.sheet-up .legend, .legend.off { visibility: hidden; }
 /* Snow-cover key: a slim strip just above the sheet. */
 .legend {
   position: fixed; z-index: 800; left: 10px; bottom: calc(var(--sheet-visible) + 10px);
-  width: fit-content; max-width: calc(100% - 60px);
+  width: fit-content; max-width: calc(100% - 60px); min-height: 34px; /* same height for every layer's key */
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center;
   background: var(--card); color: var(--text); box-shadow: var(--shadow);
   border-radius: 999px; padding: 5px 12px; font-size: 0.68rem;
@@ -547,3 +547,18 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .sw-none { background: var(--bg); }
 .ramp-radar { background: linear-gradient(90deg, rgba(235, 250, 255, 0.5), rgba(160, 220, 255, 0.7), rgba(70, 150, 250, 0.82), rgba(110, 80, 230, 0.9), rgba(190, 50, 210, 0.94)); }
 .ramp-outlook { background: linear-gradient(90deg, #a96a24, #e3bd7f, transparent 45% 55%, #86b8e8, #2a6fbe); }
+
+/* Radar loop controls in the key. */
+.radar-play {
+  width: 26px; height: 26px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; cursor: pointer;
+  background: var(--accent); color: #fff; padding: 0;
+}
+:root[data-theme="dark"] .radar-play { color: #0e141c; }
+.radar-play:disabled { opacity: 0.4; cursor: default; }
+.radar-play svg { width: 15px; height: 15px; }
+.radar-time { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 4.6em; }
+@media (max-width: 380px) { .ramp { width: 72px; } }
+
+/* "Open now": closed resorts stay in place, just faded. */
+#map.open-only .pin.closed-now, #map.open-only .pin-dot.closed-now { opacity: 0.28; }
+#map.open-only .pin { transition: opacity 0.2s ease; }
