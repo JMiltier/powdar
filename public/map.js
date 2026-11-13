@@ -554,6 +554,41 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       }
     };
     settle();
+    // Neighbors trade places: lift two nearby labels, re-seat them both (each order), and keep the
+    // cheaper result. Catches "Copper above, Cooper below" swaps one-at-a-time moves can't make.
+    const reseatBest = (it) => {
+      let c = null;
+      for (const x of it.cands) if (free(it, x)) { c = x; break; } // sorted: the first free is best
+      return c;
+    };
+    // (Its own small time allowance past the deadline: a slow phone gets the swaps it has time for.)
+    const swapPass = () => {
+      for (let i = 0; i < labels.length && performance.now() < deadline + 40; i++) {
+        for (let j = i + 1; j < labels.length; j++) {
+          const a = labels[i];
+          const b = labels[j];
+          if (Math.hypot(a.p.x - b.p.x, a.p.y - b.p.y) > 160) continue;
+          const was = [pick.get(a), pick.get(b)];
+          // Only worth it when one of them has a hairline or no spot at all.
+          if (was[0] && !was[0].tail && was[1] && !was[1].tail) continue;
+          const before = costOf(a, was[0]) + costOf(b, was[1]);
+          let best = null;
+          for (const [x, y] of [[a, b], [b, a]]) {
+            pick.set(a, null);
+            pick.set(b, null);
+            pick.set(x, reseatBest(x));
+            pick.set(y, reseatBest(y));
+            const cost = costOf(a, pick.get(a)) + costOf(b, pick.get(b));
+            if (cost < before - 1 && (!best || cost < best.cost)) best = { cost, picks: [pick.get(a), pick.get(b)] };
+          }
+          const [pa, pb] = best ? best.picks : was;
+          pick.set(a, pa);
+          pick.set(b, pb);
+        }
+      }
+    };
+    swapPass();
+    settle();
 
     // 3) Repair: for a label still squeezed out, take a spot anyway and re-seat the (few) labels in
     //    its way somewhere else. Kept only if every one of them finds a new spot.
@@ -625,6 +660,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       const after = group.reduce((a, o) => a + costOf(o, pick.get(o)), 0);
       if (after >= before) for (const [o, v] of saved) pick.set(o, v);
     }
+    swapPass();
     settle();
 
     // 5) Still no room for name and number: show just the number chip (tap it for the resort).
