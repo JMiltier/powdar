@@ -55,7 +55,8 @@ const METRICS = {
   // Base depth: the resort's own report when it gives one (usually once open), otherwise NOAA's
   // modelled snow depth at the resort (marked est.).
   base: {
-    kind: 'base', get: (r) => r.report?.depth ?? r.noaa?.depth ?? null, est: (r) => r.report?.depth == null && r.noaa?.depth != null,
+    // (Last resort: the nearest snow station's depth.)
+    kind: 'base', get: (r) => r.report?.depth ?? r.noaa?.depth ?? station(r)?.latest?.depth ?? null, est: (r) => r.report?.depth == null,
     steps: [6, 12, 24, 48], top: 'Deepest base',
   },
   dates: { kind: 'dates' },

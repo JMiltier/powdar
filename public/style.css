@@ -50,7 +50,7 @@ button { font: inherit; color: inherit; }
 #map { position: fixed; inset: 0; background: var(--bg); touch-action: manipulation; }
 .leaflet-container { font: inherit; background: var(--bg); }
 /* The relief, softened and tinted by the app's own background showing through. */
-.leaflet-tile-pane { filter: grayscale(0.7) contrast(1.15) brightness(1.08); }
+.leaflet-tile-pane { filter: grayscale(0.75) contrast(1.15) brightness(0.92); }
 :root[data-theme="dark"] .leaflet-tile-pane { opacity: 0.9; filter: contrast(1.6) brightness(1.15); }
 /* NOAA's snow cover comes as coarse squares: a slight blur turns them into soft cover. */
 .leaflet-snow-pane { filter: blur(1px); }
@@ -125,7 +125,8 @@ body.sheet-up .legend, .legend.off { visibility: hidden; }
 /* The snow ramp drawn on the map (SNOW_RAMP in map.js), thin to deep. */
 .ramp {
   display: inline-block; width: 120px; height: 8px; border-radius: 4px;
-  background: linear-gradient(90deg, rgba(214, 236, 255, 0.49), rgba(150, 200, 252, 0.67), rgba(72, 136, 236, 0.79), rgba(34, 76, 192, 0.88), rgba(28, 54, 160, 0.91));
+  /* White snow over the map's grey, like on the map. */
+  background: linear-gradient(90deg, rgba(236, 244, 252, 0.27), rgba(240, 246, 253, 0.51), rgba(244, 248, 254, 0.73), rgba(250, 252, 255, 0.92), #fcfdff), #6f7886;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 12%, transparent);
 }
 

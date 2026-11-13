@@ -65,6 +65,14 @@ if (!modelsOk(report) && liveCo) {
   }
 }
 
+// NOAA's per-resort snow depth sometimes fails for a few resorts: keep the last reading (NOAA only
+// updates daily) rather than leave those resorts without a base.
+if (liveCo) {
+  const old = new Map(liveCo.resorts.map((r) => [r.id, r.noaa]));
+  for (const r of report.resorts) if (!r.noaa && old.get(r.id)) r.noaa = old.get(r.id);
+  report.sources.noaa = report.resorts.filter((r) => r.noaa).length;
+}
+
 // Publishing a page with no data at all is worse than keeping the last good one.
 if (!report.sources.coloradoSki && report.sources.forecasts === 0) process.exit(1);
 
