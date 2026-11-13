@@ -1,4 +1,4 @@
-import { createSnowMap, CREDITS } from './map.js?v=__V__';
+import { createSnowMap, CREDITS, satTile } from './map.js?v=__V__';
 
 // One data file per state (data/co.json, data/ut.json…), plus an index of states for the picker.
 const dataUrl = (code) => `data/${code.toLowerCase()}.json`;
@@ -83,6 +83,8 @@ const state = {
   layer: read(STORE.layer, null) ?? (read(STORE.snowDepth, true) ? 'snow' : 'none'),
   outlookSeason: null, // e.g. "NDJ 2026-2027", once the outlook has loaded
   radar: { time: null, playing: false, count: 0 }, // the radar loop's current frame
+  satDate: null, // the satellite views' day (YYYY-MM-DD), newest real one by default
+  satLatest: null,
   selected: null,
   sheet: 'peek',
   pastSeason: null, // a past season like '2024-25' to show in the season chart, or null for this one
@@ -173,6 +175,47 @@ function openFilters(open) {
   pop.style.top = r.bottom + 8 + h < innerHeight ? `${r.bottom + 8}px` : `${Math.max(8, r.top - 8 - h)}px`;
 }
 
+// ---------- map view ----------
+// Satellite views ('sat', 'satsnow') are a background photo with no overlay; the rest are an overlay
+// on the shaded relief.
+const SAT_VIEWS = ['sat', 'satsnow'];
+const isoDay = (d) => d.toISOString().slice(0, 10);
+const addDays = (iso, n) => isoDay(new Date(Date.parse(`${iso}T12:00:00Z`) + n * 864e5));
+// The newest day with a real picture: today's (UTC) once the satellite has passed over Colorado
+// (early afternoon), else yesterday's. An empty day's tile is a tiny all-black image.
+async function latestSatDay() {
+  const today = isoDay(new Date());
+  try {
+    const url = satTile('sat', today).replace('{z}/{y}/{x}', '7/48/26');
+    const res = await fetch(url);
+    if (res.ok && (await res.blob()).size > 6000) return today;
+  } catch { /* fall through */ }
+  return addDays(today, -1);
+}
+async function applyLayer() {
+  if (!state.map) return;
+  if (SAT_VIEWS.includes(state.layer)) {
+    state.map.setLayer('none');
+    if (!state.satLatest) {
+      state.satLatest = await latestSatDay();
+      state.satDate ??= state.satLatest;
+      render();
+    }
+    state.map.setBase(state.layer, state.satDate);
+  } else {
+    state.map.setBase('terrain');
+    state.map.setLayer(state.layer);
+  }
+}
+function stepSatDay(n) {
+  const next = addDays(state.satDate, n);
+  if (next > state.satLatest || next < addDays(state.satLatest, -30)) return;
+  state.satDate = next;
+  state.map?.setBase(state.layer, next);
+  render();
+}
+const satDayText = (iso) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'Latest');
+
 // ---------- map overlay ----------
 
 function openLayers(open) {
@@ -208,6 +251,13 @@ function seasonSpan(valid) {
 
 // The key along the bottom of the map, for whichever overlay is showing.
 function legendFor(layer) {
+  if (SAT_VIEWS.includes(layer)) {
+    const newest = state.satDate && state.satDate >= state.satLatest;
+    return `<button type="button" class="day-step" data-sat-step="-1" aria-label="Day before">‹</button>
+      <span class="radar-time">${esc(satDayText(state.satDate))}</span>
+      <button type="button" class="day-step" data-sat-step="1" aria-label="Day after" ${newest ? 'disabled' : ''}>›</button>
+      <span class="legend-keys">${layer === 'satsnow' ? '<i class="sw-mini sw-cyan"></i><span>Snow</span><i class="sw-mini sw-white"></i><span>Cloud</span>' : '<span>NASA satellite photo</span>'}</span>`;
+  }
   if (layer === 'radar') {
     return `<button type="button" class="radar-play" id="radar-play" aria-label="Play the last hour" ${state.radar.count > 1 ? '' : 'disabled'}>${state.radar.playing ? PAUSE_ICON : PLAY_ICON}</button>
       <span class="radar-time" id="radar-time">${radarTimeText()}</span>
@@ -931,7 +981,7 @@ function startMap() {
     onRadar: (r) => { state.radar = r; syncRadarKey(); },
     places: state.code === 'CO' ? CO_TOWNS : [],
   });
-  state.map.setLayer(state.layer);
+  applyLayer();
   // Major highways (I-70, I-25, US-285…), Colorado only for now.
   if (state.code === 'CO') {
     const map = state.map;
@@ -1071,13 +1121,15 @@ document.addEventListener('click', (e) => {
     return render();
   }
   if (!t.closest('#filters')) openFilters(false);
+  const satStep = t.closest('[data-sat-step]');
+  if (satStep) return stepSatDay(Number(satStep.dataset.satStep));
   if (t.closest('#radar-play')) return state.map?.playRadar(!state.radar.playing);
   if (t.closest('#snow-btn')) return openLayers($('#layers').hidden);
   const layer = t.closest('[data-layer]');
   if (layer) {
     state.layer = layer.dataset.layer;
     write(STORE.layer, state.layer);
-    state.map?.setLayer(state.layer);
+    applyLayer();
     openLayers(false);
     return render();
   }

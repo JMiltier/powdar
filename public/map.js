@@ -11,8 +11,17 @@ const TILES = {
   dark: 'https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade_Dark/MapServer/tile/{z}/{y}/{x}',
 };
 const isDark = () => document.documentElement.dataset.theme === 'dark';
+// NASA GIBS: each day's real satellite photo (VIIRS on NOAA-20, ~250 m, a few hours after its early-
+// afternoon pass), free and keyless. 'sat' is true color (snow white, clouds white too); 'satsnow' is
+// shortwave-infrared false color, where snow shows bright cyan and clouds stay white.
+const GIBS = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best';
+const SAT_LAYERS = { sat: 'VIIRS_NOAA20_CorrectedReflectance_TrueColor', satsnow: 'VIIRS_NOAA20_CorrectedReflectance_BandsM11-I2-I1' };
+export const satTile = (kind, date) => `${GIBS}/${SAT_LAYERS[kind]}/default/${date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`;
+// Fine terrain shading laid over the satellite photo (multiplied in CSS) so ridges stay crisp.
+const SHADE = 'https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}';
 // Shown behind the ⓘ button instead of a permanent banner.
 export const CREDITS = 'Hillshade © <a href="https://www.esri.com">Esri</a> and its data partners (USGS, NASA, NGA, CGIAR and others) · '
+  + 'satellite: <a href="https://earthdata.nasa.gov/gibs">NASA GIBS</a> (VIIRS, NOAA-20) · '
   + 'highways © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · '
   + 'snow cover: <a href="https://www.nohrsc.noaa.gov/nsa/">NOAA NOHRSC</a> · radar: <a href="https://www.nssl.noaa.gov/projects/mrms/">NOAA MRMS</a> · '
   + 'season outlook: <a href="https://www.cpc.ncep.noaa.gov/products/predictions/long_range/seasonal.php">NOAA Climate Prediction Center</a> · <a href="https://leafletjs.com">Leaflet</a>';
@@ -159,8 +168,15 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // detectRetina: sharp relief on high-resolution phone screens (one zoom level more detail).
   // (A new layer on theme change: swapping the address of the old one makes Leaflet ask for tiles
   // at a fractional zoom at this map's in-between zoom level, which come back blank.)
+  // The background: shaded relief ('terrain', light or dark), or a day's satellite photo.
+  let baseKind = 'terrain';
+  let satDate = null;
+  map.createPane('shade').style.zIndex = 220; // over a satellite photo, under the snow and labels
+  let shade = null;
   const relief = () => {
-    const layer = L.tileLayer(isDark() ? TILES.dark : TILES.light, { maxZoom: 13, detectRetina: true });
+    const layer = baseKind === 'terrain'
+      ? L.tileLayer(isDark() ? TILES.dark : TILES.light, { maxZoom: 13, detectRetina: true })
+      : L.tileLayer(satTile(baseKind, satDate), { maxZoom: 13, maxNativeZoom: 9 });
     // A tile that fails to load (a mobile network blip) gets one more try instead of leaving a blank.
     layer.on('tileerror', ({ tile }) => {
       if (tile.dataset.retried) return;
@@ -170,6 +186,17 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     return layer.addTo(map);
   };
   let base = relief();
+  // Swap the background (the old one stays until the new one has loaded: no blank flash).
+  function swapBase() {
+    const old = base;
+    base = relief();
+    base.once('load', () => old.remove());
+    setTimeout(() => old.remove(), 4000);
+    el.dataset.base = baseKind;
+    if (baseKind === 'terrain') { shade?.remove(); shade = null; }
+    else if (!shade) shade = L.tileLayer(SHADE, { pane: 'shade', maxZoom: 13, detectRetina: true, className: 'sat-shade' }).addTo(map);
+  }
+  el.dataset.base = baseKind;
 
   // Snow cover gets its own pane so the color-muting filter on the base map doesn't wash it out.
   map.createPane('snow').style.zIndex = 250;
@@ -864,12 +891,16 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     setRoads,
     // Light or dark relief to match the theme.
     setTheme() {
-      // The new relief loads under the old one, which goes once it's there (no blank flash).
-      const old = base;
-      base = relief();
-      base.once('load', () => old.remove());
-      setTimeout(() => old.remove(), 4000);
+      if (baseKind === 'terrain') swapBase(); // (a satellite photo looks the same in both themes)
       if (layerName === 'snow') drawLayer(); // its edge depends on the theme
+    },
+    // Background: 'terrain', or a satellite photo ('sat' true color, 'satsnow' snow vs clouds) for a
+    // date (YYYY-MM-DD).
+    setBase(kind, date = null) {
+      if (kind === baseKind && date === satDate) return;
+      baseKind = kind;
+      satDate = date;
+      swapBase();
     },
     // Radar loop: play or pause (paused shows the newest frame).
     playRadar(on) {
