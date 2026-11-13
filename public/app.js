@@ -668,6 +668,7 @@ function render() {
   for (const b of document.querySelectorAll('[data-layer]')) b.setAttribute('aria-checked', String(b.dataset.layer === state.layer));
   // Hidden but still taking its space, so changing the overlay never shifts the map.
   $('#legend').classList.toggle('off', state.layer === 'none');
+  $('#map').dataset.layer = state.layer; // (the light map dims a little under white snow)
   $('#legend').innerHTML = legendFor(state.layer);
   $('#updated').textContent = `Updated ${timeAgo(state.data.generated)}`;
 
