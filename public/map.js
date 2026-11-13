@@ -4,11 +4,15 @@
 // crowded spots (I-70) they step out a little with a thin hairline back to the dot.
 const L = window.L;
 
-// OpenTopoMap: free, no key, and its terrain shading suits mountains. Colors are muted in CSS.
-const TILES = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
+// Esri's hillshade: just the mountains, no town names or roads to compete with the resorts, with a
+// matching dark version. Free, no key.
+const TILES = {
+  light: 'https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}',
+  dark: 'https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade_Dark/MapServer/tile/{z}/{y}/{x}',
+};
+const isDark = () => document.documentElement.dataset.theme === 'dark';
 // Shown behind the ⓘ button instead of a permanent banner.
-export const CREDITS = 'Map data © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM · '
-  + 'map style © <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA) · '
+export const CREDITS = 'Hillshade © <a href="https://www.esri.com">Esri</a> and its data partners (USGS, NASA, NGA, CGIAR and others) · '
   + 'snow cover: <a href="https://www.nohrsc.noaa.gov/nsa/">NOAA NOHRSC</a> · <a href="https://leafletjs.com">Leaflet</a>';
 // NOAA's daily national snow analysis (NOHRSC): modelled snow depth on the ground, cloud-free.
 const SNOW_DEPTH_WMS = 'https://mapservices.weather.noaa.gov/raster/services/snow/NOHRSC_Snow_Analysis/MapServer/WMSServer';
@@ -88,7 +92,7 @@ function segRect(seg, box) {
 // getPadding() → { top, right, bottom, left }: pixels covered by the app's bars and panels.
 // extend: an extra [lat, lon] to frame in (Colorado adds open plains east of the Front Range so its
 // labels have room to spread instead of piling onto I-70).
-export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
+export function createSnowMap(el, { resorts, onSelect, getPadding, extend, outline }) {
   const bounds = L.latLngBounds(resorts.map((r) => r.at));
   if (extend) bounds.extend(extend);
   // A state with a single resort still needs some area around it.
@@ -97,7 +101,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
     zoomControl: false, attributionControl: false, zoomSnap: 0, inertia: false,
     dragging: false, touchZoom: false, doubleClickZoom: false, scrollWheelZoom: false, boxZoom: false, keyboard: false,
   });
-  L.tileLayer(TILES, { subdomains: 'abc', maxZoom: 12 }).addTo(map);
+  const base = L.tileLayer(isDark() ? TILES.dark : TILES.light, { maxZoom: 12 }).addTo(map);
+  // The state's border, faintly, so the map has a shape without town names. [[lat, lon], …]
+  if (outline) L.polyline(outline, { className: 'state-line', interactive: false }).addTo(map);
 
   // Snow cover gets its own pane so the color-muting filter on the base map doesn't wash it out.
   map.createPane('snow').style.zIndex = 250;
@@ -239,6 +245,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
     for (const it of items) {
       it.pin.bubble.classList.remove('compact');
       buildCands(it);
+      it.nearest = it.cands[0] ?? null; // where it goes if selected but squeezed out (see apply)
+      it.fullW = it.w;
     }
 
     const hit = (a, b) => a.box[0] < b.box[2] && a.box[2] > b.box[0] && a.box[1] < b.box[3] && a.box[3] > b.box[1];
@@ -379,8 +387,13 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
     const misses = items.filter((it) => !it.empty && (it.compact || !pick.get(it))).length;
     const result = items.map((it) => {
       const c = pick.get(it);
+      const n = it.nearest;
       return {
         pin: it.pin,
+        alt: n && (it.compact || !c) ? {
+          transform: `translate(${n.s[0] - it.fullW / 2}px, ${n.s[1] - it.h / 2}px)`,
+          tail: n.tail ? n.tail.seg.map((v, k) => (v - (k % 2 ? it.p.y : it.p.x)).toFixed(1)) : null,
+        } : null,
         compact: Boolean(it.compact),
         transform: c ? `translate(${c.s[0] - it.w / 2}px, ${c.s[1] - it.h / 2}px)` : null,
         tail: c?.tail ? c.tail.seg.map((v, k) => (v - (k % 2 ? it.p.y : it.p.x)).toFixed(1)) : null,
@@ -389,8 +402,13 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
     return { result, misses };
   }
 
+  // The selected resort always shows its full label: if the layout had no room for it, it sits at its
+  // nearest spot on top of the others (it's raised above them) until something else is selected.
+  let selectedPin = null;
   function apply(result) {
-    for (const { pin, transform, tail, compact } of result) {
+    for (const entry of result) {
+      const { pin } = entry;
+      const { transform, tail, compact } = pin === selectedPin && entry.alt ? { ...entry.alt, compact: false } : entry;
       pin.root.classList.toggle('hidden', !transform);
       pin.bubble.classList.toggle('compact', compact);
       pin.tail.style.display = tail ? '' : 'none';
@@ -406,6 +424,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
 
   // items: [{ r, text, label, level, open, selected }]
   function update(items) {
+    selectedPin = null;
     order = items.map((item, i) => {
       const pin = pinFor(item.r);
       pin.val.textContent = item.text;
@@ -417,6 +436,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
       pin.dot.classList.toggle('is-selected', item.selected);
       pin.bubble.setAttribute('aria-label', `${item.r.name}: ${item.label}`);
       pin.marker.setZIndexOffset(item.selected ? 1000 : -i);
+      if (item.selected) selectedPin = pin;
       return { ...item, pin, empty: item.level === 'none' };
     });
     layout();
@@ -426,6 +446,10 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
 
   return {
     update,
+    // Light or dark relief to match the theme.
+    setTheme() {
+      base.setUrl(isDark() ? TILES.dark : TILES.light);
+    },
     setSnowDepth(on) {
       if (on) snowDepth.addTo(map);
       else snowDepth.remove();

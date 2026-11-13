@@ -49,12 +49,11 @@ button { font: inherit; color: inherit; }
 /* ---------- Map: the whole screen ---------- */
 #map { position: fixed; inset: 0; background: var(--bg); touch-action: manipulation; }
 .leaflet-container { font: inherit; background: var(--bg); }
-/* Calm the terrain colors so the snow bubbles stand out. */
-.leaflet-tile-pane { filter: saturate(0.18) brightness(1.12) contrast(0.92); }
-:root[data-theme="dark"] .leaflet-tile-pane { filter: saturate(0.15) brightness(0.5) contrast(1.15); }
-/* With the snow layer on, a grey base map lets the snow colors read clearly. */
-#map.snow-on .leaflet-tile-pane { filter: grayscale(1) brightness(1.1); }
-:root[data-theme="dark"] #map.snow-on .leaflet-tile-pane { filter: grayscale(1) brightness(0.55); }
+/* Soften the relief so the resort labels stand out. */
+.leaflet-tile-pane { filter: contrast(0.75) brightness(1.1); }
+:root[data-theme="dark"] .leaflet-tile-pane { filter: contrast(0.9) brightness(0.85); }
+/* Colorado's border, faintly. */
+.state-line { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 4; opacity: 0.55; }
 
 /* ---------- Floating controls along the top ---------- */
 .top {
@@ -82,7 +81,7 @@ button { font: inherit; color: inherit; }
   border-radius: 12px; padding: 8px 12px; font-size: 0.85rem; font-weight: 600;
 }
 [hidden] { display: none !important; }
-body.sheet-full .info-btn, body.sheet-full .credits, body.sheet-full .legend { display: none; }
+body.sheet-full .info-btn, body.sheet-full .credits, body.sheet-up .legend { display: none; }
 
 /* Map credits: a small ⓘ in the bottom right, just above the sheet. */
 .info-btn {
@@ -211,8 +210,9 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .small { font-size: 0.8rem; }
 .muted { color: var(--muted); }
 
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0 10px; }
-.stat { background: var(--bg); border-radius: 14px; padding: 10px 6px; text-align: center; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); margin: 12px 0 8px; }
+.stat { padding: 2px 6px; text-align: center; }
+.stat + .stat { border-left: 1px solid var(--line); }
 .stat b { display: block; font-size: 1.6rem; line-height: 1.1; }
 .stat span { display: block; font-size: 0.74rem; color: var(--muted); }
 .stat small { display: block; font-size: 0.72rem; font-weight: 650; color: var(--snow); margin-top: 2px; }
@@ -449,7 +449,7 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
   .stat b { font-size: 1.35rem; }
   .stat span { font-size: 0.68rem; }
 }
-@media (max-width: 400px) {
+@media (max-width: 899px) {
   .legend { padding: 4px 10px; gap: 6px; }
   .legend-title { display: none; } /* the ❄ button already says what this is */
   .legend-keys { gap: 5px; }
@@ -462,3 +462,17 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .notes { list-style: none; margin: 0 2px 16px; padding: 0; font-size: 0.72rem; color: var(--muted); line-height: 1.45; }
 .notes li + li { margin-top: 6px; }
 .notes a { color: var(--accent); }
+
+/* While a resort is open, its name and buttons replace the app header (phones). On wide screens the
+   panel keeps the header (it has the hide-panel button) and shows the resort below it. */
+.grab-detail { display: none; }
+.grab.has-detail .grab-detail { display: block; }
+.grab.has-detail .detail-head { margin-top: 2px; }
+@media (max-width: 899px) {
+  .grab.has-detail .sheet-head, .grab.has-detail .headline, .grab.has-detail .updated { display: none; }
+}
+@media (min-width: 900px) {
+  .grab { display: flex; flex-direction: column; }
+  .grab .updated { align-self: flex-start; }
+  .grab .grab-detail { order: 9; margin-top: 12px; }
+}
