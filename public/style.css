@@ -564,3 +564,11 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 /* "Open now": closed resorts stay in place, just faded. */
 #map.open-only .pin.closed-now, #map.open-only .pin-dot.closed-now { opacity: 0.28; }
 #map.open-only .pin { transition: opacity 0.2s ease; }
+
+/* Swiping between resorts (or map views): the new content slides in from that side. */
+@keyframes slide-next { from { transform: translateX(36px); opacity: 0.2; } to { transform: none; opacity: 1; } }
+@keyframes slide-prev { from { transform: translateX(-36px); opacity: 0.2; } to { transform: none; opacity: 1; } }
+.slide-next { animation: slide-next 0.22s ease-out; }
+.slide-prev { animation: slide-prev 0.22s ease-out; }
+#list, #detail { transition: transform 0.15s ease-out; }
+.sheet-body { touch-action: pan-y; }
