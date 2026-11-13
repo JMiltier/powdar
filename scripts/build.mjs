@@ -73,6 +73,17 @@ if (liveCo) {
   report.sources.noaa = report.resorts.filter((r) => r.noaa).length;
 }
 
+// Vail Resorts' own pages occasionally don't answer (or turn GitHub's servers away): keep the last
+// report from the past day for those mountains rather than drop back to announced dates.
+if (liveCo) {
+  const old = new Map(liveCo.resorts.map((r) => [r.id, r]));
+  for (const r of report.resorts) {
+    const o = old.get(r.id);
+    const fresh = o?.report?.source && Date.now() - Date.parse(liveCo.generated) < 24 * 3_600_000;
+    if (!r.report?.source && fresh) Object.assign(r, { report: o.report, status: o.status, lifts: r.lifts ?? o.lifts, live: o.live });
+  }
+}
+
 // Publishing a page with no data at all is worse than keeping the last good one.
 if (!report.sources.coloradoSki && report.sources.forecasts === 0) process.exit(1);
 
