@@ -220,6 +220,21 @@ const satDayText = (iso) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateStri
 
 // ---------- map overlay ----------
 
+// Pop-up menus close as soon as you touch anywhere else, scroll the list or drag the panel (a scroll
+// or drag isn't a click, so they used to stay open, floating over the list).
+const POPUPS = [['#filters', '#filter-btn', () => openFilters(false)], ['#layers', '#snow-btn', () => openLayers(false)],
+  ['#credits', '#info-btn', () => { $('#credits').hidden = true; $('#info-btn').setAttribute('aria-expanded', 'false'); }]];
+function closePopups(except) {
+  for (const [pop, , close] of POPUPS) if (pop !== except && !$(pop).hidden) close();
+}
+document.addEventListener('pointerdown', (e) => {
+  for (const [pop, btn, close] of POPUPS) {
+    if (!$(pop).hidden && !e.target.closest(`${pop}, ${btn}`)) close();
+  }
+}, true);
+$('#sheet-body').addEventListener('scroll', () => closePopups(), { passive: true });
+$('#grab').addEventListener('pointerdown', (e) => { if (!e.target.closest('#filter-btn')) closePopups(); });
+
 function openLayers(open) {
   $('#layers').hidden = !open;
   $('#snow-btn').setAttribute('aria-expanded', String(open));
