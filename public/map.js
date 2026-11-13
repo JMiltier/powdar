@@ -1,6 +1,7 @@
 // The map: one fixed view of every Colorado resort (no panning or zooming). Each resort has a dot at
-// its real spot and its own one-line label ("A-Basin 3″"). Where resorts crowd together (I-70) the
-// labels fan out around the cluster, each with a short pointer reaching all the way to its dot.
+// its real spot and a light label beside it: a small colored chip with the number, then the name as
+// plain outlined text. Labels sit right next to their dot when there's room (right side first); in
+// crowded spots (I-70) they step out a little with a thin hairline back to the dot.
 const L = window.L;
 
 // OpenTopoMap: free, no key, and its terrain shading suits mountains. Colors are muted in CSS.
@@ -25,47 +26,40 @@ const SHORT = {
   'aspen-highlands': 'Highlands', 'crested-butte': 'Crested Butte', cooper: 'Cooper', 'winter-park': 'Winter Park',
 };
 
-// Places a label may sit, as its center relative to the dot, on a fine grid around it (10 px across,
-// half a label-height down). Spots where the label would cover its own point are left out: the label
-// always sits beside its resort, never on top of it.
+// Where a label may sit, as its center relative to the dot. First the eight classic spots touching
+// the dot (right, left, above, below, corners), then a fine grid further out for crowded clusters.
+// Spots where the label would cover its own point are left out.
 function spotsFor(w, h) {
-  const out = [];
-  const clear = DOT_R + 3;
-  for (let dx = -Math.round(1.6 * w); dx <= 1.6 * w; dx += 10) {
-    for (let j = -10; j <= 10; j++) {
+  const gx = w / 2 + DOT_R + 3;
+  const gy = h / 2 + DOT_R + 1;
+  const out = [
+    [gx, 0, 0], [-gx, 0, 15], [0, -gy, 25], [0, gy, 30],
+    [gx - 6, -gy + 2, 35], [gx - 6, gy - 2, 40], [-gx + 6, -gy + 2, 45], [-gx + 6, gy - 2, 50],
+  ];
+  for (let dx = -Math.round(1.5 * w); dx <= 1.5 * w; dx += 8) {
+    for (let j = -12; j <= 12; j++) {
       const dy = j * (h / 2 + 1);
-      if (Math.abs(dx) < w / 2 + clear && Math.abs(dy) < h / 2 + clear) continue; // would cover its own dot
-      out.push([dx, dy]);
+      if (Math.abs(dx) < w / 2 + DOT_R + 2 && Math.abs(dy) < h / 2 + DOT_R + 1) continue; // would cover its own dot
+      out.push([dx, dy, 60]);
     }
   }
   return out;
 }
 
-// A pointer from a label at offset s to its dot: the wedge's base sits on the label edge nearest the
-// dot, its tip on the dot's rim. Returns the wedge polygon and its centre line (for clash checks).
-function pointer(it, [dx, dy]) {
+// A label at offset s, and the hairline from its nearest edge to the rim of its dot (null when the
+// label already touches the dot).
+function leader(it, [dx, dy]) {
   const l = it.p.x + dx - it.w / 2;
   const t = it.p.y + dy - it.h / 2;
-  const r = l + it.w;
-  const b = t + it.h;
-  const half = 5;
-  // Nearest point on the label's outline, kept away from the rounded corners.
-  const bx = Math.min(r - 8, Math.max(l + 8, it.p.x));
-  const by = Math.min(b - 6, Math.max(t + 6, it.p.y));
-  let base;
-  let along;
-  if (it.p.y > b) { base = [bx, b - 1.5]; along = [1, 0]; }
-  else if (it.p.y < t) { base = [bx, t + 1.5]; along = [1, 0]; }
-  else if (it.p.x > r) { base = [r - 1.5, by]; along = [0, 1]; }
-  else { base = [l + 1.5, by]; along = [0, 1]; }
-  const vx = it.p.x - base[0];
-  const vy = it.p.y - base[1];
-  const len = Math.hypot(vx, vy) || 1;
-  const tip = [it.p.x - (vx / len) * (DOT_R + 0.5), it.p.y - (vy / len) * (DOT_R + 0.5)];
-  return {
-    points: [[base[0] - along[0] * half, base[1] - along[1] * half], [base[0] + along[0] * half, base[1] + along[1] * half], tip],
-    seg: [base[0], base[1], tip[0], tip[1]],
-  };
+  const nx = Math.min(l + it.w - 2, Math.max(l + 2, it.p.x));
+  const ny = Math.min(t + it.h - 2, Math.max(t + 2, it.p.y));
+  const vx = nx - it.p.x;
+  const vy = ny - it.p.y;
+  const len = Math.hypot(vx, vy);
+  if (len <= DOT_R + 6) return { len: 0, seg: null };
+  const sx = it.p.x + (vx / len) * (DOT_R + 1);
+  const sy = it.p.y + (vy / len) * (DOT_R + 1);
+  return { len, seg: [nx, ny, sx, sy] };
 }
 
 function segPointDist([x1, y1, x2, y2], p) {
@@ -125,8 +119,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
     if (pin) return pin;
     const root = document.createElement('div');
     root.className = 'pin';
-    root.innerHTML = '<svg class="pin-tail" width="1" height="1" aria-hidden="true"><polygon/></svg>'
-      + '<button type="button" class="pin-bubble"><span class="pin-name"></span><b class="pin-val"></b></button>';
+    root.innerHTML = '<svg class="pin-tail" width="1" height="1" aria-hidden="true"><line/></svg>'
+      + '<button type="button" class="pin-bubble"><b class="pin-val"></b><span class="pin-name"></span></button>';
     // Dots live on their own layer beneath every label, so no dot ever sits on top of a label.
     const dot = document.createElement('button');
     dot.type = 'button';
@@ -143,7 +137,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
     L.marker(r.at, { pane: 'dots', icon: L.divIcon({ html: dot, className: 'pin-host', iconSize: [0, 0] }), keyboard: false }).addTo(map);
     const marker = L.marker(r.at, { icon: L.divIcon({ html: root, className: 'pin-host', iconSize: [0, 0] }), keyboard: false }).addTo(map);
     pin = {
-      marker, root, tail: root.querySelector('polygon'),
+      marker, root, dot, tail: root.querySelector('line'),
       bubble: root.querySelector('.pin-bubble'), val: root.querySelector('.pin-val'), name: root.querySelector('.pin-name'),
     };
     pins.set(r.id, pin);
@@ -172,18 +166,19 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
     const boxOf = (it, [dx, dy]) => [it.p.x + dx - it.w / 2 - GAP, it.p.y + dy - it.h / 2 - GAP, it.p.x + dx + it.w / 2 + GAP, it.p.y + dy + it.h / 2 + GAP];
 
     for (const it of items) {
-      const spots = it.empty ? [[0, 0]] : spotsFor(it.w, it.h);
+      const spots = it.empty ? [] : spotsFor(it.w, it.h); // "no data" resorts show just a grey dot
       it.cands = [];
       for (const s of spots) {
         const box = boxOf(it, s);
         if (box[0] < area[0] || box[2] > area[2] || box[1] < area[1] || box[3] > area[3]) continue;
         // Hard rules: never cover another resort's point, and no pointer passing over one.
         if (dots.some((d) => d !== it.p && d.x + DOT_R + 1 > box[0] && d.x - DOT_R - 1 < box[2] && d.y + DOT_R + 1 > box[1] && d.y - DOT_R - 1 < box[3])) continue;
-        const tail = it.empty ? null : pointer(it, s);
+        const lead = it.empty ? { len: 0, seg: null } : leader(it, s);
+        const tail = lead.seg ? { seg: lead.seg } : null;
         if (tail && dots.some((d) => d !== it.p && segPointDist(tail.seg, d) < DOT_R + 3)) continue;
-        const len = tail ? Math.hypot(tail.seg[2] - tail.seg[0], tail.seg[3] - tail.seg[1]) : 0;
-        if (len > MAX_POINTER) continue;
-        it.cands.push({ s, box, tail, cost: len * len });
+        if (lead.len > MAX_POINTER) continue;
+        // Distance from the dot (squared), plus a small preference for the classic spots.
+        it.cands.push({ s, box, tail, cost: lead.len * lead.len + (s[2] ?? 60) + (tail ? 40 : 0) });
       }
       it.cands.sort((a, b) => a.cost - b.cost);
     }
@@ -322,7 +317,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
       return {
         pin: it.pin,
         transform: c ? `translate(${c.s[0] - it.w / 2}px, ${c.s[1] - it.h / 2}px)` : null,
-        tail: c?.tail ? c.tail.points.map(([x, y]) => `${(x - it.p.x).toFixed(1)},${(y - it.p.y).toFixed(1)}`).join(' ') : '',
+        tail: c?.tail ? c.tail.seg.map((v, k) => (v - (k % 2 ? it.p.y : it.p.x)).toFixed(1)) : null,
       };
     });
     if (layoutCache.size > 40) layoutCache.clear();
@@ -333,14 +328,14 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
   function apply(result) {
     for (const { pin, transform, tail } of result) {
       pin.root.classList.toggle('hidden', !transform);
-      pin.tail.setAttribute('points', tail);
-      if (!transform) continue;
-      pin.bubble.style.transform = transform;
-      if (!tail) continue;
-      // The wedge takes the label's own colors.
-      const cs = getComputedStyle(pin.bubble);
-      pin.tail.style.fill = cs.backgroundColor;
-      pin.tail.style.stroke = cs.borderTopColor;
+      pin.tail.style.display = tail ? '' : 'none';
+      if (tail) {
+        pin.tail.setAttribute('x1', tail[0]);
+        pin.tail.setAttribute('y1', tail[1]);
+        pin.tail.setAttribute('x2', tail[2]);
+        pin.tail.setAttribute('y2', tail[3]);
+      }
+      if (transform) pin.bubble.style.transform = transform;
     }
   }
 
@@ -350,7 +345,11 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
       const pin = pinFor(item.r);
       pin.val.textContent = item.text;
       pin.name.textContent = SHORT[item.r.id] ?? item.r.name;
-      pin.bubble.className = `pin-bubble lvl-${item.level}${item.open ? ' is-open' : ''}${item.selected ? ' is-selected' : ''}`;
+      const empty = item.level === 'none';
+      pin.bubble.className = `pin-bubble${item.open ? ' is-open' : ''}${item.selected ? ' is-selected' : ''}${empty ? ' is-empty' : ''}`;
+      pin.val.className = `pin-val lvl-${item.level}`;
+      pin.dot.classList.toggle('is-empty', empty);
+      pin.dot.classList.toggle('is-selected', item.selected);
       pin.bubble.setAttribute('aria-label', `${item.r.name}: ${item.label}`);
       pin.marker.setZIndexOffset(item.selected ? 1000 : -i);
       return { ...item, pin, empty: item.level === 'none' };
