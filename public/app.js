@@ -1,5 +1,10 @@
+import { createSnowMap } from './map.js';
+
 const DATA_URL = 'data.json';
-const STORE = { data: 'cs:data', favs: 'cs:favs', sort: 'cs:sort', openOnly: 'cs:openOnly' };
+const STORE = {
+  data: 'cs:data', favs: 'cs:favs', sort: 'cs:sort', openOnly: 'cs:openOnly',
+  view: 'cs:view', metric: 'cs:metric', mapView: 'cs:mapView',
+};
 const RELOAD_AFTER_MS = 10 * 60_000;
 const STALE_AFTER_MS = 3 * 3_600_000;
 
@@ -7,6 +12,13 @@ const SURFACE = {
   P: 'Powder', PDR: 'Powder', PP: 'Packed powder', 'P/PP': 'Powder & packed powder', MG: 'Machine groomed',
   MMS: 'Machine-made snow', HP: 'Hard pack', SC: 'Spring conditions', SPR: 'Spring conditions', WP: 'Wet packed',
   VC: 'Variable', LG: 'Loose granular', LSGR: 'Loose granular', FG: 'Frozen granular', WG: 'Wet granular', ICY: 'Icy',
+};
+// What the map can show. `steps` are the upper bounds of each colour level.
+const METRICS = {
+  next72: { get: (r) => r.forecast?.next72, steps: [1, 3, 6, 12], hint: 'Snow forecast for the next 3 days' },
+  next7: { get: (r) => r.forecast?.next7, steps: [1, 3, 6, 12], hint: 'Snow forecast for the next 7 days' },
+  new24: { get: (r) => r.report?.new24, steps: [1, 3, 6, 12], hint: 'New snow in the last 24 hours (open resorts report it)' },
+  depth: { get: (r) => r.report?.depth, steps: [12, 24, 36, 60], hint: 'Base depth, mid-mountain (open resorts report it)', base: true },
 };
 // Lower comes first when sorting by opening day.
 const STATE_ORDER = { open: 0, likely: 1, soon: 2, late: 3, tba: 4, done: 5 };
@@ -27,6 +39,10 @@ const state = {
   sort: read(STORE.sort, 'snow'),
   openOnly: read(STORE.openOnly, false),
   expanded: new Set(),
+  view: read(STORE.view, 'map'),
+  metric: read(STORE.metric, 'next72'),
+  selected: null,
+  map: null,
 };
 
 // 0 → 0″, a dusting → <1″, otherwise whole inches.
@@ -169,12 +185,91 @@ function render() {
   document.querySelectorAll('[data-sort]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sort === state.sort)));
   $('#open-only').checked = state.openOnly;
   $('#updated').textContent = `Updated ${timeAgo(data.generated)}`;
+  renderMap();
+}
+
+function level(value, steps) {
+  if (value == null) return 'none';
+  if (value === 0) return 0;
+  const i = steps.findIndex((s) => value < s);
+  return i === -1 ? steps.length + 1 : i + 1;
+}
+
+function renderMap() {
+  const data = state.data;
+  document.querySelectorAll('[data-metric]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.metric === state.metric)));
+  if (state.view !== 'map' || !data) return;
+  if (!state.map) {
+    state.map = createSnowMap($('#map'), {
+      saved: read(STORE.mapView, null),
+      onMove: (v) => write(STORE.mapView, v),
+      onZoom: () => renderHint(),
+      onSelect: (id) => {
+        state.selected = id;
+        renderMap();
+      },
+    });
+  }
+  const metric = METRICS[state.metric] ?? METRICS.next72;
+  const withValues = data.resorts.map((r) => ({ r, value: metric.get(r) ?? null }));
+  withValues.sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
+  state.map.update(withValues.map(({ r, value }) => {
+    const text = value == null ? '–' : metric.base ? `${Math.round(value)}″` : inches(value);
+    return {
+      r,
+      text,
+      label: value == null ? 'not reported' : text,
+      level: level(value, metric.steps),
+      open: r.status.state === 'open',
+      selected: r.id === state.selected,
+    };
+  }));
+  renderHint();
+
+  const r = data.resorts.find((x) => x.id === state.selected);
+  $('#sheet').hidden = !r;
+  if (r) {
+    const scale = Math.max(4, ...data.resorts.flatMap((x) => x.forecast?.days.map((d) => d.snow) ?? [0]));
+    $('#sheet-body').innerHTML = card(r, data.today, scale);
+  }
+}
+
+function renderHint() {
+  const data = state.data;
+  if (!data || !state.map) return;
+  const metric = METRICS[state.metric] ?? METRICS.next72;
+  const reporting = data.resorts.filter((r) => metric.get(r) != null).length;
+  const parts = [metric.hint];
+  if (reporting < data.resorts.length) parts.push(`${reporting} of ${data.resorts.length} resorts`);
+  parts.push(state.map.namesShown() ? 'green ring = open' : 'zoom in for names');
+  $('#map-hint').textContent = parts.join(' · ');
+}
+
+// The map fills the screen under the header, whose height changes with the notice line.
+function sizeMap() {
+  document.documentElement.style.setProperty('--header-h', `${$('.top').offsetHeight}px`);
+  state.map?.resize();
+}
+
+function setView(view) {
+  state.view = view;
+  write(STORE.view, view);
+  document.body.classList.toggle('map-mode', view === 'map');
+  $('#map-view').hidden = view !== 'map';
+  document.querySelectorAll('[data-view]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === view)));
+  if (view === 'map') {
+    renderMap();
+    sizeMap();
+  } else {
+    window.scrollTo(0, 0);
+  }
 }
 
 function showNotice(text) {
   const el = $('#notice');
   el.hidden = !text;
   el.textContent = text ?? '';
+  sizeMap();
 }
 
 async function load() {
@@ -221,6 +316,23 @@ document.addEventListener('click', (e) => {
     state.sort = sortBtn.dataset.sort;
     write(STORE.sort, state.sort);
     render();
+    return;
+  }
+  const viewBtn = e.target.closest('[data-view]');
+  if (viewBtn) {
+    setView(viewBtn.dataset.view);
+    return;
+  }
+  const metricBtn = e.target.closest('[data-metric]');
+  if (metricBtn) {
+    state.metric = metricBtn.dataset.metric;
+    write(STORE.metric, state.metric);
+    renderMap();
+    return;
+  }
+  if (e.target.closest('#sheet-close')) {
+    state.selected = null;
+    renderMap();
   }
 });
 
@@ -241,7 +353,10 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && Date.now() - state.loadedAt > RELOAD_AFTER_MS) load();
 });
 
+window.addEventListener('resize', sizeMap);
+
 // Show the last copy instantly, then fetch fresh data.
 state.data = read(STORE.data, null);
+setView(state.view === 'list' ? 'list' : 'map');
 render();
 load();

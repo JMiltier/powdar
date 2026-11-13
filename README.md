@@ -2,6 +2,9 @@
 
 A simple phone app for Colorado ski resorts: what's open, opening days, fresh snow and snow on the way.
 
+Two views: a **map** with every resort's number on it (next 3 days, 7 days, last 24 hours or base depth; tap a resort
+for details) and a **list** you can sort by snow coming, opening day or name.
+
 **On Android:** open the site in Chrome, tap ⋮ → *Add to Home screen*. It then opens like a normal app.
 
 ## Where the data comes from
@@ -32,4 +35,5 @@ npm run preview  # http://localhost:8787
 npm test
 ```
 
-No dependencies; needs Node 20+.
+No npm dependencies; needs Node 20+. Leaflet 1.9.4 (BSD-2) is vendored in `public/vendor/leaflet/`.
+Map tiles come from OpenTopoMap (no key needed).

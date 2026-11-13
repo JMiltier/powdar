@@ -189,6 +189,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       id: r.id,
       name: r.name,
       region: r.region,
+      at: r.at,
       url: r.url,
       live,
       status: statusFor(facts, today),
