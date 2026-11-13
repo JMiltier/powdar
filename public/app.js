@@ -283,7 +283,14 @@ function legendFor(layer) {
   if (layer === 'outlook') {
     return `<span class="legend-title">${esc(seasonSpan(state.outlookSeason))} outlook</span><span class="legend-keys"><span>Drier</span><i class="ramp ramp-outlook" aria-hidden="true"></i><span>Wetter</span><span class="muted">· ${esc(seasonSpan(state.outlookSeason))}</span></span>`;
   }
-  return `<span class="legend-title">Snow on the ground</span><span class="legend-keys"><span>1″</span><i class="ramp" aria-hidden="true"></i><span>8 ft+</span></span>`;
+  // Labeled steps, shaded like the map (depth class → brightness and opacity, over the map's grey).
+  const step = (cls, label) => {
+    const v = Math.min(1, (cls + 0.5) / 7.5);
+    const c = Math.round(168 + 87 * Math.sqrt(v));
+    const a = ((125 + 130 * Math.sqrt(v)) / 255).toFixed(2);
+    return `<span class="depth-step"><i style="background:linear-gradient(rgba(${c - 6},${c - 2},${Math.min(255, c + 6)},${a}),rgba(${c - 6},${c - 2},${Math.min(255, c + 6)},${a})),#6f7886"></i>${label}</span>`;
+  };
+  return `<span class="legend-title">Snow depth</span><span class="legend-keys depth-steps">${step(0, '1″')}${step(2, '4″')}${step(3, '1′')}${step(4, '2′')}${step(6, '5′')}${step(7, '8′+')}</span>`;
 }
 
 function seasonText(r, today) {

@@ -222,7 +222,10 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     transparent: 'true', layers: 'show:3', f: 'image', t: Math.floor(Date.now() / 3600000),
   })}`;
   // shadow: a soft edge color around what's drawn (white snow needs one on the light map).
-  async function picture(src, recolor, shadow = null) {
+  // relief: { classify(r, g, b) → depth class } paints the layer as a lit surface instead of flat
+  // colors: brightness and opacity by depth, plus light from the northwest on the depth "terrain", so
+  // deep snow reads as a raised layer and its edges as slopes.
+  async function picture(src, recolor, shadow = null, relief = null) {
     const size = map.getSize();
     const b = map.getPixelBounds();
     const sw = map.options.crs.project(map.unproject(L.point(b.min.x, b.max.y)));
@@ -242,8 +245,46 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     g.drawImage(img, 0, 0);
     const data = g.getImageData(0, 0, w, h);
     const d = data.data;
+    if (relief) {
+      // Depth field: class index (0 = under 2″ … 7 = 8 ft+), −1.5 where there's no snow, smoothed.
+      const raw = new Float32Array(w * h);
+      for (let i = 0, p = 0; i < d.length; i += 4, p++) raw[p] = d[i + 3] < 8 ? -1.5 : Math.min(7, relief.classify(d[i], d[i + 1], d[i + 2]));
+      let f = raw;
+      for (let pass = 0; pass < 2; pass++) {
+        const out = new Float32Array(w * h);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            let sum = 0;
+            let n = 0;
+            for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+              const xx = x + dx;
+              const yy = y + dy;
+              if (xx >= 0 && yy >= 0 && xx < w && yy < h) { sum += f[yy * w + xx]; n++; }
+            }
+            out[y * w + x] = sum / n;
+          }
+        }
+        f = out;
+      }
+      for (let y = 0, p = 0; y < h; y++) {
+        for (let x = 0; x < w; x++, p++) {
+          const i = p * 4;
+          if (raw[p] < -1) { d[i + 3] = 0; continue; }
+          const v = Math.max(0, Math.min(1, (f[p] + 0.5) / 7.5)); // 0 thin → 1 deep
+          // Light from the northwest on the depth surface.
+          const gx = (f[p + (x < w - 1 ? 1 : 0)] - f[p - (x > 0 ? 1 : 0)]) / 2;
+          const gy = (f[p + (y < h - 1 ? w : 0)] - f[p - (y > 0 ? w : 0)]) / 2;
+          const light = Math.max(0.72, Math.min(1.18, 1 + (-gx - gy) * 0.22));
+          const base = 168 + 87 * Math.sqrt(v); // cool grey-white → brilliant white
+          d[i] = Math.min(255, (base - 10 * (1 - v)) * light);
+          d[i + 1] = Math.min(255, (base - 4 * (1 - v)) * light);
+          d[i + 2] = Math.min(255, (base + 6) * light);
+          d[i + 3] = Math.round(125 + 130 * Math.sqrt(v));
+        }
+      }
+    }
     const memo = new Map();
-    for (let i = 0; i < d.length; i += 4) {
+    for (let i = 0; i < d.length && !relief; i += 4) {
       if (d[i + 3] < 8) { d[i + 3] = 0; continue; }
       const key = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
       let c = memo.get(key);
@@ -342,7 +383,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     try {
       if (layerName === 'snow') {
         // (Depth shows as shading alone, brighter where deeper.)
-        next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], isDark() ? 'rgba(0, 0, 0, 0.6)' : 'rgba(20, 32, 55, 0.85)');
+        next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], isDark() ? 'rgba(0, 0, 0, 0.6)' : 'rgba(20, 32, 55, 0.85)', { classify: classOf });
       }
       else if (layerName === 'radar') {
         try {
