@@ -25,6 +25,18 @@ export function snowRatio(c) {
   return 14;
 }
 
+// Each day's highest UV index at every resort (one request for all of them).
+export function uvUrl(resorts, days) {
+  const q = new URLSearchParams({
+    latitude: resorts.map((r) => r.at[0]).join(','),
+    longitude: resorts.map((r) => r.at[1]).join(','),
+    daily: 'uv_index_max',
+    forecast_days: String(days),
+    timezone: 'America/Denver',
+  });
+  return `${OPEN_METEO}?${q}`;
+}
+
 export function modelUrl(model, resorts, days) {
   const q = new URLSearchParams({
     latitude: resorts.map((r) => r.at[0]).join(','),
