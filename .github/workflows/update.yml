@@ -42,6 +42,8 @@ jobs:
         env:
           LIVE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
           ALL_STATES: ${{ inputs.all_states && '1' || '' }}
+          # Forecasts the maintainer's Mac mini fetched, for when GitHub can't reach the weather models.
+          DATA_BRANCH_URL: https://raw.githubusercontent.com/${{ github.repository }}/data/
       # Stamp file URLs with this commit so phones and installed apps load fresh code after each change.
       - run: sed -i "s/__V__/${GITHUB_SHA::8}/g" public/index.html public/app.js
       - uses: actions/upload-pages-artifact@v3

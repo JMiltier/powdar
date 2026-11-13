@@ -16,11 +16,20 @@ const summary = (rep) => {
 // Colorado's model forecasts refresh hourly (the models barely change faster); in between, the last
 // hour's are reused. Resort reports, lifts and NWS still update every run.
 const MODELS_EVERY_MS = 55 * 60_000;
-let liveCo = null;
-if (process.env.LIVE_URL) {
-  liveCo = await fetch(new URL(`data/co.json?t=${Date.now()}`, process.env.LIVE_URL)).then((r) => (r.ok ? r.json() : null)).catch(() => null)
-    ?? await fetch(new URL(`data.json?t=${Date.now()}`, process.env.LIVE_URL)).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+// Previously built data can come from two places: the published site, and the `data` branch that the
+// maintainer's Mac mini pushes to (it fetches the weather models when GitHub's servers can't reach
+// them). Whichever has the newer forecast wins.
+const DATA_BRANCH = process.env.DATA_BRANCH_URL; // e.g. https://raw.githubusercontent.com/JMiltier/powdar/data/
+const getJsonOrNull = (url) => fetch(url, { signal: AbortSignal.timeout(20_000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+const newer = (a, b, at) => (!a ? b : !b ? a : Date.parse(at(b) ?? 0) > Date.parse(at(a) ?? 0) ? b : a);
+async function published(file) {
+  const [live, mac] = await Promise.all([
+    process.env.LIVE_URL ? getJsonOrNull(new URL(`${file}?t=${Date.now()}`, process.env.LIVE_URL)) : null,
+    DATA_BRANCH ? getJsonOrNull(new URL(`${file}?t=${Date.now()}`, DATA_BRANCH)) : null,
+  ]);
+  return newer(live, mac, (d) => d.sources?.modelsAt ?? d.forecastAt);
 }
+const liveCo = (process.env.LIVE_URL || DATA_BRANCH) ? await published('data/co.json') : null;
 const skipModels = Boolean(liveCo?.sources?.modelsAt && Date.now() - Date.parse(liveCo.sources.modelsAt) < MODELS_EVERY_MS);
 if (skipModels) console.log('Colorado model forecasts are under an hour old: reusing them.');
 
@@ -38,9 +47,9 @@ if (!modelsOk(report) && !skipModels) {
 
 // Still unreachable: keep each resort's last full forecast (up to 12 hours old) rather than
 // publishing a thinner Weather-Service-only one. Status, snowpack and weather stay fresh.
-if (!modelsOk(report) && process.env.LIVE_URL) {
+if (!modelsOk(report) && liveCo) {
   try {
-    const live = await (await fetch(new URL(`data.json?t=${Date.now()}`, process.env.LIVE_URL))).json();
+    const live = liveCo;
     const age = Date.now() - Date.parse(live.sources?.modelsAt ?? 0);
     if (age < REUSE_FOR_MS) {
       const old = new Map(live.resorts.map((r) => [r.id, r.forecast]));
@@ -82,13 +91,9 @@ for (const r of us.resorts) {
 }
 // Last published files, so slow-changing parts can be reused.
 async function previous(code) {
-  const local = new URL(`../public/data/${code.toLowerCase()}.json`, import.meta.url);
-  try {
-    if (process.env.LIVE_URL) return await (await fetch(new URL(`data/${code.toLowerCase()}.json?t=${Date.now()}`, process.env.LIVE_URL))).json();
-    return JSON.parse(await readFile(local, 'utf8'));
-  } catch {
-    return null;
-  }
+  const file = `data/${code.toLowerCase()}.json`;
+  if (process.env.LIVE_URL || DATA_BRANCH) return published(file);
+  return readFile(new URL(`../public/${file}`, import.meta.url), 'utf8').then(JSON.parse).catch(() => null);
 }
 const prevs = new Map(await Promise.all([...byState.keys()].map(async (code) => [code, await previous(code)])));
 const due = [...byState.keys()]
