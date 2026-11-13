@@ -14,7 +14,9 @@
   --tba: #a3adb9;
   --shadow: 0 2px 10px rgba(16, 24, 40, 0.18);
   --radius: 18px;
-  --sheet-visible: 140px;
+  /* The collapsed sheet's height (app.js measures and updates it): set before the script runs so the
+     first paint already has the sheet down and the key in place. */
+  --sheet-visible: calc(70px + env(safe-area-inset-bottom, 0px));
   color-scheme: light;
 }
 :root[data-theme="dark"] { color-scheme: dark; }
@@ -147,6 +149,10 @@ body.sheet-up .legend, .legend.off { visibility: hidden; }
   will-change: transform;
 }
 .sheet.dragging { transition: none; }
+.legend.pending { visibility: hidden; }
+/* Down before app.js positions it, so the page doesn't open with the list up and then drop. */
+.sheet:not([style]) { transform: translateY(calc(100% - var(--sheet-visible))); }
+@media (min-width: 900px) { .sheet:not([style]) { transform: none; } }
 .grab { flex: none; padding: 5px 16px 8px; cursor: grab; touch-action: none; user-select: none; }
 .handle { display: block; width: 38px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 8px; }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
