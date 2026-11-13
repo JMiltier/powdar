@@ -144,7 +144,7 @@ const fakeFetch = (overrides = {}) => async (url) => {
 };
 
 test('buildReport assembles every resort', async () => {
-  const data = await buildReport({ fetch: fakeFetch(), now: NOW });
+  const data = await buildReport({ fetch: fakeFetch(), now: NOW, backoff: 0 });
   assert.equal(data.season, '2026-27');
   assert.equal(data.resorts.length, RESORTS.length);
   assert.equal(data.sources.coloradoSki, true);
@@ -172,6 +172,7 @@ test('buildReport keeps going when a source fails', async () => {
       'https://api.open-meteo.com/v1/forecast?latitude': new Error('timeout'),
     }),
     now: NOW,
+    backoff: 0,
   });
   assert.equal(data.sources.coloradoSki, false);
   assert.equal(data.sources.forecasts, RESORTS.length - 1, 'models down + Vail NWS down → only Vail lacks a forecast');

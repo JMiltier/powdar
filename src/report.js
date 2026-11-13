@@ -176,9 +176,13 @@ export function statusFor({ live, isOpen, open, close, when, opened, note, repor
   return { state: 'tba', label: 'Opening date TBA', detail: null };
 }
 
-async function getJson(fetchFn, url, tries = 2) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Retries with a growing pause: network blips between GitHub's servers and the APIs are common.
+async function getJson(fetchFn, url, { tries = 3, backoff = 2000 } = {}) {
   let lastErr;
   for (let i = 0; i < tries; i++) {
+    if (i) await sleep(backoff * i);
     try {
       const res = await fetchFn(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/geo+json, application/json' } });
       if (!res.ok) throw new Error(`${res.status} ${url}`);
@@ -205,7 +209,7 @@ async function pool(items, limit, fn) {
   return out;
 }
 
-export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), log = () => {} } = {}) {
+export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), log = () => {}, backoff = 2000 } = {}) {
   const today = localDate(now);
   const season = seasonOf(today);
   const planned = PLANNED[season.name] ?? {};
@@ -213,7 +217,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
   let csc = new Map();
   let cscOk = true;
   try {
-    csc = parseCsc(await getJson(fetchFn, CSC_FEED), season);
+    csc = parseCsc(await getJson(fetchFn, CSC_FEED, { backoff }), season);
   } catch (err) {
     cscOk = false;
     log(`Colorado Ski Country feed failed: ${err.message}`);
@@ -223,7 +227,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
   const [modelData, nwsData] = await Promise.all([
     Promise.all(MODELS.map(async (m) => {
       try {
-        const data = await getJson(fetchFn, modelUrl(m.id, RESORTS, FORECAST_DAYS + 1));
+        const data = await getJson(fetchFn, modelUrl(m.id, RESORTS, FORECAST_DAYS + 1), { backoff });
         return Array.isArray(data) ? data : [data];
       } catch (err) {
         log(`Model ${m.label} failed: ${err.message}`);
@@ -232,7 +236,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     })),
     pool(RESORTS, 4, async (r) => {
       try {
-        return (await getJson(fetchFn, `${NWS}/${r.nws[0]}/${r.nws[1]},${r.nws[2]}`)).properties;
+        return (await getJson(fetchFn, `${NWS}/${r.nws[0]}/${r.nws[1]},${r.nws[2]}`, { backoff })).properties;
       } catch (err) {
         log(`NWS forecast failed for ${r.name}: ${err.message}`);
         return null;
