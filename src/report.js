@@ -9,8 +9,6 @@ import { VAIL_SITES, snowPage, liftPage, parseVailSnow, parseVailTerrain } from 
 import { fetchInsights } from './insights.js';
 import CAMS from './cams.json' with { type: 'json' };
 
-// Webcam servers that make a fresh frame each time they're asked (so the picture is always current).
-export const camIsLive = (url) => /player\.brownrice\.com\/snapshot\/|ipcamlive\.com\/player\/snapshot|hdrelay\.io\/api\/public\/poster|hdrelay\.com\/camera\/[^/]+\/snapshot/.test(url);
 import { nohrscUrl, parseNohrsc } from './noaa.js';
 
 export const CSC_FEED = 'https://snow.coloradoski.com/view/publicreport-feed';
@@ -113,6 +111,7 @@ const covers = (lastT, ymd) => lastT >= Date.parse(`${ymd}T12:00:00Z`) + 16 * HO
 export function blendForecast({ sources, nws, periods }, now) {
   const today = localDate(now);
   const dates = Array.from({ length: OUTLOOK_DAYS }, (_, i) => addDays(today, i));
+  const pastDates = [5, 4, 3, 2, 1].map((n) => addDays(today, -n));
   const usable = sources.filter((s) => s.hours?.length);
   if (!usable.length) return null;
   const nowMs = now.getTime();
@@ -122,6 +121,7 @@ export function blendForecast({ sources, nws, periods }, now) {
     const water = new Map(dates.map((d) => [d, 0]));
     let next72 = 0;
     let past24 = 0;
+    const before = new Map(pastDates.map((d) => [d, 0])); // the past days' snow (what fell)
     let lastT = -Infinity;
     let firstT = Infinity;
     const hasWater = hours.some((h) => h.w != null);
@@ -137,8 +137,9 @@ export function blendForecast({ sources, nws, periods }, now) {
       }
       if (t >= nowMs - HOUR && t < nowMs + 72 * HOUR) next72 += v;
       if (t >= nowMs - 24 * HOUR && t < nowMs) past24 += v;
+      if (before.has(d)) before.set(d, before.get(d) + v);
     }
-    return { id, snow, water, next72, past24, lastT, hasWater, coversPast: firstT <= nowMs - 23 * HOUR };
+    return { id, snow, water, next72, past24, before, lastT, firstT, hasWater, coversPast: firstT <= nowMs - 23 * HOUR };
   });
 
   const pick = (filter, value) => spread(per.filter(filter).map(value));
@@ -155,6 +156,11 @@ export function blendForecast({ sources, nws, periods }, now) {
   const n7 = pick(reach(FORECAST_DAYS - 1), (p) => sumDays(p, 0, FORECAST_DAYS - 1)) ?? spread(per.map((p) => sumDays(p, 0, FORECAST_DAYS - 1)));
   const wk2 = pick(reach(OUTLOOK_DAYS - 1), (p) => sumDays(p, FORECAST_DAYS, OUTLOOK_DAYS - 1));
   const p24 = pick((p) => p.coversPast, (p) => p.past24);
+  // The last five days' snow, from the models that cover each whole day (estimates, not reports).
+  const pastDays = pastDates.map((date) => {
+    const s = pick((p) => p.firstT <= Date.parse(`${date}T07:00:00Z`), (p) => p.before.get(date));
+    return { date, snow: s ? s.mid : null };
+  });
 
   // Water piling onto the snowpack over the next two weeks (cumulative, middle forecast), for the
   // season chart's projection. Only the models report water; NWS gives snow depth only.
@@ -170,6 +176,7 @@ export function blendForecast({ sources, nws, periods }, now) {
   return {
     days,
     past24: p24?.mid ?? null,
+    pastDays,
     past24Range: p24 ? [p24.lo, p24.hi] : null,
     next72: n72.mid,
     next72Range: [n72.lo, n72.hi],
@@ -236,7 +243,7 @@ export function statusFor({ live, isOpen, open, close, when, opened, note, repor
   // Planned date has passed but we can't read this resort's site to confirm it.
   if (open) return { state: 'likely', label: 'Probably open', date: open, detail: `Set to open ${when ?? shortDate(open)} · can't confirm live` };
   if (note && /asap/i.test(note)) return { state: 'tba', label: 'Opening ASAP', detail: null };
-  return { state: 'tba', label: 'Opening TBA', detail: null };
+  return { state: 'tba', label: 'Opens TBA', detail: null };
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -430,19 +437,22 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     }
   }
 
-  // When each webcam image was taken, for cameras whose server says so (Last-Modified). Cameras that
-  // make a fresh frame on request are "live" and need no check. (The app re-reads the time itself where
-  // the server allows it; this is for the ones that don't.)
+  // When each webcam image was taken, for cameras whose server says so (Last-Modified). Nothing is
+  // called "live": these are snapshots, and some providers (Brownrice) serve frames an hour or more old
+  // without saying when they're from, so those simply show no time. (The app re-reads the time itself
+  // where the server allows it; this is for the ones that don't.)
   const camsWithTimes = structuredClone(CAMS);
   const camList = Object.values(camsWithTimes).flatMap((e) => e.cams ?? []);
   await pool(camList, 6, async (cam) => {
-    if (camIsLive(cam.image)) { cam.fresh = 'live'; return; }
     for (const method of ['HEAD', 'GET']) { // (some servers only answer a full request)
       try {
         const res = await fetchFn(cam.image, { method, headers: { 'User-Agent': USER_AGENT } });
         const lm = res.headers.get('last-modified');
+        const served = Date.parse(res.headers.get('date') ?? '') || Date.now();
         res.body?.cancel?.();
-        if (res.ok && lm) { cam.updated = new Date(lm).toISOString(); break; }
+        // (A "modified" time of right now is the server's invention, not when the picture was taken.)
+        if (res.ok && lm && Math.abs(served - Date.parse(lm)) > 15000) { cam.updated = new Date(lm).toISOString(); break; }
+        if (res.ok) break;
       } catch { /* try the next way, or no time */ }
     }
   });

@@ -11,7 +11,7 @@ const ALL_STATES = false;
 const STATE_CODES = !ALL_STATES ? new Set(['CO']) : new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
 const validCode = (c) => (c && STATE_CODES.has(String(c).toUpperCase()) ? String(c).toUpperCase() : null);
 const STORE = {
-  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', sort: 'cs:sort', unit: 'cs:unit', snowStyle: 'cs:snowStyle2', panel: 'cs:panel',
+  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', sort: 'cs:sort', order: 'cs:order', unit: 'cs:unit', snowStyle: 'cs:snowStyle2', panel: 'cs:panel',
   state: 'cs:state', states: 'cs:states', theme: 'cs:theme',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
@@ -81,7 +81,8 @@ const state = {
   pass: read(STORE.pass, 'all'), // 'all', 'epic', 'ikon', 'indy' or 'other'
   snowStyle: read(STORE.snowStyle, 'color'), // how snow on the ground is drawn (tap its key to cycle)
   unit: read(STORE.unit, 'F'), // temperatures in 'F' or 'C' (the data is always °F)
-  sort: read(STORE.sort, 'name'), // the list: 'name' (A–Z), 'value' (the map view's number) or 'open'
+  sort: read(STORE.sort, 'name'),
+  order: read(STORE.order, []), // the user's own order (sort "mine"), resort ids // the list: 'name' (A–Z), 'value' (the map view's number) or 'open'
   // The map overlay: 'snow' (on the ground; the default), 'radar', 'outlook' or 'none'.
   layer: read(STORE.layer, null) ?? (read(STORE.snowDepth, true) ? 'snow' : 'none'),
   outlookSeason: null, // e.g. "NDJ 2026-2027", once the outlook has loaded
@@ -328,12 +329,12 @@ function camsSection(r, notes) {
   }
   notes.push(`Webcams: ${sourceLink(c.page, `${r.name}’s cams`)}, refreshed every few minutes.`);
   return `
-    <h3 class="section">Cams <span class="section-note">live from the mountain</span></h3>
+    <h3 class="section">Cams <span class="section-note">latest from the mountain</span></h3>
     <div class="cams" role="list">${c.cams.map((cam, i) => `
       <button type="button" class="cam" role="listitem" data-cam="${i}" aria-label="${esc(cam.name)} webcam">
         <img src="${esc(camSrc(cam.image))}" alt="" loading="lazy" decoding="async" onerror="this.closest('.cam').hidden = true">
         <span>${esc(cam.name)}</span>
-        <em class="cam-age" data-cam-age="${i}">${cam.fresh === 'live' ? '<i></i>Live' : cam.updated ? esc(shortAgo(cam.updated)) : ''}</em>
+        <em class="cam-age" data-cam-age="${i}">${cam.updated ? esc(shortAgo(cam.updated)) : ''}</em>
       </button>`).join('')}
     </div>`;
 }
@@ -346,10 +347,10 @@ const shortAgo = (iso) => {
 // (fresher than the update's note of it).
 function refreshCamAges(r) {
   r.cams?.cams?.forEach((cam, i) => {
-    if (cam.fresh === 'live') return;
     fetch(camSrc(cam.image), { method: 'HEAD', cache: 'no-store' }).then((res) => {
       const lm = res.ok && res.headers.get('last-modified');
-      if (!lm) return;
+      // (A "modified" time of right now is made up by the server, not when the picture was taken.)
+      if (!lm || Math.abs(Date.now() - Date.parse(lm)) < 15000) return;
       cam.updated = new Date(lm).toISOString();
       const el = document.querySelector(`[data-cam-age="${i}"]`);
       if (el && state.selected === r.id) el.textContent = shortAgo(cam.updated);
@@ -364,7 +365,7 @@ function openCam(r, i) {
     <div class="cam-view-inner">
       <img src="${esc(camSrc(c.image))}" alt="${esc(`${r.name}: ${c.name} webcam`)}">
       <div class="cam-view-bar">
-        <span><b>${esc(r.name)}</b> · ${esc(c.name)}${c.fresh === 'live' ? ' · <span class="live-dot"></span>Live' : c.updated ? ` · ${esc(shortAgo(c.updated))}` : ''}</span>
+        <span><b>${esc(r.name)}</b> · ${esc(c.name)}${c.updated ? ` · ${esc(shortAgo(c.updated))}` : ''}</span>
         <span>${c.live ? `<a href="${esc(c.live)}" target="_blank" rel="noopener">Live video${EXT_ICON}</a>` : ''}
           <a href="${esc(r.cams.page)}" target="_blank" rel="noopener">All cams${EXT_ICON}</a></span>
       </div>
@@ -461,7 +462,8 @@ function ordered(all = false) {
     .filter((r) => all || matches(r))
     .map((r) => ({ r, v: valueFor(r) }))
     // A–Z unless asked otherwise; favorites and filters never reorder anything.
-    .sort((a, b) => (state.sort === 'value' ? b.v.sort - a.v.sort : state.sort === 'open' ? openRank(b.r) - openRank(a.r) : 0)
+    .sort((a, b) => (state.sort === 'value' ? b.v.sort - a.v.sort : state.sort === 'open' ? openRank(b.r) - openRank(a.r)
+      : state.sort === 'mine' ? myRank(a.r) - myRank(b.r) : 0)
       || a.r.name.localeCompare(b.r.name));
 }
 
@@ -497,6 +499,9 @@ function renderHeadline() {
 }
 
 // "Open · 3 of 24 lifts · 2% of runs", "Opens Fri, Nov 20", …
+// "Mine": the user's order (resorts they haven't placed yet go last, A–Z).
+const myRank = (r) => { const i = state.order.indexOf(r.id); return i < 0 ? 1e6 : i; };
+
 // Open first: open, then probably open, opening soon (soonest first), then the rest.
 function openRank(r) {
   const s = r.status.state;
@@ -514,7 +519,7 @@ function shortStatus(r) {
   if (s.state === 'soon') return s.label.replace(/^Opens (\w{3}, )?/, 'Opens ');
   if (s.state === 'late') return 'Delayed';
   if (s.state === 'done') return 'Closed';
-  return 'TBA';
+  return 'Opens TBA';
 }
 const METRIC_LABEL = { new24: 'Most −24h', next72: 'Most +3d', next7: 'Most +7d', base: 'Deepest', season: 'Snowpack', dates: 'Opening' };
 
@@ -525,15 +530,30 @@ function rowSub(r) {
   return ['Open', lifts?.total ? `${lifts.open} of ${lifts.total} lifts` : null, s.pct != null ? `${s.pct}% of runs` : null].filter(Boolean).join(' · ');
 }
 
-// The next five days' snow as tiny bars with day letters (grey when none), like a ski app's list.
+// Snow by day, like a ski app's list but both ways: the last 5 days (what fell, model estimates; the
+// resort's own report for the last 24 hours where it has one) | today | the next 5 days (forecast), as
+// small bars with day letters and the inches above any bar with an inch or more.
 function miniDays(r) {
-  const days = (r.forecast?.days ?? []).slice(0, 5);
-  if (!days.length) return '';
-  const max = Math.max(4, ...days.map((d) => d.snow ?? 0));
-  return `<span class="rr-days" aria-label="Next 5 days: ${days.map((d) => `${weekday(d.date, state.data.today)} ${d.snow >= 0.5 ? inches(d.snow) : 'none'}`).join(', ')}">${days.map((d) => {
-    const h = d.snow > 0.2 ? Math.max(5, Math.round((d.snow / max) * 22)) : 3;
-    return `<span class="rd${d.snow > 0.2 ? ' snow' : ''}"><i style="height:${h}px"></i><small>${esc(new Date(`${d.date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'narrow', timeZone: 'UTC' }))}</small></span>`;
-  }).join('')}</span>`;
+  const f = r.forecast;
+  const future = (f?.days ?? []).slice(0, 5);
+  if (!future.length) return '';
+  const past = (f.pastDays ?? []).slice(-5);
+  const yesterday = past.at(-1);
+  if (yesterday && r.report?.new24 != null) yesterday.snow = r.report.new24; // (the resort's own number)
+  const all = [...past, ...future].map((d) => d.snow ?? 0);
+  const max = Math.max(4, ...all);
+  const bar = (d, kind) => {
+    const v = d.snow ?? 0;
+    const h = v > 0.2 ? Math.max(4, Math.round((v / max) * 20)) : 3;
+    const letter = new Date(`${d.date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'narrow', timeZone: 'UTC' });
+    return `<span class="rd ${kind}${v > 0.2 ? ' snow' : ''}"><em>${v >= 1 ? `${Math.round(v)}″` : ''}</em><i style="height:${h}px"></i><small>${esc(letter)}</small></span>`;
+  };
+  const label = (d) => `${weekday(d.date, state.data.today)} ${d.snow >= 0.5 ? inches(d.snow) : 'none'}`;
+  return `<span class="rr-days" aria-label="Last 5 days: ${past.map(label).join(', ')}. Next 5 days: ${future.map(label).join(', ')}">
+    <span class="rd-group">${past.map((d) => bar(d, 'past')).join('')}</span>
+    <span class="rd-today" aria-hidden="true"><b>today</b></span>
+    <span class="rd-group">${future.map((d) => bar(d, 'next')).join('')}</span>
+  </span>`;
 }
 
 // Each resort as a card: status, then the numbers that matter side by side (the map's current view
@@ -555,6 +575,7 @@ function renderList() {
       <button type="button" data-sort="name" aria-pressed="${state.sort === 'name'}">A–Z</button>
       <button type="button" data-sort="value" aria-pressed="${state.sort === 'value'}">${esc(METRIC_LABEL[state.metric] ?? 'Value')}</button>
       <button type="button" data-sort="open" aria-pressed="${state.sort === 'open'}">Open first</button>
+      <button type="button" data-sort="mine" aria-pressed="${state.sort === 'mine'}">Mine</button>
     </div>`;
   const rows = ordered().map(({ r }) => {
     const fav = state.favs.has(r.id);
@@ -564,13 +585,15 @@ function renderList() {
       <span class="rr-head">
         <span class="dot dot-${esc(r.status.state)}" aria-hidden="true"></span>
         <span class="row-name">${esc(r.name)}</span>${fav ? `<span class="card-fav" aria-label="Favorite">${UI.starFilled}</span>` : ''}
-        ${open ? '' : `<span class="pill pill-${esc(r.status.state)}">${esc(shortStatus(r))}</span>`}
+        <span class="pill pill-${esc(r.status.state)}">${esc(shortStatus(r))}</span>
+        ${state.sort === 'mine' ? `<span class="drag-handle" aria-label="Drag to move ${esc(r.name)}" role="button"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5.5" cy="3.5" r="1.4"/><circle cx="10.5" cy="3.5" r="1.4"/><circle cx="5.5" cy="8" r="1.4"/><circle cx="10.5" cy="8" r="1.4"/><circle cx="5.5" cy="12.5" r="1.4"/><circle cx="10.5" cy="12.5" r="1.4"/></svg></span>` : ''}
       </span>`;
     if (!open) {
       return `
     <button type="button" class="row rrow rrow-closed" data-open="${esc(r.id)}">
       ${head}
-      <span class="rr-line"><span class="rr-sub">${esc(sub)}</span>${miniDays(r)}</span>
+      <span class="rr-sub">${esc(sub)}</span>
+      ${miniDays(r)}
     </button>`;
     }
     const lifts = r.report?.lifts?.total ? r.report.lifts : r.lifts?.total ? r.lifts : null;
@@ -587,11 +610,12 @@ function renderList() {
         <span class="rs${state.metric === lead ? ' on' : ''}"><b>${esc(v.text)}</b><small>${label}</small></span>
         <span class="rs${state.metric === 'base' ? ' on' : ''}"><b>${esc(base.text)}</b><small>Base</small></span>
         <span class="rs"><b>${lifts ? `${lifts.open}/${lifts.total}` : '–'}</b><small>Open lifts</small></span>
-        ${miniDays(r)}
       </span>
+      ${miniDays(r)}
     </button>`;
   }).join('');
-  $('#list').innerHTML = overviewCard() + sortBar + (rows || `<p class="empty">${state.openOnly && !state.favsOnly && state.pass === 'all' ? 'Nothing open yet.' : 'No resorts match these filters.'} <button type="button" class="link" data-clear-filters>Show all</button></p>`);
+  const resetLink = state.sort === 'mine' && rows ? '<p class="order-note">Drag ⋮⋮ to move a resort. <button type="button" class="link" data-reset-order>Reset to A–Z</button></p>' : '';
+  $('#list').innerHTML = overviewCard() + sortBar + resetLink + (rows || `<p class="empty">${state.openOnly && !state.favsOnly && state.pass === 'all' ? 'Nothing open yet.' : 'No resorts match these filters.'} <button type="button" class="link" data-clear-filters>Show all</button></p>`);
 }
 
 function renderDetail(r) {
@@ -1370,6 +1394,7 @@ bodyEl.addEventListener('touchmove', (e) => {
   if (!swipe.mode) {
     if (Math.hypot(dx, dy) < 7) return;
     // (Sideways swipes on things that scroll sideways themselves, like the cams strip, are theirs.)
+    if (e.target.closest('.drag-handle')) { swipe = null; return; } // reordering, not a swipe
     if (Math.abs(dx) > Math.abs(dy) * 1.4 && e.target.closest('.cams')) swipe.mode = 'scroll';
     else if (Math.abs(dx) > Math.abs(dy) * 1.4 && !e.target.closest('select, input, .chart')) swipe.mode = 'side';
     else if (!WIDE.matches && ((dy > 0 && bodyEl.scrollTop <= 0) || (dy < 0 && state.sheet !== 'full'))) swipe.mode = 'sheet';
@@ -1438,6 +1463,67 @@ grabEl.addEventListener('pointercancel', (e) => {
   drag = null;
   setSheet(state.sheet);
 });
+
+// ---------- reordering ("Mine") ----------
+// Press the ⋮⋮ handle and drag: the row follows the finger, the others slide aside, the list scrolls
+// near its edges, and letting go saves the new order.
+let reorder = null;
+$('#list').addEventListener('pointerdown', (e) => {
+  const handle = e.target.closest('.drag-handle');
+  if (!handle) return;
+  e.preventDefault();
+  const rows = [...$('#list').querySelectorAll('.rrow')];
+  const row = handle.closest('.rrow');
+  const rects = rows.map((x) => x.getBoundingClientRect());
+  const from = rows.indexOf(row);
+  reorder = { rows, rects, row, from, to: from, y0: e.clientY, scroll0: bodyEl.scrollTop, h: rects[from].height };
+  handle.setPointerCapture(e.pointerId);
+  row.classList.add('dragging');
+  document.body.classList.add('reordering');
+});
+function reorderMove(clientY) {
+  const o = reorder;
+  const dy = clientY - o.y0 + (bodyEl.scrollTop - o.scroll0);
+  o.row.style.transform = `translateY(${dy}px)`;
+  const mid = o.rects[o.from].top + o.h / 2 + dy;
+  let to = o.from;
+  o.rects.forEach((r, i) => {
+    if (i < o.from && mid < r.top + r.height / 2) to = Math.min(to, i);
+    if (i > o.from && mid > r.top + r.height / 2) to = Math.max(to, i);
+  });
+  o.to = to;
+  o.rows.forEach((x, i) => {
+    if (x === o.row) return;
+    const shift = i > o.from && i <= to ? -o.h : i < o.from && i >= to ? o.h : 0;
+    x.style.transform = shift ? `translateY(${shift}px)` : '';
+  });
+}
+$('#list').addEventListener('pointermove', (e) => {
+  if (!reorder) return;
+  reorder.lastY = e.clientY;
+  reorderMove(e.clientY);
+  // Near the panel's top or bottom edge: scroll so the drag can go further.
+  const b = bodyEl.getBoundingClientRect();
+  const edge = e.clientY < b.top + 50 ? -1 : e.clientY > Math.min(b.bottom, innerHeight) - 50 ? 1 : 0;
+  clearInterval(reorder.timer);
+  if (edge) reorder.timer = setInterval(() => { bodyEl.scrollTop += edge * 8; reorderMove(reorder.lastY); }, 16);
+});
+const endReorder = () => {
+  const o = reorder;
+  if (!o) return;
+  reorder = null;
+  clearInterval(o.timer);
+  document.body.classList.remove('reordering');
+  const ids = o.rows.map((x) => x.dataset.open);
+  const [moved] = ids.splice(o.from, 1);
+  ids.splice(o.to, 0, moved);
+  // Keep any resorts the list didn't show (filters) in their places after the visible ones.
+  state.order = [...ids, ...state.order.filter((id) => !ids.includes(id))];
+  write(STORE.order, state.order);
+  renderList();
+};
+$('#list').addEventListener('pointerup', endReorder);
+$('#list').addEventListener('pointercancel', endReorder);
 
 // ---------- actions ----------
 
@@ -1617,6 +1703,14 @@ document.addEventListener('click', (e) => {
     write(STORE.metric, state.metric);
     return render();
   }
+  if (t.closest('.drag-handle')) return; // (a drag, not a tap on the row)
+  if (t.closest('[data-reset-order]')) {
+    state.order = [];
+    write(STORE.order, state.order);
+    state.sort = 'name';
+    write(STORE.sort, state.sort);
+    return renderList();
+  }
   const row = t.closest('[data-open]');
   if (row) return select(row.dataset.open);
   if (t.closest('[data-back]')) return select(null);
@@ -1630,6 +1724,11 @@ document.addEventListener('click', (e) => {
   }
   const sortBtn = t.closest('[data-sort]');
   if (sortBtn) {
+    // "Mine" starts from whatever order is showing, the first time.
+    if (sortBtn.dataset.sort === 'mine' && !state.order.length) {
+      state.order = ordered(true).map(({ r }) => r.id);
+      write(STORE.order, state.order);
+    }
     state.sort = sortBtn.dataset.sort;
     write(STORE.sort, state.sort);
     return renderList();
