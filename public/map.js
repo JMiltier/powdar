@@ -92,7 +92,7 @@ function segRect(seg, box) {
 // getPadding() → { top, right, bottom, left }: pixels covered by the app's bars and panels.
 // extend: an extra [lat, lon] to frame in (Colorado adds open plains east of the Front Range so its
 // labels have room to spread instead of piling onto I-70).
-export function createSnowMap(el, { resorts, onSelect, getPadding, extend, outline }) {
+export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
   const bounds = L.latLngBounds(resorts.map((r) => r.at));
   if (extend) bounds.extend(extend);
   // A state with a single resort still needs some area around it.
@@ -109,14 +109,6 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, outli
     tile.dataset.retried = '1';
     setTimeout(() => { tile.src = `${tile.src.split('?')[0]}?retry=1`; }, 1500);
   });
-  // The state stands out: everything outside its border is dimmed, and the border is a fine line.
-  // [[lat, lon], …]
-  if (outline) {
-    map.createPane('mask').style.zIndex = 260; // over the snow cover, under the resorts
-    const world = [[85, -180], [85, 180], [-85, 180], [-85, -180]];
-    L.polygon([world, outline], { pane: 'mask', className: 'outside', interactive: false, stroke: false }).addTo(map);
-    L.polyline(outline, { pane: 'mask', className: 'state-line', interactive: false }).addTo(map);
-  }
 
   // Snow cover gets its own pane so the color-muting filter on the base map doesn't wash it out.
   map.createPane('snow').style.zIndex = 250;
