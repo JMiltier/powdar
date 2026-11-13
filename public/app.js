@@ -865,26 +865,35 @@ function dayScore(r, which) {
   if (base) reasons.push(`${inches(base)} base`);
   return { r, score, reasons };
 }
-function bestBets(which) {
+function bestBets(which, favsOnly = false) {
   const d = state.data;
   const tomorrow = addDaysIso(d.today, 1);
   return d.resorts
+    .filter((r) => !favsOnly || state.favs.has(r.id))
     // Open that day: open now, or opening tomorrow for tomorrow's pick.
     .filter((r) => r.status.state === 'open' || (which === 1 && r.status.state === 'soon' && r.status.date === tomorrow))
     .map((r) => dayScore(r, which)).filter(Boolean).sort((a, b) => b.score - a.score);
 }
 const addDaysIso = (iso, n) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
-function bestBetCard(which) {
-  const bets = bestBets(which);
+function bestBetCard(which, favsOnly = false) {
+  const bets = bestBets(which, favsOnly);
   if (!bets.length) return '';
   const [top, next] = bets;
+  const when = which === 0 ? 'today' : 'tomorrow';
   return `
-    <button type="button" class="best-bet" data-open="${esc(top.r.id)}">
-      <small>${which === 0 ? 'Best bet today' : 'Best bet tomorrow'}</small>
+    <button type="button" class="best-bet${favsOnly ? ' best-fav' : ''}" data-open="${esc(top.r.id)}">
+      <small>${favsOnly ? `★ Yours ${when}` : `Best bet ${when}`}</small>
       <b>${esc(top.r.name)}</b>
       <span>${esc(top.reasons.slice(0, 4).join(' · '))}</span>
       ${next ? `<em>Next best: ${esc(next.r.name)}</em>` : ''}
     </button>`;
+}
+
+// The same picks among the resorts you've starred (the ones you can and would ski). Shown once
+// two or more of them are open; with one there's nothing to choose.
+function favBets() {
+  if (bestBets(0, true).length < 2 && bestBets(1, true).length < 2) return '';
+  return `<div class="best-bets">${bestBetCard(0, true) || '<span></span>'}${bestBetCard(1, true)}</div>`;
 }
 
 // ---------- Today in Colorado ----------
@@ -944,6 +953,7 @@ function todaySection() {
   return `
     <h3 class="section">Today in Colorado</h3>
     <div class="best-bets">${bestBetCard(0)}${bestBetCard(1)}</div>
+    ${favBets()}
     <p class="best-note">Picked from fresh snow, open terrain, sun, wind, temperature and base, among resorts open that day.</p>
     ${alertsBlock(ins?.alerts)}
     <ul class="highlights">${items.map((t) => `<li>${t}</li>`).join('')}</ul>
@@ -960,7 +970,9 @@ function todaySection() {
 function headlineInsight() {
   const best = bestBets(0)[0];
   const a = state.data.insights?.alerts?.[0];
-  const pick = best ? `<span class="best-star">★</span>Best today: <b>${esc(best.r.name)}</b>${best.reasons[0] ? ` · ${esc(best.reasons[0])}` : ''}` : '';
+  const mine = bestBets(0, true);
+  const fav = mine.length >= 2 && mine[0].r.id !== best?.r.id ? mine[0] : null;
+  const pick = best ? `<span class="best-star">★</span>Best today: <b>${esc(best.r.name)}</b>${best.reasons[0] ? ` · ${esc(best.reasons[0])}` : ''}${fav ? ` · of yours: <b>${esc(fav.r.name)}</b>` : ''}` : '';
   const alert = a ? `<span class="dot-alert"></span>${esc(a.event)}: ${esc(a.areas.split(';')[0].trim())}` : '';
   return [pick, alert].filter(Boolean).join('</span><span class="row-sub overview-line">');
 }

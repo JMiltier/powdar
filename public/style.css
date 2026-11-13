@@ -924,6 +924,8 @@ body.reordering, body.reordering * { user-select: none; cursor: grabbing; }
 .best-bet small { font-size: 0.68rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #a87400; }
 :root[data-theme="dark"] .best-bet small { color: #f2c14e; }
 .best-bet b { font-size: 1.05rem; }
+.best-bets + .best-bets { margin-top: 8px; }
+.best-fav { border-color: var(--line); background: var(--card); }
 .best-bet span { font-size: 0.78rem; color: var(--muted); line-height: 1.35; }
 .best-bet em { font-style: normal; font-size: 0.72rem; color: var(--muted); margin-top: 3px; }
 .best-note { margin: 2px 2px 8px; font-size: 0.7rem; color: var(--muted); }
