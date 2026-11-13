@@ -120,6 +120,7 @@ test('statusFor wording', () => {
   assert.equal(statusFor({ live: true, isOpen: false, open: '2026-11-13' }, today).label, 'Opens Fri, Nov 13');
   assert.equal(statusFor({ live: false, open: '2026-11-13' }, today).detail, 'Planned date');
   assert.equal(statusFor({ live: true, isOpen: false, open: '2026-11-06' }, today).state, 'late');
+  assert.equal(statusFor({ live: true, isOpen: false, open: '2026-11-12' }, today).label, 'Opens today');
   const likely = statusFor({ live: false, open: '2026-10-31', when: 'late October' }, today);
   assert.equal(likely.state, 'likely');
   assert.equal(likely.label, 'Probably open');

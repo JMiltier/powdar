@@ -125,7 +125,13 @@ function level(value, steps) {
 function seasonText(r, today) {
   const { open, close, when, planned } = r.dates ?? {};
   if (open && close) return `Season ${monthDay(open)} – ${monthDay(close)}`;
-  if (open) return `${open > today ? 'Opens' : 'Opened'} ${when ?? monthDay(open)}`;
+  if (open) {
+    // The pill already says when it opens; once past the date, say what happened.
+    if (r.status.state === 'soon') return '';
+    if (r.status.state === 'late') return `Was set for ${when ?? monthDay(open)}`;
+    if (r.status.state === 'likely') return `Set to open ${when ?? monthDay(open)}`;
+    return `Opened ${when ?? monthDay(open)}`;
+  }
   if (close) return `Closes ${monthDay(close)}`;
   return '';
 }
@@ -140,7 +146,7 @@ function valueFor(r, metricKey = state.metric) {
     // Short on the map; the list and details say how much is open.
     if (s === 'open') return { text: 'Open', sub: r.status.pct != null ? `${r.status.pct}% of runs` : '', level: 'open', sort: 1e5 + (r.status.pct ?? 0) };
     if (s === 'likely') return { text: 'Open?', level: 'likely', sort: 9e4 };
-    if (s === 'soon') return { text: r.dates?.when ?? monthDay(date), level: 'soon', sort: 8e4 - daysOut };
+    if (s === 'soon') return { text: daysOut <= 0 ? 'Today' : r.dates?.when ?? monthDay(date), level: 'soon', sort: 8e4 - daysOut };
     if (s === 'late') return { text: 'Late', level: 'late', sort: 7e4 };
     return { text: s === 'done' ? 'Closed' : 'TBA', level: 'tba', sort: 0 };
   }
@@ -333,7 +339,6 @@ function renderDetail(r) {
       <button type="button" class="icon star" data-fav="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Unpin' : 'Pin'} ${esc(r.name)}">${fav ? '★' : '☆'}</button>
     </div>`;
   const top = `
-    ${r.status.detail && r.status.state !== 'open' ? `<p class="muted small">${esc(r.status.detail)}</p>` : ''}
     <div class="stats">
       ${stat(inches(new24), new24Label)}
       ${stat(inches(f?.next72), 'next 3 days', rangeText(f?.next72Range))}

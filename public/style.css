@@ -49,11 +49,14 @@ button { font: inherit; color: inherit; }
 /* ---------- Map: the whole screen ---------- */
 #map { position: fixed; inset: 0; background: var(--bg); touch-action: manipulation; }
 .leaflet-container { font: inherit; background: var(--bg); }
-/* Soften the relief so the resort labels stand out. */
-.leaflet-tile-pane { filter: contrast(0.75) brightness(1.1); }
-:root[data-theme="dark"] .leaflet-tile-pane { filter: contrast(0.9) brightness(0.85); }
-/* Colorado's border, faintly. */
-.state-line { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 4; opacity: 0.55; }
+/* The relief, softened and tinted by the app's own background showing through. */
+.leaflet-tile-pane { opacity: 0.75; filter: contrast(0.85); }
+:root[data-theme="dark"] .leaflet-tile-pane { opacity: 0.6; filter: none; }
+/* NOAA's snow cover comes as coarse squares: a slight blur turns them into soft cover. */
+.leaflet-snow-pane { filter: blur(1.5px); }
+/* Outside Colorado: dimmed toward the background, so the state stands out. */
+.outside { fill: var(--bg); fill-opacity: 0.6; }
+.state-line { fill: none; stroke: var(--text); stroke-width: 1; opacity: 0.25; }
 
 /* ---------- Floating controls along the top ---------- */
 .top {
