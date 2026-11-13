@@ -544,7 +544,7 @@ function miniDays(r) {
   const max = Math.max(4, ...all);
   const bar = (d, kind) => {
     const v = d.snow ?? 0;
-    const h = v > 0.2 ? Math.max(4, Math.round((v / max) * 20)) : 3;
+    const h = v > 0.2 ? Math.max(4, Math.round((v / max) * 16)) : 3;
     const letter = new Date(`${d.date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'narrow', timeZone: 'UTC' });
     return `<span class="rd ${kind}${v > 0.2 ? ' snow' : ''}"><em>${v >= 1 ? `${Math.round(v)}″` : ''}</em><i style="height:${h}px"></i><small>${esc(letter)}</small></span>`;
   };
@@ -590,8 +590,7 @@ function renderList() {
       return `
     <button type="button" class="row rrow rrow-closed" data-open="${esc(r.id)}">
       ${head}
-      <span class="rr-sub">${esc(sub)}</span>
-      ${miniDays(r)}
+      <span class="rr-main"><span class="rr-sub">${esc(sub)}</span>${miniDays(r)}</span>
     </button>`;
     }
     const lifts = r.report?.lifts?.total ? r.report.lifts : r.lifts?.total ? r.lifts : null;
@@ -604,12 +603,14 @@ function renderList() {
     <button type="button" class="row rrow" data-open="${esc(r.id)}">
       ${head}
       <span class="rr-sub">${esc(sub)}</span>
-      <span class="rr-stats">
-        <span class="rs${state.metric === lead ? ' on' : ''}"><b>${esc(v.text)}</b><small>${label}</small></span>
-        <span class="rs${state.metric === 'base' ? ' on' : ''}"><b>${esc(base.text)}</b><small>Base</small></span>
-        <span class="rs"><b>${lifts ? `${lifts.open}/${lifts.total}` : '–'}</b><small>Open lifts</small></span>
+      <span class="rr-main">
+        <span class="rr-stats">
+          <span class="rs${state.metric === lead ? ' on' : ''}"><b>${esc(v.text)}</b><small>${label}</small></span>
+          <span class="rs${state.metric === 'base' ? ' on' : ''}"><b>${esc(base.text)}</b><small>Base</small></span>
+          <span class="rs"><b>${lifts ? `${lifts.open}/${lifts.total}` : '–'}</b><small>Lifts</small></span>
+        </span>
+        ${miniDays(r)}
       </span>
-      ${miniDays(r)}
     </button>`;
   }).join('');
   $('#list').innerHTML = overviewCard() + sortBar + (rows || `<p class="empty">${state.openOnly && !state.favsOnly && state.pass === 'all' ? 'Nothing open yet.' : 'No resorts match these filters.'} <button type="button" class="link" data-clear-filters>Show all</button></p>`);
