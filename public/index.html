@@ -20,21 +20,23 @@
   <div id="map" aria-label="Snow map"></div>
 
   <div class="top">
-    <div class="metrics" role="group" aria-label="Show on map">
-      <button type="button" data-metric="new24" aria-pressed="true">24 hr</button>
-      <button type="button" data-metric="next72" aria-pressed="false">3 days</button>
-      <button type="button" data-metric="next7" aria-pressed="false">7 days</button>
-      <button type="button" data-metric="season" aria-pressed="false">Season</button>
-      <button type="button" data-metric="dates" aria-pressed="false">Dates</button>
+    <!-- One line: what the map shows, plus the snow-cover switch. -->
+    <div class="ribbon" role="group" aria-label="Show on map">
+      <button type="button" data-metric="new24" aria-pressed="true" title="New snow, last 24 hours">24hr</button>
+      <button type="button" data-metric="next72" aria-pressed="false" title="Snow forecast, next 3 days">3d</button>
+      <button type="button" data-metric="next7" aria-pressed="false" title="Snow forecast, next 7 days">7d</button>
+      <button type="button" data-metric="season" aria-pressed="false" title="Snowpack vs normal">Season</button>
+      <button type="button" data-metric="dates" aria-pressed="false" title="Opening and closing days">Dates</button>
+      <span class="ribbon-sep" aria-hidden="true"></span>
+      <button id="snow-btn" type="button" class="snow-toggle" aria-pressed="true" title="Snow on the ground" aria-label="Snow on the ground">❄</button>
     </div>
-    <div class="tools">
-      <button id="snow-btn" class="tool" type="button" aria-pressed="true">❄ Snow cover</button>
-      <button id="home-btn" class="tool" type="button" title="Set this as my default map view">⌂ Set default</button>
-      <button id="info-btn" class="tool tool-round" type="button" aria-label="Map credits" aria-expanded="false">i</button>
-    </div>
-    <p id="credits" class="credits" hidden></p>
     <p id="toast" class="toast" hidden></p>
   </div>
+
+  <button id="panel-open" class="panel-open" type="button" hidden aria-label="Show resort list">☰ Resorts</button>
+
+  <button id="info-btn" class="info-btn" type="button" aria-label="Map credits" aria-expanded="false">i</button>
+  <p id="credits" class="credits" hidden></p>
 
   <div id="legend" class="legend">
     <span class="legend-title">Snow on the ground</span>
@@ -49,7 +51,10 @@
           <h1>Powdar</h1>
           <button id="updated" class="updated" type="button" title="Refresh">Loading…</button>
         </div>
-        <label class="chip"><input id="open-only" type="checkbox"> Open now</label>
+        <div class="head-actions">
+          <label class="chip"><input id="open-only" type="checkbox"> Open now</label>
+          <button id="panel-close" class="panel-close" type="button" aria-label="Hide resort list" title="Hide list">‹</button>
+        </div>
       </div>
       <p id="headline" class="headline"></p>
     </div>
