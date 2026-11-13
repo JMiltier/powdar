@@ -8,11 +8,25 @@ const STATE_CODES = new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN
 const validCode = (c) => (c && STATE_CODES.has(String(c).toUpperCase()) ? String(c).toUpperCase() : null);
 const STORE = {
   data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', openOnly: 'cs:openOnly', panel: 'cs:panel',
-  state: 'cs:state', states: 'cs:states',
+  state: 'cs:state', states: 'cs:states', theme: 'cs:theme',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
 const STALE_AFTER_MS = 3 * 3_600_000;
 const WIDE = window.matchMedia('(min-width: 900px)');
+const DARK = window.matchMedia('(prefers-color-scheme: dark)');
+
+// Light, dark, or "auto" (follow the phone). index.html applies the saved choice before first paint.
+function applyTheme(pick) {
+  let choice = pick ?? 'auto';
+  try {
+    if (pick) localStorage.setItem(STORE.theme, pick);
+    else choice = localStorage.getItem(STORE.theme) ?? 'auto';
+  } catch { /* storage blocked: this visit only */ }
+  const dark = choice === 'dark' || (choice === 'auto' && DARK.matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.querySelector('meta[name=theme-color]').content = dark ? '#161e29' : '#ffffff';
+  for (const b of document.querySelectorAll('[data-theme-pick]')) b.setAttribute('aria-pressed', String(b.dataset.themePick === choice));
+}
 
 const SURFACE = {
   P: 'Powder', PDR: 'Powder', PP: 'Packed powder', 'P/PP': 'Powder & packed powder', MG: 'Machine groomed',
@@ -107,8 +121,8 @@ function level(value, steps) {
 function seasonText(r, today) {
   const { open, close, when, planned } = r.dates ?? {};
   if (open && close) return `Season ${monthDay(open)} – ${monthDay(close)}`;
-  if (open) return `${open > today ? 'Opens' : 'Opened'} ${when ?? monthDay(open)}${planned ? ' (announced)' : ''} · closing day TBA`;
-  if (close) return `Opening day TBA · closes ${monthDay(close)}`;
+  if (open) return `${open > today ? 'Opens' : 'Opened'} ${when ?? monthDay(open)}`;
+  if (close) return `Closes ${monthDay(close)}`;
   return '';
 }
 
@@ -265,12 +279,10 @@ function renderDetail(r) {
         <span class="day-temp">${d.hi ?? '–'}°<i>${d.lo ?? '–'}°</i></span>
       </div>`).join('')}
     </div>
-    ${f.week2 ? `<p class="week2"><b>Days 8–14:</b> about ${inches(f.week2.mid)} more${rangeText(f.week2.range) ? ` (${rangeText(f.week2.range)})` : ''} <span class="muted">· further out, less certain</span></p>` : ''}` : '<p class="muted">Forecast unavailable right now.</p>';
+    ${f.week2 ? `<p class="week2"><b>Days 8–14:</b> about ${inches(f.week2.mid)} more${rangeText(f.week2.range) ? ` (${rangeText(f.week2.range)})` : ''}</p>` : ''}` : '<p class="muted">Forecast unavailable right now.</p>';
 
-  // Plain-words weather for the next three days.
-  const weather = f?.days.filter((d) => d.sky || d.night).slice(0, 3).map((d) => `
-    <li><span class="w-day">${weekday(d.date, today)}</span>
-      <span class="w-text">${skyIcon(d.sky ?? d.night)} ${esc(d.sky ?? `Tonight: ${d.night}`)}${d.pop >= 20 ? ` · ${d.pop}% chance` : ''}${d.wind ? ` · wind ${esc(d.wind.replace(' to ', '–'))}` : ''}</span></li>`).join('') ?? '';
+  // Where every number comes from, gathered at the very bottom for anyone curious.
+  const notes = [];
 
   // How much of the mountain is open, as simple bars.
   const meter = (label, open, total) => (total ? `
@@ -284,7 +296,7 @@ function renderDetail(r) {
       ${rep.depth != null ? `<li><span>Base depth</span><b>${rep.depth}″</b></li>` : ''}
       <li><span>Reported new snow</span><b>${inches(rep.new24)} 24 hr · ${inches(rep.new48)} 48 hr</b></li>
       ${rep.surface ? `<li><span>Surface</span><b>${esc(SURFACE[rep.surface] ?? rep.surface)}</b></li>` : ''}
-      ${rep.updated ? `<li class="muted"><span>Resort report</span><b>${esc(timeAgo(rep.updated))}</b></li>` : ''}
+
     </ul>
     ${rep.message ? `<p class="message">“${esc(rep.message.length > 260 ? `${rep.message.slice(0, 257).trimEnd()}…` : rep.message)}”</p>` : ''}` : '';
   // Live lift-by-lift status (when the resort publishes it): open, on hold and scheduled first.
@@ -300,13 +312,14 @@ function renderDetail(r) {
     ${activeLifts.length ? `<ul class="lifts">${activeLifts.map(liftRow).join('')}</ul>` : ''}
     ${closedLifts.length ? `<details class="more-lifts"><summary>${activeLifts.length ? `${closedLifts.length} closed` : `All ${closedLifts.length} lifts closed`}</summary>
       <ul class="lifts">${closedLifts.map(liftRow).join('')}</ul></details>` : ''}
-    <p class="source">Live from ${sourceLink(L.page, `${r.name}’s lift status`)}, checked ${esc(clock(L.checked))}${recent(L.updated) ? `; the resort last changed it ${esc(timeAgo(L.updated))}` : ''}.</p>` : '';
+    <p class="source">Checked ${esc(clock(L.checked))}${recent(L.updated) ? ` · changed ${esc(timeAgo(L.updated))}` : ''}</p>` : '';
+  if (L) notes.push(`Lifts: live from ${sourceLink(L.page, `${r.name}’s lift status`)}.`);
 
   const new24 = rep?.new24 ?? f?.past24;
   const new24Label = rep?.new24 != null ? 'last 24 hrs' : f?.past24 != null ? 'last 24 hrs (est.)' : 'last 24 hrs';
 
   const sources = f?.sources?.map((s) => SOURCE_NAMES[s] ?? s) ?? [];
-  $('#detail').innerHTML = `
+  const top = `
     <div class="detail-head">
       <button type="button" class="icon" data-back aria-label="Back to all resorts">‹</button>
       <div class="detail-title">
@@ -322,15 +335,19 @@ function renderDetail(r) {
       ${stat(inches(f?.next7), 'next 7 days', rangeText(f?.next7Range))}
     </div>
     ${bars}
-    ${f ? `<p class="source">Snow forecast: the middle of ${sources.length > 1 ? `${sources.length} forecasts (${esc(sources.join(', '))})` : 'the National Weather Service forecast'}${sources.length > 1 ? `, via ${sourceLink('https://www.weather.gov', 'NWS')} and ${sourceLink('https://open-meteo.com', 'Open-Meteo')}` : ''}. Small numbers are the likely range.${state.data.sources.modelsReused ? ` Model forecast from ${esc(timeAgo(state.data.sources.modelsAt))}.` : ''}</p>` : ''}
-    ${weather ? `<h3 class="section">Weather</h3><ul class="weather">${weather}</ul>
-      <p class="source">Source: ${sourceLink(`https://forecast.weather.gov/MapClick.php?lat=${r.at[0]}&lon=${r.at[1]}`, 'National Weather Service forecast')}.</p>` : ''}
+  `;
+  if (f) notes.push(`Snow forecast: the middle of ${sources.length > 1 ? `${sources.length} forecasts (${esc(sources.join(', '))})` : 'the National Weather Service forecast'}${sources.length > 1 ? `, via ${sourceLink('https://www.weather.gov', 'NWS')} and ${sourceLink('https://open-meteo.com', 'Open-Meteo')}` : ''}. Small numbers are the likely range.${state.data.sources.modelsReused ? ` Model forecast from ${esc(timeAgo(state.data.sources.modelsAt))}.` : ''}`);
+  if (f) notes.push(`Weather: ${sourceLink(`https://forecast.weather.gov/MapClick.php?lat=${r.at[0]}&lon=${r.at[1]}`, 'National Weather Service forecast')}.`);
+  const season = seasonSection(r, notes);
+  if (report) notes.push(`Snow report: ${sourceLink('https://www.coloradoski.com/snow-report/', 'Colorado Ski Country USA')}${rep.updated ? `, updated ${esc(timeAgo(rep.updated))}` : ''}.`);
+  if (r.dates?.planned && r.dates.open) notes.push('Opening date as announced by the resort.');
+
+  $('#detail').innerHTML = `${top}
     ${liftSection}
-    ${seasonSection(r)}
     ${report}
-    ${report ? `<p class="source">Source: ${sourceLink('https://www.coloradoski.com/snow-report/', 'Colorado Ski Country USA')} snow report.</p>` : ''}
-    ${r.dates?.planned && r.dates.open ? `<p class="source">Opening date as announced by the resort; no live status available.</p>` : ''}
-    <a class="site" href="${esc(r.url)}" target="_blank" rel="noopener">Official ${esc(r.name)} site ↗</a>`;
+    ${season}
+    <a class="site" href="${esc(r.url)}" target="_blank" rel="noopener">Official ${esc(r.name)} site ↗</a>
+    ${notes.length ? `<h3 class="section">About the data</h3><ul class="notes">${notes.map((n) => `<li>${n}</li>`).join('')}</ul>` : ''}`;
 }
 
 // ---------- season chart ----------
@@ -449,7 +466,7 @@ function pastSeasons() {
 const SNOTEL_SITE = (triplet) => `https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=${triplet.split(':')[0]}`;
 const sourceLink = (href, text) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(text)}</a>`;
 
-function seasonSection(r) {
+function seasonSection(r, notes) {
   const st = station(r);
   if (!st && !r.avgSnow) return '';
   const pick = state.pastSeason;
@@ -479,6 +496,21 @@ function seasonSection(r) {
       ? `<span class="pct lvl-${seasonLevel(st.pct)}">${st.pct}%</span> of normal snowpack for this date`
       : 'Too early in the season to compare with normal';
   }
+  if (st) {
+    notes.push(`Snowpack: snow water at the ${sourceLink(SNOTEL_SITE(r.station), `${st.name} SNOTEL station`)} (USDA NRCS Snow Survey). Normal is the 1991–2020 median${bands ? `; color bands show how the ${bands.years} winters from ${esc(bands.first)} to ${esc(bands.last)} ranged` : ''}.`);
+  }
+  const fact = (label, value) => `<li><span>${label}</span><b>${value}</b></li>`;
+  const facts = [];
+  if (r.noaa?.depth != null) {
+    facts.push(fact('Snow on the ground', `about ${Math.round(r.noaa.depth)}″`));
+    notes.push(`Snow on the ground: ${sourceLink('https://www.nohrsc.noaa.gov/nsa/', 'NOAA NOHRSC')} SNODAS snow model, updated daily${r.noaa.water != null ? ` (${r.noaa.water}″ of water here)` : ''}.`);
+  } else if (st?.latest.depth != null && !past) {
+    facts.push(fact('Snow on the ground', `${st.latest.depth}″ at the station`));
+  }
+  if (r.avgSnow) {
+    facts.push(fact('Typical season', `about ${r.avgSnow}″ of snow`));
+    notes.push(`Typical season: ${sourceLink('https://www.zrankings.com/articles/best-snow-in-colorado', 'ZRankings')} (patrol and avalanche-center records).`);
+  }
   const options = ['<option value="">This season</option>', ...pastSeasons().map((v) => `<option value="${v}"${v === pick ? ' selected' : ''}>${v}</option>`)].join('');
   return `
     <div class="season-title">
@@ -491,12 +523,8 @@ function seasonSection(r) {
         ? `<i class="k-now"></i>${esc(pick)} <i class="k-faint"></i>This season`
         : '<i class="k-now"></i>This season <i class="k-proj"></i>Next 2 weeks'}${bands ? ' <i class="k-median"></i>Normal' : ' <i class="k-normal"></i>Normal'}</p>
       ${bands ? `<p class="band-key"><span class="b-high">Snowiest 10%</span><span class="b-above">Above</span><span class="b-normal">Typical</span><span class="b-below">Below</span><span class="b-low">Driest 10%</span></p>` : ''}
-      <p class="source">Snow water at the ${sourceLink(SNOTEL_SITE(r.station), `${st.name} SNOTEL station`)}${st.latest.depth != null && !past ? ` (${st.latest.depth}″ of snow on the ground)` : ''}.
-        Normal is the 1991–2020 median${bands ? `; color bands show how the ${bands.years} winters from ${esc(bands.first)} to ${esc(bands.last)} ranged` : ''}. Source: USDA NRCS Snow Survey.</p>` : ''}
-    ${r.noaa?.depth != null ? `<p class="avg">NOAA's snow model shows about <b>${Math.round(r.noaa.depth)}″</b> of snow on the ground here${r.noaa.water != null ? ` (${r.noaa.water}″ of water)` : ''}.
-      <span class="source">Source: ${sourceLink('https://www.nohrsc.noaa.gov/nsa/', 'NOAA NOHRSC')} SNODAS snow model, updated daily.</span></p>` : ''}
-    ${r.avgSnow ? `<p class="avg">A typical season brings about <b>${r.avgSnow}″</b> of snow here.
-      <span class="source">Source: ${sourceLink('https://www.zrankings.com/articles/best-snow-in-colorado', 'ZRankings')} (patrol and avalanche-center records).</span></p>` : ''}`;
+` : ''}
+    ${facts.length ? `<ul class="report">${facts.join('')}</ul>` : ''}`;
 }
 
 function renderMap() {
@@ -531,6 +559,7 @@ function render() {
   const r = state.data.resorts.find((x) => x.id === state.selected);
   $('#list').hidden = Boolean(r);
   $('#detail').hidden = !r;
+  $('.foot').hidden = Boolean(r); // a resort's own sources sit at the bottom of its details
   if (r) renderDetail(r);
   else renderList();
   renderHeadline();
@@ -793,6 +822,7 @@ document.addEventListener('click', (e) => {
     $('#info-btn').setAttribute('aria-expanded', String(!c.hidden));
     return;
   }
+  if (t.closest('[data-theme-pick]')) return applyTheme(t.closest('[data-theme-pick]').dataset.themePick);
   if (t.closest('#updated')) return load();
 });
 
@@ -814,7 +844,12 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && Date.now() - state.loadedAt > RELOAD_AFTER_MS) load();
 });
+let lastSize = [innerWidth, innerHeight];
 const onResize = () => {
+  // A phone's address bar sliding in and out only nudges the height: the map below stays as it is.
+  const [w, h] = lastSize;
+  if (innerWidth === w && Math.abs(innerHeight - h) < 120 && !WIDE.matches) return;
+  lastSize = [innerWidth, innerHeight];
   setSheet(state.sheet, false);
   document.body.classList.toggle('panel-hidden', WIDE.matches && !state.panelOpen);
   $('#panel-open').hidden = !WIDE.matches || state.panelOpen;
@@ -828,7 +863,9 @@ window.addEventListener('resize', () => {
 });
 WIDE.addEventListener('change', onResize);
 
-$('#credits').innerHTML = CREDITS;
+$('#credit-text').innerHTML = CREDITS;
+applyTheme();
+DARK.addEventListener('change', () => applyTheme());
 setSheet('peek', false);
 document.body.classList.toggle('panel-hidden', WIDE.matches && !state.panelOpen);
 $('#panel-open').hidden = !WIDE.matches || state.panelOpen;
