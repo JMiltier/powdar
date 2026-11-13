@@ -128,10 +128,32 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
     dot.className = 'pin-dot';
     dot.tabIndex = -1;
     dot.setAttribute('aria-hidden', 'true');
+    // Select on the touch itself (a quick tap that barely moves), not the browser's later click event:
+    // phones sometimes drop or delay that click (after a drag, or when it looks like a double-tap).
+    // The click still works for mouse and keyboard; a tap already handled skips it.
     for (const node of [root, dot]) {
+      let down = null;
+      let handledAt = 0;
+      node.addEventListener('pointerdown', (e) => {
+        if (!e.target.closest('button')) return;
+        down = { x: e.clientX, y: e.clientY, t: performance.now() };
+        L.DomEvent.stopPropagation(e);
+      });
+      node.addEventListener('pointerup', (e) => {
+        if (!down) return;
+        const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+        const quick = performance.now() - down.t < 800;
+        down = null;
+        if (moved > 12 || !quick) return;
+        handledAt = performance.now();
+        L.DomEvent.stopPropagation(e);
+        onSelect(r.id);
+      });
+      node.addEventListener('pointercancel', () => { down = null; });
       node.addEventListener('click', (e) => {
         if (!e.target.closest('button')) return;
         L.DomEvent.stopPropagation(e);
+        if (performance.now() - handledAt < 700) return;
         onSelect(r.id);
       });
     }

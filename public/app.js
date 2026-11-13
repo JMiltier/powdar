@@ -599,6 +599,8 @@ grabEl.addEventListener('pointerup', (e) => {
   if (!drag) return;
   const d = drag;
   drag = null;
+  // Let go of the finger explicitly so the next tap goes wherever it lands.
+  if (grabEl.hasPointerCapture?.(e.pointerId)) grabEl.releasePointerCapture(e.pointerId);
   if (!d.moved) return setSheet(state.sheet === 'peek' ? 'half' : 'peek');
   const { h, visible } = sheetSizes();
   const velocity = (e.clientY - d.y) / (performance.now() - d.t); // px per ms, + is down
@@ -609,7 +611,8 @@ grabEl.addEventListener('pointerup', (e) => {
   if (velocity > 0.5) i = Math.max(0, names.indexOf(state.sheet) - 1);
   setSheet(names[i]);
 });
-grabEl.addEventListener('pointercancel', () => {
+grabEl.addEventListener('pointercancel', (e) => {
+  if (grabEl.hasPointerCapture?.(e.pointerId)) grabEl.releasePointerCapture(e.pointerId);
   drag = null;
   setSheet(state.sheet);
 });
@@ -714,7 +717,7 @@ function openPicker(open) {
   // First visit: the picker is the welcome, so it can't be dismissed without choosing.
   if (!open && state.firstVisit) return;
   $('#picker').hidden = !open;
-  $('#picker-title').textContent = state.firstVisit ? 'Where are you skiing?' : 'Choose a state';
+  $('#picker-title span').textContent = state.firstVisit ? 'Where are you skiing?' : 'Choose a state';
   $('#picker-close').hidden = state.firstVisit;
   $('#state-btn').setAttribute('aria-expanded', String(open));
   if (open) renderPicker();
