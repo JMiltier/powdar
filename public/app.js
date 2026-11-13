@@ -578,7 +578,6 @@ function renderList() {
   const rows = ordered().map(({ r }) => {
     const fav = state.favs.has(r.id);
     const open = r.status.state === 'open';
-    const sub = [r.region, PASS_NAMES[passOf(r)] !== 'Other' ? PASS_NAMES[passOf(r)] : null].filter(Boolean).join(' · ');
     const head = `
       <span class="rr-head">
         <span class="dot dot-${esc(r.status.state)}" aria-hidden="true"></span>
@@ -590,7 +589,7 @@ function renderList() {
       return `
     <button type="button" class="row rrow rrow-closed" data-open="${esc(r.id)}">
       ${head}
-      <span class="rr-main"><span class="rr-sub">${esc(sub)}</span>${miniDays(r)}</span>
+      <span class="rr-main">${miniDays(r)}</span>
     </button>`;
     }
     const lifts = r.report?.lifts?.total ? r.report.lifts : r.lifts?.total ? r.lifts : null;
@@ -602,7 +601,6 @@ function renderList() {
     return `
     <button type="button" class="row rrow" data-open="${esc(r.id)}">
       ${head}
-      <span class="rr-sub">${esc(sub)}</span>
       <span class="rr-main">
         <span class="rr-stats">
           <span class="rs${state.metric === lead ? ' on' : ''}"><b>${esc(v.text)}</b><small>${label}</small></span>
