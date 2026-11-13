@@ -388,9 +388,9 @@ function renderDetail(r) {
     <div class="detail-head">
       <button type="button" class="icon" data-back aria-label="Back to all resorts">‹</button>
       <div class="detail-title">
-        <h2>${esc(r.name)} <span class="pill pill-${esc(r.status.state)}">${esc(r.status.label)}</span></h2>
-        <p>${seasonText(r, today) ? `<span>${esc(seasonText(r, today))}</span>` : ''}
-          <a class="site-link" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(siteName(r.url))}${EXT_ICON}</a></p>
+        <h2><span>${esc(r.name)}<a class="site-link" href="${esc(r.url)}" target="_blank" rel="noopener" aria-label="${esc(r.name)} website (${esc(siteName(r.url))})" title="${esc(siteName(r.url))}">${EXT_ICON}</a></span>
+          <span class="pill pill-${esc(r.status.state)}">${esc(r.status.label)}</span></h2>
+        ${seasonText(r, today) ? `<p>${esc(seasonText(r, today))}</p>` : ''}
       </div>
       <button type="button" class="icon star" data-fav="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Unpin' : 'Pin'} ${esc(r.name)}">${fav ? '★' : '☆'}</button>
     </div>`;
