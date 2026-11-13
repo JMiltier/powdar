@@ -612,8 +612,7 @@ function renderList() {
       ${miniDays(r)}
     </button>`;
   }).join('');
-  const resetLink = state.sort === 'mine' && rows ? '<p class="order-note">Drag ⋮⋮ to move a resort. <button type="button" class="link" data-reset-order>Reset to A–Z</button></p>' : '';
-  $('#list').innerHTML = overviewCard() + sortBar + resetLink + (rows || `<p class="empty">${state.openOnly && !state.favsOnly && state.pass === 'all' ? 'Nothing open yet.' : 'No resorts match these filters.'} <button type="button" class="link" data-clear-filters>Show all</button></p>`);
+  $('#list').innerHTML = overviewCard() + sortBar + (rows || `<p class="empty">${state.openOnly && !state.favsOnly && state.pass === 'all' ? 'Nothing open yet.' : 'No resorts match these filters.'} <button type="button" class="link" data-clear-filters>Show all</button></p>`);
 }
 
 function renderDetail(r) {
