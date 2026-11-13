@@ -16,6 +16,28 @@ export const CREDITS = 'Hillshade © <a href="https://www.esri.com">Esri</a> and
   + 'snow cover: <a href="https://www.nohrsc.noaa.gov/nsa/">NOAA NOHRSC</a> · <a href="https://leafletjs.com">Leaflet</a>';
 // NOAA's daily national snow analysis (NOHRSC): modelled snow depth on the ground, cloud-free.
 const SNOW_DEPTH_WMS = 'https://mapservices.weather.noaa.gov/raster/services/snow/NOHRSC_Snow_Analysis/MapServer/WMSServer';
+// NOAA draws snow depth in purples and magentas, as coarse squares. We read each pixel's depth class
+// back from its color and repaint it as snow: icy white-blue where it's thin, deep blue where it's
+// deep, then let the browser smooth it. NOAA's colors, shallowest first (matched to depths with
+// NOAA's own point lookup), then its darker classes for very deep snow.
+const NOAA_CLASSES = [
+  [128, 165, 192], [95, 126, 181], [68, 72, 171], [70, 44, 167], [80, 20, 144], [135, 34, 164], [155, 51, 148], [189, 88, 154],
+  [180, 4, 177], [169, 19, 119], [153, 43, 80], [139, 69, 69],
+];
+// Our ramp, one entry per class: [r, g, b, alpha 0–255]. Also drawn as the key (see SNOW_KEY).
+export const SNOW_RAMP = [
+  [214, 236, 255, 120], [190, 224, 255, 145], [160, 205, 252, 165], [124, 180, 248, 180], [92, 152, 240, 195],
+  [64, 122, 228, 205], [46, 98, 212, 215], [34, 76, 190, 225], [26, 58, 160, 232], [26, 58, 160, 232], [26, 58, 160, 232], [26, 58, 160, 232],
+];
+const classOf = (r, g, b) => {
+  let best = 0;
+  let bestD = Infinity;
+  NOAA_CLASSES.forEach(([R, G, B], i) => {
+    const d = (r - R) ** 2 + (g - G) ** 2 + (b - B) ** 2;
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  return best;
+};
 const GAP = 2;
 const DOT_R = 4;
 // Margin around the resorts when fitting them (labels stick out sideways more than up and down).
@@ -92,7 +114,7 @@ function segRect(seg, box) {
 // getPadding() → { top, right, bottom, left }: pixels covered by the app's bars and panels.
 // extend: an extra [lat, lon] to frame in (Colorado adds open plains east of the Front Range so its
 // labels have room to spread instead of piling onto I-70).
-export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
+export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [] }) {
   const bounds = L.latLngBounds(resorts.map((r) => r.at));
   if (extend) bounds.extend(extend);
   // A state with a single resort still needs some area around it.
@@ -113,9 +135,107 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
   // Snow cover gets its own pane so the color-muting filter on the base map doesn't wash it out.
   map.createPane('snow').style.zIndex = 250;
   map.createPane('dots').style.zIndex = 590; // just under the labels (markerPane is 600)
-  const snowDepth = L.tileLayer.wms(SNOW_DEPTH_WMS, {
-    pane: 'snow', layers: '0', format: 'image/png', transparent: true, version: '1.3.0', opacity: 0.85,
+  // The snow cover: one picture of the visible map, repainted (see NOAA_CLASSES).
+  let snowOn = false;
+  let snowLayer = null;
+  let snowJob = 0;
+  async function drawSnow() {
+    const job = ++snowJob;
+    const size = map.getSize();
+    const b = map.getPixelBounds();
+    const sw = map.options.crs.project(map.unproject(L.point(b.min.x, b.max.y)));
+    const ne = map.options.crs.project(map.unproject(L.point(b.max.x, b.min.y)));
+    // Half resolution is about NOAA's own 1 km grid at this zoom; smoothing does the rest.
+    const w = Math.max(1, Math.round(size.x / 2));
+    const h = Math.max(1, Math.round(size.y / 2));
+    const q = new URLSearchParams({
+      service: 'WMS', request: 'GetMap', version: '1.3.0', layers: '0', styles: '', format: 'image/png', transparent: 'true',
+      crs: 'EPSG:3857', width: w, height: h, bbox: [sw.x, sw.y, ne.x, ne.y].join(','),
+    });
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = `${SNOW_DEPTH_WMS}?${q}`;
+    try { await img.decode(); } catch { return; }
+    if (job !== snowJob) return;
+    const small = document.createElement('canvas');
+    small.width = w;
+    small.height = h;
+    const g = small.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0);
+    const data = g.getImageData(0, 0, w, h);
+    const d = data.data;
+    const memo = new Map();
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 8) { d[i + 3] = 0; continue; }
+      const key = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+      let c = memo.get(key);
+      if (!c) memo.set(key, (c = SNOW_RAMP[classOf(d[i], d[i + 1], d[i + 2])]));
+      d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = c[3];
+    }
+    g.putImageData(data, 0, 0);
+    // Scaled up with smoothing: soft edges instead of squares.
+    const big = document.createElement('canvas');
+    big.width = size.x;
+    big.height = size.y;
+    const G = big.getContext('2d');
+    G.imageSmoothingEnabled = true;
+    G.imageSmoothingQuality = 'high';
+    G.drawImage(small, 0, 0, size.x, size.y);
+    const url = big.toDataURL('image/png');
+    if (job !== snowJob) return;
+    snowLayer?.remove();
+    snowLayer = L.imageOverlay(url, map.getBounds(), { pane: 'snow', interactive: false });
+    if (snowOn) snowLayer.addTo(map);
+  }
+
+  // Towns for orientation, quieter than the resorts: small muted text by a tiny square. Most important
+  // first; one that would touch a resort's label, hairline or dot (or a more important town) hides.
+  map.createPane('places').style.zIndex = 580; // under the resort dots and labels
+  const towns = places.map(([name, lat, lon, major]) => {
+    const node = document.createElement('span');
+    node.className = 'place';
+    node.textContent = name;
+    L.marker([lat, lon], { pane: 'places', interactive: false, keyboard: false, icon: L.divIcon({ html: node, className: 'place-host', iconSize: [0, 0] }) }).addTo(map);
+    return { node, at: [lat, lon], major: Boolean(major) };
   });
+  // The major towns' name boxes (container pixels), reserved before the resort labels are placed:
+  // name to the right of the square, or to the left near the right edge.
+  function reserveTowns(size) {
+    return towns.filter((t) => t.major).map((t) => {
+      const p = map.latLngToContainerPoint(t.at);
+      t.node.hidden = false;
+      t.node.dataset.side = 'right';
+      const w = t.node.offsetWidth;
+      const h = t.node.offsetHeight;
+      if (p.x + w > size.x - 6) t.node.dataset.side = 'left';
+      t.fixed = t.node.dataset.side;
+      return t.fixed === 'right' ? [p.x - 4, p.y - h / 2 - 1, p.x + w, p.y + h / 2 + 1] : [p.x - w, p.y - h / 2 - 1, p.x + 4, p.y + h / 2 + 1];
+    });
+  }
+  function placeTowns() {
+    const taken = [];
+    for (const n of el.querySelectorAll('.pin:not(.hidden) .pin-bubble, .pin-dot, .pin:not(.hidden) .pin-tail line:not([style*="none"])')) taken.push(n.getBoundingClientRect());
+    const overlaps = (a, b) => a.left < b.right + 3 && a.right > b.left - 3 && a.top < b.bottom + 3 && a.bottom > b.top - 3;
+    const view = el.getBoundingClientRect();
+    const pad = getPadding();
+    const inside = (b) => b.left >= view.left + 4 && b.right <= view.right - 4 && b.top >= view.top + pad.top && b.bottom <= view.bottom - pad.bottom;
+    for (const { node: t, major, fixed } of towns) {
+      // Name to the right of its square, else left, below or above. Major towns keep the side their
+      // space was reserved on (the resort labels already went around it).
+      let ok = false;
+      for (const side of fixed ? [fixed] : ['right', 'left', 'below', 'above']) {
+        t.hidden = false;
+        t.dataset.side = side;
+        const box = t.getBoundingClientRect();
+        if (major || (inside(box) && !taken.some((b) => b.width + b.height > 0 && overlaps(box, b)))) {
+          taken.push(box);
+          ok = true;
+          break;
+        }
+      }
+      t.hidden = !ok;
+    }
+  }
 
   const fit = () => {
     const p = getPadding();
@@ -226,6 +346,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
     for (const o of order) o.pin.bubble.classList.remove('compact');
     const items = order.map((o) => ({ ...o, p: map.latLngToContainerPoint(o.r.at), w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight }));
     const dots = items.map((it) => it.p);
+    const reserved = reserveTowns(size);
+    const onTown = (box) => reserved.some((r) => box[0] < r[2] && box[2] > r[0] && box[1] < r[3] && box[3] > r[1]);
     const boxOf = (it, [dx, dy]) => [it.p.x + dx - it.w / 2 - GAP, it.p.y + dy - it.h / 2 - GAP, it.p.x + dx + it.w / 2 + GAP, it.p.y + dy + it.h / 2 + GAP];
 
     // Candidate spots for a label at its current width (recomputed if it falls back to chip-only).
@@ -237,13 +359,16 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
         if (box[0] < area[0] || box[2] > area[2] || box[1] < area[1] || box[3] > area[3]) continue;
         // Hard rules: never cover another resort's point, and no pointer passing over one.
         if (dots.some((d) => d !== it.p && d.x + DOT_R + 1 > box[0] && d.x - DOT_R - 1 < box[2] && d.y + DOT_R + 1 > box[1] && d.y - DOT_R - 1 < box[3])) continue;
+        if (onTown(box)) continue; // a major town's name is there
         const lead = it.empty ? { len: 0, seg: null } : leader(it, s);
         const tail = lead.seg ? { seg: lead.seg } : null;
+        if (tail && reserved.some((r) => segRect(tail.seg, r))) continue;
         // (Relaxed, for the number-only fallback: a hairline may pass beside other points, and reach further.)
         if (!relaxed && tail && dots.some((d) => d !== it.p && segPointDist(tail.seg, d) < DOT_R + 3)) continue;
         if (lead.len > (relaxed ? maxLead * 1.5 : maxLead)) continue;
-        // Distance from the dot (squared), plus a small preference for the classic spots.
-        it.cands.push({ s, box, tail, cost: lead.len * lead.len + (s[2] ?? 60) + (tail ? 40 : 0) });
+        // Distance from the dot (squared), a small preference for the classic spots, and a big one for
+        // touching the dot: a hairline is only worth it when there's no room right beside it.
+        it.cands.push({ s, box, tail, cost: lead.len * lead.len + (s[2] ?? 60) + (tail ? 1200 : 0) });
       }
       it.cands.sort((a, b) => a.cost - b.cost);
     };
@@ -297,8 +422,15 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
 
     // 2) Improve it: move one label at a time to another valid spot when that shortens things
     //    (sometimes accepting a worse move early on, to escape dead ends). Clashes are never allowed.
+    //    The best layout seen is kept: stopping early (slow phone, time's up) never leaves a worse one.
+    const total = () => labels.reduce((a, it) => a + costOf(it, pick.get(it)), 0);
+    let bestSeen = { cost: total(), picks: new Map(pick) };
     let temp = 3000;
     for (let k = 0; k < 12000 && labels.length && !(k % 256 === 0 && late()); k++) {
+      if (k % 256 === 255) {
+        const now = total();
+        if (now < bestSeen.cost) bestSeen = { cost: now, picks: new Map(pick) };
+      }
       const it = labels[Math.floor(rand() * labels.length)];
       const next = it.cands[Math.floor(rand() * it.cands.length)];
       const cur = pick.get(it);
@@ -307,6 +439,22 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
       if (delta < 0 || rand() < Math.exp(-delta / temp)) pick.set(it, next);
       temp *= 0.9993;
     }
+    if (total() > bestSeen.cost) { pick.clear(); for (const [k, v] of bestSeen.picks) pick.set(k, v); }
+    // Then settle: each label moves to its cheapest free spot (closest, line-free if there's room),
+    // until nothing improves. Quick, and it undoes any needless detour annealing left behind.
+    const settle = () => {
+      for (let pass = 0, moved = true; moved && pass < 6; pass++) {
+        moved = false;
+        for (const it of labels) {
+          const cur = pick.get(it);
+          for (const x of it.cands) {
+            if (x.cost >= costOf(it, cur)) break; // sorted: nothing cheaper further on
+            if (free(it, x)) { pick.set(it, x); moved = true; break; }
+          }
+        }
+      }
+    };
+    settle();
 
     // 3) Repair: for a label still squeezed out, take a spot anyway and re-seat the (few) labels in
     //    its way somewhere else. Kept only if every one of them finds a new spot.
@@ -378,6 +526,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
       const after = group.reduce((a, o) => a + costOf(o, pick.get(o)), 0);
       if (after >= before) for (const [o, v] of saved) pick.set(o, v);
     }
+    settle();
 
     // 5) Still no room for name and number: show just the number chip (tap it for the resort).
     for (const it of items.filter((x) => !x.empty && !pick.get(x))) {
@@ -411,6 +560,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
   // nearest spot on top of the others (it's raised above them) until something else is selected.
   let selectedPin = null;
   function apply(result) {
+    requestAnimationFrame(placeTowns);
     for (const entry of result) {
       const { pin } = entry;
       const { transform, tail, compact } = pin === selectedPin && entry.alt ? { ...entry.alt, compact: false } : entry;
@@ -456,8 +606,10 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
       base.setUrl(isDark() ? TILES.dark : TILES.light);
     },
     setSnowDepth(on) {
-      if (on) snowDepth.addTo(map);
-      else snowDepth.remove();
+      snowOn = on;
+      if (!on) return snowLayer?.remove();
+      if (snowLayer) snowLayer.addTo(map);
+      else drawSnow();
     },
     // Switching states: remove this map entirely.
     destroy() {
@@ -469,6 +621,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
       map.invalidateSize({ animate: false, pan: false });
       fit();
       layout();
+      if (snowLayer || snowOn) drawSnow();
     },
   };
 }
