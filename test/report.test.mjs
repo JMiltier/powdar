@@ -76,7 +76,11 @@ test('statusFor wording', () => {
   assert.equal(statusFor({ live: true, isOpen: false, open: '2026-11-06' }, today).state, 'late');
   const likely = statusFor({ live: false, open: '2026-10-31', when: 'late October' }, today);
   assert.equal(likely.state, 'likely');
+  assert.equal(likely.label, 'Probably open');
   assert.match(likely.detail, /late October/);
+  const confirmed = statusFor({ live: false, open: '2026-10-30', opened: true }, today);
+  assert.equal(confirmed.state, 'open');
+  assert.match(confirmed.detail, /Opened Fri, Oct 30/);
   assert.equal(statusFor({ live: false }, today).label, 'Opening date TBA');
   assert.equal(statusFor({ live: true, isOpen: false, close: '2026-11-01' }, today).state, 'done');
 });
@@ -97,6 +101,7 @@ test('buildReport assembles every resort', async () => {
   assert.equal(byId['winter-park'].report, null, 'closed resorts show no snow report');
   assert.equal(byId.vail.status.label, 'Opens Fri, Nov 13');
   assert.equal(byId.breckenridge.status.state, 'likely');
+  assert.equal(byId.keystone.status.state, 'open');
   assert.equal(byId['wolf-creek'].status.state, 'tba');
   assert.deepEqual(byId['arapahoe-basin'].dates, { open: '2026-10-28', close: '2027-05-10', when: null, planned: false });
   assert.deepEqual(byId.vail.dates, { open: '2026-11-13', close: null, when: null, planned: true });

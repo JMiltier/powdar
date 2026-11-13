@@ -5,16 +5,16 @@ const L = window.L;
 
 // OpenTopoMap: free, no key, and its terrain shading suits mountains. Dark mode dims it in CSS.
 const TILES = 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png';
-const ATTRIBUTION = 'Map: © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, SRTM | style © <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)';
+const ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)';
 // NOAA's daily national snow analysis (NOHRSC): modelled snow depth on the ground, cloud-free.
 const SNOW_DEPTH_WMS = 'https://mapservices.weather.noaa.gov/raster/services/snow/NOHRSC_Snow_Analysis/MapServer/WMSServer';
 const GAP = 2;
 const DOT_R = 4;
-// First visit opens on the central mountains (I-70, Vail, Aspen, Steamboat, Crested Butte):
-// the whole state at phone width is too cramped to read. After that we remember the view.
-const START_VIEW = [[38.85, -107.12], [40.5, -105.5]];
-// Zoomed out, bubbles show just the number; names appear once there's room.
-export const NAMES_FROM_ZOOM = 7.75;
+// First visit fits every resort; after that we remember where you left the map.
+// Extra top padding keeps resorts out from under the floating buttons.
+const FIT_PADDING = { paddingTopLeft: [34, 84], paddingBottomRight: [40, 28] };
+// Names always show; crowded bubbles hide instead (see layout). Kept as a knob.
+export const NAMES_FROM_ZOOM = 0;
 
 const SHORT = {
   'arapahoe-basin': 'A-Basin', 'copper-mountain': 'Copper', breckenridge: 'Breck', 'beaver-creek': 'Beaver Creek',
@@ -32,13 +32,14 @@ const spotsFor = (w, h) => {
 export function createSnowMap(el, { onSelect, saved, onMove, onZoom }) {
   const map = L.map(el, { zoomControl: false, minZoom: 6, maxZoom: 12, zoomSnap: 0.25, zoomDelta: 0.5, maxBounds: [[35.5, -111], [42.5, -100]] });
   L.control.zoom({ position: 'bottomright' }).addTo(map);
+  map.attributionControl.setPrefix(false);
   L.tileLayer(TILES, { attribution: ATTRIBUTION, subdomains: 'abc', maxZoom: 12 }).addTo(map);
 
   // Its own pane so the colour-muting filter on the base map doesn't wash it out.
   map.createPane('snow').style.zIndex = 250;
   const snowDepth = L.tileLayer.wms(SNOW_DEPTH_WMS, {
     pane: 'snow', layers: '0', format: 'image/png', transparent: true, version: '1.3.0', opacity: 0.75,
-    attribution: 'Snow depth: <a href="https://www.nohrsc.noaa.gov/nsa/">NOAA NOHRSC</a>',
+    attribution: 'Snow: <a href="https://www.nohrsc.noaa.gov/nsa/">NOAA</a>',
   });
 
   const pins = new Map();
@@ -72,8 +73,8 @@ export function createSnowMap(el, { onSelect, saved, onMove, onZoom }) {
   function layout() {
     el.classList.toggle('show-names', map.getZoom() >= NAMES_FROM_ZOOM);
     for (const { pin } of order) pin.root.classList.remove('hidden');
-    const items = order.map(({ r, pin, empty }) => ({
-      r, pin, empty, p: map.latLngToContainerPoint(r.at), w: pin.bubble.offsetWidth, h: pin.bubble.offsetHeight,
+    const items = order.map(({ r, pin, empty, important }) => ({
+      r, pin, empty, important, p: map.latLngToContainerPoint(r.at), w: pin.bubble.offsetWidth, h: pin.bubble.offsetHeight,
     }));
     const placed = [];
     const overlaps = (box) => placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]);
@@ -86,7 +87,8 @@ export function createSnowMap(el, { onSelect, saved, onMove, onZoom }) {
         const cx = it.p.x + dx;
         const cy = it.p.y + dy;
         const box = [cx - it.w / 2 - GAP, cy - it.h / 2 - GAP, cx + it.w / 2 + GAP, cy + it.h / 2 + GAP];
-        if (overlaps(box) || hidesDot(box, it)) continue;
+        // Open, pinned and selected resorts may sit over a neighbour's dot rather than hide.
+        if (overlaps(box) || (!it.important && hidesDot(box, it))) continue;
         spot = [dx, dy, box];
         break;
       }
@@ -107,7 +109,7 @@ export function createSnowMap(el, { onSelect, saved, onMove, onZoom }) {
     hiddenCount = layout();
   };
 
-  // items: [{ r, text, label, level, open, selected }] in priority order (most important first).
+  // items: [{ r, text, label, level, open, selected, important }] in priority order (most important first).
   function update(items) {
     order = items.map((item, i) => {
       const pin = pinFor(item.r);
@@ -116,10 +118,10 @@ export function createSnowMap(el, { onSelect, saved, onMove, onZoom }) {
       pin.bubble.className = `pin-bubble lvl-${item.level}${item.open ? ' is-open' : ''}${item.selected ? ' is-selected' : ''}`;
       pin.bubble.setAttribute('aria-label', `${item.r.name}: ${item.label}`);
       pin.marker.setZIndexOffset(item.selected ? 1000 : -i);
-      return { r: item.r, pin, empty: item.level === 'none' };
+      return { r: item.r, pin, empty: item.level === 'none', important: item.important };
     });
     if (!fitted) {
-      map.fitBounds(START_VIEW, { padding: [30, 30] });
+      map.fitBounds(items.map((i) => i.r.at), FIT_PADDING);
       fitted = true;
     }
     relayout();

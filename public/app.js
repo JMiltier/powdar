@@ -3,7 +3,7 @@ import { createSnowMap } from './map.js';
 const DATA_URL = 'data.json';
 const STORE = {
   data: 'cs:data', favs: 'cs:favs', sort: 'cs:sort', openOnly: 'cs:openOnly',
-  view: 'cs:view', metric: 'cs:metric', mapView: 'cs:mapView', snowDepth: 'cs:snowDepth',
+  view: 'cs:view', metric: 'cs:metric', mapView: 'cs:mapView2', snowDepth: 'cs:snowDepth',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
 const STALE_AFTER_MS = 3 * 3_600_000;
@@ -15,11 +15,11 @@ const SURFACE = {
 };
 // What the map can show. `steps` are the upper bounds of each colour level.
 const METRICS = {
-  next72: { get: (r) => r.forecast?.next72, steps: [1, 3, 6, 12], hint: 'Snow forecast for the next 3 days' },
-  next7: { get: (r) => r.forecast?.next7, steps: [1, 3, 6, 12], hint: 'Snow forecast for the next 7 days' },
-  new24: { get: (r) => r.report?.new24, steps: [1, 3, 6, 12], hint: 'New snow in the last 24 hours (open resorts report it)' },
-  depth: { get: (r) => r.report?.depth, steps: [12, 24, 36, 60], hint: 'Base depth, mid-mountain (open resorts report it)', base: true },
-  dates: { hint: 'Green = open (until closing day) · blue = opening day', dates: true },
+  next72: { get: (r) => r.forecast?.next72, steps: [1, 3, 6, 12], hint: '3-day snow forecast' },
+  next7: { get: (r) => r.forecast?.next7, steps: [1, 3, 6, 12], hint: '7-day snow forecast' },
+  new24: { get: (r) => r.report?.new24, steps: [1, 3, 6, 12], hint: 'New snow, last 24 hrs' },
+  depth: { get: (r) => r.report?.depth, steps: [12, 24, 36, 60], hint: 'Base depth', base: true },
+  dates: { hint: 'Green: open until · Blue: opens', dates: true },
 };
 // Lower comes first when sorting by opening day.
 const STATE_ORDER = { open: 0, likely: 1, soon: 2, late: 3, tba: 4, done: 5 };
@@ -71,7 +71,7 @@ function dateBubble(r) {
   const { state: s, date } = r.status;
   const close = r.dates?.close;
   if (s === 'open') return { text: close ? `til ${monthDay(close)}` : 'Open', level: 'open', rank: 0 };
-  if (s === 'likely') return { text: 'Likely open', level: 'likely', rank: 1 };
+  if (s === 'likely') return { text: 'Probably', level: 'likely', rank: 1 };
   if (s === 'soon') return { text: r.dates?.when ?? monthDay(date), level: 'soon', rank: 2 };
   if (s === 'late') return { text: 'Delayed', level: 'late', rank: 3 };
   if (s === 'done') return { text: 'Closed', level: 'tba', rank: 5 };
@@ -117,19 +117,19 @@ function renderSummary(data) {
     .sort((a, b) => a.status.date.localeCompare(b.status.date))[0];
 
   const openText = open.length
-    ? `<strong>${open.length}</strong> open${likely.length ? ` <span class="muted">+ ${likely.length} likely</span>` : ''}`
-    : likely.length ? `<strong>${likely.length}</strong> likely open` : 'None open yet';
+    ? `<strong>${open.length}</strong> open${likely.length ? `<br><span class="muted">+${likely.length} probably</span>` : ''}`
+    : likely.length ? `<strong>${likely.length}</strong> probably open` : 'None open yet';
   const snowText = snowiest && snowNext(snowiest) >= 1
-    ? `<strong>${inches(snowiest.forecast.next72)}</strong> at ${esc(snowiest.name)}`
+    ? `<strong>${inches(snowiest.forecast.next72)}</strong><br>${esc(snowiest.name)}`
     : 'No big storms';
 
   $('#summary').innerHTML = `
     <div class="tile"><span class="tile-label">Open now</span><span class="tile-value">${openText}</span></div>
-    <div class="tile"><span class="tile-label">Most snow, next 3 days</span><span class="tile-value">${snowText}</span></div>
-    ${nextUp ? `<div class="tile"><span class="tile-label">Next to open</span><span class="tile-value"><strong>${esc(nextUp.name)}</strong> <span class="muted">${esc(nextUp.status.label.replace('Opens ', ''))}</span></span></div>` : ''}`;
+    <div class="tile"><span class="tile-label">Most snow 3 days</span><span class="tile-value">${snowText}</span></div>
+    ${nextUp ? `<div class="tile"><span class="tile-label">Next to open</span><span class="tile-value"><strong>${esc(nextUp.name)}</strong><br><span class="muted">${esc(nextUp.status.label.replace('Opens ', ''))}</span></span></div>` : ''}`;
 }
 
-const BAR_MAX_PX = 40;
+const BAR_MAX_PX = 36;
 
 // Bars share one scale across every resort, so a 10″ day always looks bigger than a 5″ one.
 function bars(r, today, scale) {
@@ -243,6 +243,7 @@ function renderMap() {
   const metric = METRICS[state.metric] ?? METRICS.next72;
   const items = data.resorts.map((r) => {
     const base = { r, open: r.status.state === 'open', selected: r.id === state.selected, fav: state.favs.has(r.id) };
+    base.important = base.open || base.selected || base.fav;
     if (metric.dates) {
       const b = dateBubble(r);
       // Open resorts first, then the soonest opening days.
@@ -273,12 +274,12 @@ function renderHint() {
   const parts = [metric.hint];
   if (metric.get) {
     const reporting = data.resorts.filter((r) => metric.get(r) != null).length;
-    if (reporting < data.resorts.length) parts.push(`${reporting} of ${data.resorts.length} resorts`);
+    if (reporting < data.resorts.length) parts.push(`${reporting} reporting`);
   }
-  if (!metric.dates) parts.push('green ring = open');
   const hidden = state.map.hiddenCount();
   if (!state.map.namesShown()) parts.push('zoom in for names');
-  else if (hidden) parts.push(`zoom in to see ${hidden} more`);
+  else if (hidden) parts.push(`zoom in for ${hidden} more`);
+  parts.push(timeAgo(data.generated));
   $('#map-hint').textContent = parts.join(' · ');
 }
 
