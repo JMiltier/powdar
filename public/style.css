@@ -127,8 +127,13 @@ body.sheet-full .info-btn, body.sheet-full .credits, body.sheet-full .legend { d
 .grab { flex: none; padding: 6px 16px 10px; cursor: grab; touch-action: none; user-select: none; }
 .handle { display: block; width: 38px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 8px; }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.brand { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
 h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; }
+.state-btn {
+  border: 0; background: var(--accent-soft); color: var(--accent); cursor: pointer;
+  font-size: 0.85rem; font-weight: 750; padding: 5px 11px; border-radius: 999px; white-space: nowrap;
+}
+.headline + .updated { display: block; margin-top: 2px; }
 .updated { border: 0; background: none; padding: 0; color: var(--muted); font-size: 0.78rem; cursor: pointer; white-space: nowrap; }
 .head-actions { display: flex; align-items: center; gap: 6px; flex: none; }
 .panel-close { display: none; }
@@ -316,6 +321,8 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 /* Bigger invisible tap target around the dot. */
 .pin-dot::after { content: ""; position: absolute; inset: -9px; }
 .pin.hidden .pin-bubble, .pin.hidden .pin-tail, .pin-bubble.is-empty { display: none; }
+/* No room for the name here: just the number chip (tap for the resort). */
+.pin-bubble.compact .pin-name { display: none; }
 .pin-tail { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 .pin-tail line { stroke: var(--map-text); stroke-width: 1.2; stroke-opacity: 0.75; stroke-linecap: round; }
 .pin-bubble {
@@ -362,6 +369,35 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .lvl-pk-normal { background: #eceff3; color: #3c4653; }
 .lvl-pk-above { background: #c7ddfa; color: #143c78; }
 .lvl-pk-high { background: #4f8fe6; color: #fff; }
+
+/* ---------- State picker ---------- */
+.picker {
+  position: fixed; inset: 0; z-index: 2000; background: rgba(8, 12, 20, 0.45);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.picker-card {
+  width: 100%; max-width: 640px; max-height: 86dvh; overflow-y: auto;
+  background: var(--card); border-radius: var(--radius) var(--radius) 0 0;
+  padding: 12px 14px calc(14px + env(safe-area-inset-bottom)); box-shadow: var(--shadow);
+}
+.picker-head { display: flex; align-items: center; justify-content: space-between; position: sticky; top: -12px; background: var(--card); padding: 4px 0 6px; }
+.picker-head h2 { margin: 0; font-size: 1.15rem; }
+.picker-region { margin: 12px 2px 6px; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); }
+.picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+.picker-state {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; cursor: pointer;
+  border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 8px 10px;
+}
+.picker-state b { font-size: 0.92rem; }
+.picker-state small { font-size: 0.72rem; color: var(--muted); }
+.picker-state .open-now { color: var(--open); font-weight: 700; }
+.picker-state.is-current { border-color: var(--accent); background: var(--accent-soft); }
+@media (min-width: 900px) {
+  .picker { align-items: center; }
+  .picker-card { border-radius: var(--radius); max-height: 80vh; }
+}
+.dot-closed, .dot-unknown { background: var(--tba); }
+.pill-closed, .pill-unknown { background: var(--tba); }
 
 /* ---------- Wide screens: the sheet becomes a side panel ---------- */
 @media (min-width: 900px) {

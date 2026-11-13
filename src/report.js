@@ -10,9 +10,9 @@ export const CSC_FEED = 'https://snow.coloradoski.com/view/publicreport-feed';
 const NWS = 'https://api.weather.gov/gridpoints';
 const USER_AGENT = 'Powdar (github.com/JMiltier/powdar)';
 const TZ = 'America/Denver';
-const FORECAST_DAYS = 7; // days shown day by day
+export const FORECAST_DAYS = 7; // days shown day by day
 const OUTLOOK_DAYS = 14; // days 8–14 are summarised as a less-certain "week 2"
-const MODEL_DAYS = 16;
+export const MODEL_DAYS = 14; // two weeks: longer requests count extra against the free allowance
 const MM_PER_INCH = 25.4;
 const DAY_MS = 86_400_000;
 
@@ -233,7 +233,7 @@ export function statusFor({ live, isOpen, open, close, when, opened, note, repor
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Retries with a growing pause: network blips between GitHub's servers and the APIs are common.
-async function getJson(fetchFn, url, { tries = 3, backoff = 2000 } = {}) {
+export async function getJson(fetchFn, url, { tries = 3, backoff = 2000 } = {}) {
   let lastErr;
   for (let i = 0; i < tries; i++) {
     if (i) await sleep(backoff * i);
@@ -248,7 +248,7 @@ async function getJson(fetchFn, url, { tries = 3, backoff = 2000 } = {}) {
   throw lastErr;
 }
 
-async function getText(fetchFn, url, { tries = 3, backoff = 2000 } = {}) {
+export async function getText(fetchFn, url, { tries = 3, backoff = 2000 } = {}) {
   let lastErr;
   for (let i = 0; i < tries; i++) {
     if (i) await sleep(backoff * i);
@@ -270,7 +270,7 @@ function withLiveLifts(report, live) {
 }
 
 // Run tasks a few at a time so we're polite to api.weather.gov.
-async function pool(items, limit, fn) {
+export async function pool(items, limit, fn) {
   const out = new Array(items.length);
   let next = 0;
   await Promise.all(
@@ -284,7 +284,8 @@ async function pool(items, limit, fn) {
   return out;
 }
 
-export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), log = () => {}, backoff = 2000 } = {}) {
+// skipModels: don't fetch the weather models this time (the caller reuses the last hour's forecast).
+export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), log = () => {}, backoff = 2000, skipModels = false } = {}) {
   const today = localDate(now);
   const season = seasonOf(today);
   const planned = PLANNED[season.name] ?? {};
@@ -306,6 +307,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
   const liftIds = Object.keys(LIFT_SOURCES);
   const [modelData, nwsData, nwsText, snowNow, snowNormal, liftData, noaaSnow] = await Promise.all([
     Promise.all(MODELS.map(async (m) => {
+      if (skipModels) return null;
       try {
         const data = await getJson(fetchFn, modelUrl(m.id, RESORTS, MODEL_DAYS), { backoff });
         return Array.isArray(data) ? data : [data];

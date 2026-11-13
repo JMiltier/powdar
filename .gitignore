@@ -1,3 +1,5 @@
 node_modules/
 public/data.json
 .DS_Store
+public/data/
+public/states.json

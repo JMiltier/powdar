@@ -88,10 +88,13 @@ function segRect(seg, box) {
 }
 
 // getPadding() → { top, right, bottom, left }: pixels covered by the app's bars and panels.
-export function createSnowMap(el, { resorts, onSelect, getPadding }) {
-  // Frame a little extra on the east: the Front Range resorts sit at the edge of the cluster and
-  // their labels need open plains to spread into instead of piling onto I-70.
-  const bounds = L.latLngBounds(resorts.map((r) => r.at)).extend([39.8, -105.1]);
+// extend: an extra [lat, lon] to frame in (Colorado adds open plains east of the Front Range so its
+// labels have room to spread instead of piling onto I-70).
+export function createSnowMap(el, { resorts, onSelect, getPadding, extend }) {
+  const bounds = L.latLngBounds(resorts.map((r) => r.at));
+  if (extend) bounds.extend(extend);
+  // A state with a single resort still needs some area around it.
+  if (bounds.getNorthEast().distanceTo(bounds.getSouthWest()) < 40000) bounds.extend(bounds.getCenter().toBounds(80000));
   const map = L.map(el, {
     zoomControl: false, attributionControl: false, zoomSnap: 0, inertia: false,
     dragging: false, touchZoom: false, doubleClickZoom: false, scrollWheelZoom: false, boxZoom: false, keyboard: false,
@@ -165,7 +168,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
     const dots = items.map((it) => it.p);
     const boxOf = (it, [dx, dy]) => [it.p.x + dx - it.w / 2 - GAP, it.p.y + dy - it.h / 2 - GAP, it.p.x + dx + it.w / 2 + GAP, it.p.y + dy + it.h / 2 + GAP];
 
-    for (const it of items) {
+    // Candidate spots for a label at its current width (recomputed if it falls back to chip-only).
+    const buildCands = (it, relaxed = false) => {
       const spots = it.empty ? [] : spotsFor(it.w, it.h); // "no data" resorts show just a grey dot
       it.cands = [];
       for (const s of spots) {
@@ -175,12 +179,17 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
         if (dots.some((d) => d !== it.p && d.x + DOT_R + 1 > box[0] && d.x - DOT_R - 1 < box[2] && d.y + DOT_R + 1 > box[1] && d.y - DOT_R - 1 < box[3])) continue;
         const lead = it.empty ? { len: 0, seg: null } : leader(it, s);
         const tail = lead.seg ? { seg: lead.seg } : null;
-        if (tail && dots.some((d) => d !== it.p && segPointDist(tail.seg, d) < DOT_R + 3)) continue;
-        if (lead.len > MAX_POINTER) continue;
+        // (Relaxed, for the number-only fallback: a hairline may pass beside other points, and reach further.)
+        if (!relaxed && tail && dots.some((d) => d !== it.p && segPointDist(tail.seg, d) < DOT_R + 3)) continue;
+        if (lead.len > (relaxed ? MAX_POINTER * 1.6 : MAX_POINTER)) continue;
         // Distance from the dot (squared), plus a small preference for the classic spots.
         it.cands.push({ s, box, tail, cost: lead.len * lead.len + (s[2] ?? 60) + (tail ? 40 : 0) });
       }
       it.cands.sort((a, b) => a.cost - b.cost);
+    };
+    for (const it of items) {
+      it.pin.bubble.classList.remove('compact');
+      buildCands(it);
     }
 
     const hit = (a, b) => a.box[0] < b.box[2] && a.box[2] > b.box[0] && a.box[1] < b.box[3] && a.box[3] > b.box[1];
@@ -312,10 +321,21 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
       if (after >= before) for (const [o, v] of saved) pick.set(o, v);
     }
 
+    // 5) Still no room for name and number: show just the number chip (tap it for the resort).
+    for (const it of items.filter((x) => !x.empty && !pick.get(x))) {
+      it.compact = true;
+      it.w = it.pin.val.offsetWidth;
+      buildCands(it, true);
+      if (!labels.includes(it)) labels.push(it);
+      const c = it.cands.find((x) => free(it, x));
+      if (c) pick.set(it, c);
+    }
+
     const result = items.map((it) => {
       const c = pick.get(it);
       return {
         pin: it.pin,
+        compact: Boolean(it.compact),
         transform: c ? `translate(${c.s[0] - it.w / 2}px, ${c.s[1] - it.h / 2}px)` : null,
         tail: c?.tail ? c.tail.seg.map((v, k) => (v - (k % 2 ? it.p.y : it.p.x)).toFixed(1)) : null,
       };
@@ -326,8 +346,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
   }
 
   function apply(result) {
-    for (const { pin, transform, tail } of result) {
+    for (const { pin, transform, tail, compact } of result) {
       pin.root.classList.toggle('hidden', !transform);
+      pin.bubble.classList.toggle('compact', compact);
       pin.tail.style.display = tail ? '' : 'none';
       if (tail) {
         pin.tail.setAttribute('x1', tail[0]);
@@ -344,7 +365,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
     order = items.map((item, i) => {
       const pin = pinFor(item.r);
       pin.val.textContent = item.text;
-      pin.name.textContent = SHORT[item.r.id] ?? item.r.name;
+      pin.name.textContent = SHORT[item.r.id] ?? item.r.short ?? item.r.name;
       const empty = item.level === 'none';
       pin.bubble.className = `pin-bubble${item.open ? ' is-open' : ''}${item.selected ? ' is-selected' : ''}${empty ? ' is-empty' : ''}`;
       pin.val.className = `pin-val lvl-${item.level}`;
@@ -364,6 +385,10 @@ export function createSnowMap(el, { resorts, onSelect, getPadding }) {
     setSnowDepth(on) {
       if (on) snowDepth.addTo(map);
       else snowDepth.remove();
+    },
+    // Switching states: remove this map entirely.
+    destroy() {
+      map.remove();
     },
     // Screen size or panels changed: refit everything and lay the labels out again.
     refit() {

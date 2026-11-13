@@ -1,8 +1,11 @@
 import { createSnowMap, CREDITS } from './map.js?v=__V__';
 
-const DATA_URL = 'data.json';
+// One data file per state (data/co.json, data/ut.json…), plus an index of states for the picker.
+const dataUrl = (code) => `data/${code.toLowerCase()}.json`;
+const STATES_URL = 'states.json';
 const STORE = {
   data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', openOnly: 'cs:openOnly', panel: 'cs:panel',
+  state: 'cs:state', states: 'cs:states',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
 const STALE_AFTER_MS = 3 * 3_600_000;
@@ -28,6 +31,8 @@ const METRICS = {
   next7: { kind: 'snow', get: (r) => r.forecast?.next7, range: (r) => r.forecast?.next7Range, steps: [1, 3, 6, 12], top: 'Most snow, next 7 days' },
   // Snowpack at the nearest SNOTEL station as a % of normal for the date.
   season: { kind: 'season', get: (r) => station(r)?.pct ?? null },
+  // States without snow stations (Midwest, East): NOAA's modelled snow depth instead.
+  depth: { kind: 'base', get: (r) => r.noaa?.depth ?? null, steps: [6, 12, 24, 48], top: 'Deepest snow (NOAA)' },
   dates: { kind: 'dates' },
 };
 
@@ -52,6 +57,8 @@ const state = {
   pastSeason: null, // a past season like '2024-25' to show in the season chart, or null for this one
   panelOpen: read(STORE.panel, true), // wide screens: the resort list on the left
   map: null,
+  code: (location.hash.slice(1) || read(STORE.state, 'co')).toUpperCase(), // which state
+  states: read(STORE.states, null), // the picker's list
 };
 
 // ---------- formatting ----------
@@ -115,6 +122,9 @@ function valueFor(r, metricKey = state.metric) {
   }
   if (m.kind === 'season') {
     const pct = m.get(r);
+    // A station whose normal is still near zero (early season, lower elevations): say so rather than
+    // dropping the label.
+    if (pct == null && station(r)) return { text: 'Early', level: 'tba', sort: -0.5 };
     return { text: pct == null ? '–' : `${pct}%`, level: seasonLevel(pct), sort: pct ?? -1 };
   }
   const v = m.get(r) ?? null;
@@ -152,6 +162,24 @@ function skyIcon(text = '') {
   return '';
 }
 
+// Buttons depend on what the state has: Dates only where opening dates exist (Colorado); Season where
+// there are snow stations, NOAA snow Depth where there aren't.
+function availableMetrics() {
+  const rs = state.data?.resorts ?? [];
+  const hasDates = rs.some((r) => r.dates?.open || r.dates?.close);
+  const hasStations = rs.some((r) => r.station);
+  return ['new24', 'next72', 'next7', hasStations ? 'season' : 'depth', ...(hasDates ? ['dates'] : [])];
+}
+function syncRibbon() {
+  const avail = availableMetrics();
+  if (!avail.includes(state.metric)) state.metric = state.metric === 'season' || state.metric === 'depth' ? avail[3] : 'new24';
+  const seasonBtn = document.querySelector('[data-metric="season"], [data-metric="depth"]');
+  seasonBtn.dataset.metric = avail[3];
+  seasonBtn.textContent = avail[3] === 'season' ? 'Season' : 'Depth';
+  seasonBtn.title = avail[3] === 'season' ? 'Snowpack vs normal' : 'Snow on the ground (NOAA)';
+  document.querySelector('[data-metric="dates"]').hidden = !avail.includes('dates');
+}
+
 const isOpenish = (r) => r.status.state === 'open' || r.status.state === 'likely';
 
 // Pinned first, then by the current metric.
@@ -175,7 +203,9 @@ function renderHeadline() {
   } else {
     const best = [...data.resorts].sort((a, b) => (m.get(b) ?? -1) - (m.get(a) ?? -1))[0];
     const v = best && m.get(best);
-    if (m.kind === 'season') {
+    if (m.kind === 'base') {
+      text = v ? `${m.top}: <strong>${esc(best.name)} ${Math.round(v)}″</strong>` : 'No snow on the ground yet (NOAA)';
+    } else if (m.kind === 'season') {
       const pcts = data.resorts.map((r) => m.get(r)).filter((p) => p != null);
       const above = pcts.filter((p) => p > 110).length;
       const below = pcts.filter((p) => p < 90).length;
@@ -362,11 +392,11 @@ function dayOfSeason(ymd) {
 }
 
 // Past seasons, one small file per snow station, loaded the first time someone picks one.
-const history = new Map();
+const seasonHistory = new Map();
 async function loadHistory(triplet) {
-  if (history.has(triplet)) return history.get(triplet);
+  if (seasonHistory.has(triplet)) return seasonHistory.get(triplet);
   const req = fetch(`history/${triplet.split(':')[0]}.json`).then((res) => (res.ok ? res.json() : null)).catch(() => null);
-  history.set(triplet, req);
+  seasonHistory.set(triplet, req);
   return req;
 }
 
@@ -419,11 +449,11 @@ function seasonSection(r) {
   let past = null;
   let head;
   // Past winters (for the color bands and the season picker) load in the background.
-  const h = st ? history.get(r.station) : null;
+  const h = st ? seasonHistory.get(r.station) : null;
   const data = h && !(h instanceof Promise) ? h : null;
   if (st && !h) {
     loadHistory(r.station).then((loaded) => {
-      history.set(r.station, loaded);
+      seasonHistory.set(r.station, loaded);
       if (state.selected === r.id) render();
     });
   }
@@ -482,6 +512,8 @@ function renderMap() {
 
 function render() {
   if (!state.data) return;
+  syncRibbon();
+  $('#state-btn').textContent = `${state.data.stateName ?? 'Colorado'} ▾`;
   document.querySelectorAll('[data-metric]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.metric === state.metric)));
   $('#open-only').checked = state.openOnly;
   $('#snow-btn').setAttribute('aria-pressed', String(state.snowDepth));
@@ -614,22 +646,27 @@ function startMap() {
     resorts: state.data.resorts,
     getPadding: coveredPadding,
     onSelect: (id) => select(id),
+    extend: state.code === 'CO' ? [39.8, -105.1] : null,
   });
   state.map.setSnowDepth(state.snowDepth);
 }
 
 async function load() {
+  const code = state.code;
   try {
-    const res = await fetch(`${DATA_URL}?t=${Date.now()}`, { cache: 'no-store' });
+    const res = await fetch(`${dataUrl(code)}?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(res.status);
-    state.data = await res.json();
+    const data = await res.json();
+    if (code !== state.code) return; // switched states while this was loading
+    state.data = data;
     state.loadedAt = Date.now();
-    write(STORE.data, state.data);
+    write(`${STORE.data}:${code}`, state.data);
     const age = Date.now() - Date.parse(state.data.generated);
     showNotice(age > STALE_AFTER_MS ? `Heads up: this data is ${timeAgo(state.data.generated).replace(' ago', '')} old.`
-      : !state.data.sources.coloradoSki ? 'Live open status is unavailable right now. Showing forecasts only.' : null);
+      : code === 'CO' && !state.data.sources.coloradoSki ? 'Live open status is unavailable right now. Showing forecasts only.' : null);
   } catch {
-    const saved = read(STORE.data, null);
+    if (code !== state.code) return;
+    const saved = read(`${STORE.data}:${code}`, null);
     if (saved) {
       state.data = saved;
       showNotice(`You're offline. Showing data from ${timeAgo(saved.generated)}.`);
@@ -641,8 +678,67 @@ async function load() {
   render();
 }
 
+// ---------- states ----------
+
+async function loadStates() {
+  try {
+    const res = await fetch(`${STATES_URL}?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(res.status);
+    state.states = await res.json();
+    write(STORE.states, state.states);
+  } catch { /* keep the saved list */ }
+  renderPicker();
+}
+
+function renderPicker() {
+  const list = state.states;
+  if (!list) return;
+  $('#picker-list').innerHTML = list.regions.map((region) => {
+    const states = list.states.filter((x) => x.region === region);
+    if (!states.length) return '';
+    return `<h3 class="picker-region">${esc(region)}</h3><div class="picker-grid">${states.map((x) => `
+      <button type="button" class="picker-state${x.code === state.code ? ' is-current' : ''}" data-state="${esc(x.code)}">
+        <b>${esc(x.name)}</b><small>${x.count} resort${x.count === 1 ? '' : 's'}${x.open ? ` · <span class="open-now">${x.open} open</span>` : ''}</small>
+      </button>`).join('')}</div>`;
+  }).join('');
+}
+
+function openPicker(open) {
+  $('#picker').hidden = !open;
+  $('#state-btn').setAttribute('aria-expanded', String(open));
+  if (open) renderPicker();
+}
+
+function setState(code) {
+  code = code.toUpperCase();
+  openPicker(false);
+  if (code === state.code && state.data && (state.data.state ?? 'CO') === code) return;
+  state.code = code;
+  write(STORE.state, code.toLowerCase());
+  history.replaceState(null, '', `#${code.toLowerCase()}`);
+  state.selected = null;
+  state.pastSeason = null;
+  state.map?.destroy();
+  state.map = null;
+  // Show the last saved copy of this state instantly (if any), then fetch fresh data.
+  state.data = read(`${STORE.data}:${code}`, null);
+  setSheet('peek');
+  startMap();
+  render();
+  load();
+}
+
+window.addEventListener('hashchange', () => {
+  const code = location.hash.slice(1);
+  if (code && code.toUpperCase() !== state.code) setState(code);
+});
+
 document.addEventListener('click', (e) => {
   const t = e.target;
+  if (t.closest('#state-btn')) return openPicker($('#picker').hidden);
+  if (t.closest('#picker-close') || t.id === 'picker') return openPicker(false);
+  const pickState = t.closest('[data-state]');
+  if (pickState) return setState(pickState.dataset.state);
   const metric = t.closest('[data-metric]');
   if (metric) {
     state.metric = metric.dataset.metric;
@@ -689,7 +785,9 @@ $('#open-only').addEventListener('change', (e) => {
   render();
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && state.selected) select(null);
+  if (e.key !== 'Escape') return;
+  if (!$('#picker').hidden) openPicker(false);
+  else if (state.selected) select(null);
 });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && Date.now() - state.loadedAt > RELOAD_AFTER_MS) load();
@@ -713,7 +811,10 @@ setSheet('peek', false);
 document.body.classList.toggle('panel-hidden', WIDE.matches && !state.panelOpen);
 $('#panel-open').hidden = !WIDE.matches || state.panelOpen;
 // Show the last copy instantly, then fetch fresh data.
-state.data = read(STORE.data, null);
+history.replaceState(null, '', `#${state.code.toLowerCase()}`);
+write(STORE.state, state.code.toLowerCase());
+state.data = read(`${STORE.data}:${state.code}`, null) ?? (state.code === 'CO' ? read(STORE.data, null) : null);
 startMap();
 render();
 load();
+loadStates();

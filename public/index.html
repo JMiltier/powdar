@@ -43,13 +43,24 @@
     <span class="legend-keys"><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBqw/u/0+JQaH2jowoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAAD5FwUnUj+h+wAAAABJRU5ErkJggg==" alt="">1″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmByStP/6fEoLnhpowoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAAAWWgV7xtUzQAAAAABJRU5ErkJggg==" alt="">4″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBAZUn/lNi0IZ2C0YUA6kFWEYNpBiwUG4EKhg1kHLAQgUzUMCogZQDeBjCyjOqGUgtAAAuegXB6J66owAAAABJRU5ErkJggg==" alt="">10″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBNvaH/lNi0JGDdowoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAABLaAYVAQvwcAAAAABJRU5ErkJggg==" alt="">20″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmB4QqH/1Ni0MoHtowoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAABMVgYYSfe//gAAAABJRU5ErkJggg==" alt="">40″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBtYy7/1NiUPN/V0YUA6kFWEYNpBiwUG4EKhg1kHLAQgUzUMCogZQDeBjCyjOqGUgtAABMgAYZ9VqjPQAAAABJRU5ErkJggg==" alt="">60″</span><span><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAAQElEQVQ4jWNhoDJgoZmBW1g2/qfEIJ8//owoBlILsIwaSDFgodwIVDBqIOWAhQpmoIBRAykH8DCElWdUM5BaAAA7vwXpWDxieAAAAABJRU5ErkJggg==" alt="">100″+</span></span>
   </div>
 
+  <div id="picker" class="picker" hidden role="dialog" aria-label="Choose a state">
+    <div class="picker-card">
+      <div class="picker-head">
+        <h2>Choose a state</h2>
+        <button id="picker-close" class="icon" type="button" aria-label="Close">×</button>
+      </div>
+      <div id="picker-list" class="picker-list"></div>
+      <p class="source">Resorts from <a href="https://openskimap.org" target="_blank" rel="noopener">OpenSkiMap</a> (© OpenStreetMap contributors, ODbL).</p>
+    </div>
+  </div>
+
   <section id="sheet" class="sheet" aria-label="Resorts" data-state="peek">
     <div id="grab" class="grab">
       <span class="handle" aria-hidden="true"></span>
       <div class="sheet-head">
         <div class="brand">
           <h1>Powdar</h1>
-          <button id="updated" class="updated" type="button" title="Refresh">Loading…</button>
+          <button id="state-btn" class="state-btn" type="button" aria-haspopup="dialog" aria-expanded="false">Colorado ▾</button>
         </div>
         <div class="head-actions">
           <label class="chip"><input id="open-only" type="checkbox"> Open now</label>
@@ -57,17 +68,19 @@
         </div>
       </div>
       <p id="headline" class="headline"></p>
+      <button id="updated" class="updated" type="button" title="Refresh">Loading…</button>
     </div>
     <div id="sheet-body" class="sheet-body">
       <p id="notice" class="notice" hidden></p>
       <div id="list" class="list"></div>
       <div id="detail" class="detail" hidden></div>
       <footer class="foot">
-        Last 24 hrs: the resort's own report when it has one, otherwise a weather-model estimate (est.).
+        Resorts outside Colorado come from OpenSkiMap. Last 24 hrs: the resort's own report when it has one, otherwise a weather-model estimate (est.).
         Forecast: a blend of the National Weather Service and the European, American, Canadian and German weather models,
         run for each resort's mid-mountain elevation; days 8–14 use the European and American models. Weather: National Weather Service.
         Season: snowpack at the nearest NRCS SNOTEL snow station vs its 1991–2020 normal. Typical season snowfall: ZRankings. Open status, lifts and snow totals: Colorado Ski Country USA.
-        Vail, Beaver Creek, Breckenridge, Keystone, Crested Butte and Wolf Creek show announced dates only.
+        In Colorado, Vail, Beaver Creek, Breckenridge, Keystone, Crested Butte and Wolf Creek show announced dates only.
+        Live lift status comes straight from resorts that publish it.
       </footer>
     </div>
   </section>

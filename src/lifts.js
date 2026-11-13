@@ -94,6 +94,14 @@ export const LIFT_SOURCES = {
   },
 };
 
+// Readers for the JSON feed types Liftie uses, so any resort with one of these can be read.
+export function feedReader({ tool, url, page }) {
+  if (tool === 'intrawest') return { ...mtnpowder(0, page), url };
+  if (tool === 'powdr') return { ...powdr(new URL(url).host, page), url };
+  if (tool === 'aspen') return { ...aspen(new URL(url).searchParams.get('mountain'), page), url };
+  return null;
+}
+
 // One resort's lifts → { open, hold, scheduled, total, lifts, page, checked }.
 export function summarizeLifts(lifts, page, checked) {
   const count = (s) => lifts.filter((l) => l.status === s).length;
