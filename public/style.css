@@ -737,3 +737,16 @@ button, .row, summary { -webkit-tap-highlight-color: transparent; }
 .region-bar i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; }
 .region-bar em { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); opacity: 0.45; border-radius: 1px; }
 .region .pct { font-size: 0.85rem; min-width: 52px; text-align: center; }
+
+/* UV index in the 7-day strip: the standard color scale. */
+.day-uv { font-size: 0.62rem; font-weight: 800; padding: 1px 5px; border-radius: 6px; margin-top: 2px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.uv-low { background: #dcf2e3; color: #1f6b3a; }
+.uv-mod { background: #fbf0c4; color: #7a5a00; }
+.uv-high { background: #fde0c8; color: #9a4410; }
+.uv-vhigh { background: #f9d2d2; color: #9e1f1f; }
+.uv-ext { background: #e9d8f6; color: #5f2a8c; }
+:root[data-theme="dark"] .uv-low { background: #183324; color: #8fdcab; }
+:root[data-theme="dark"] .uv-mod { background: #3a3215; color: #f1d36c; }
+:root[data-theme="dark"] .uv-high { background: #45291a; color: #ffb37f; }
+:root[data-theme="dark"] .uv-vhigh { background: #4a1f22; color: #ff9b9b; }
+:root[data-theme="dark"] .uv-ext { background: #35214a; color: #d4abff; }

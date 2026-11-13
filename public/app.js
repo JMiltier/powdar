@@ -490,10 +490,11 @@ function renderDetail(r) {
         <span class="day-name">${weekday(d.date, today)}</span>
         <span class="day-sky" title="${esc(d.sky ?? d.night ?? '')}">${weatherIcon(d.sky ?? d.night) || '&nbsp;'}</span>
         <span class="day-temp">${deg(d.hi)}<i>${deg(d.lo)}</i></span>
+        ${d.uv != null ? `<span class="day-uv uv-${uvLevel(d.uv)}" title="UV index ${d.uv} (${UV_WORDS[uvLevel(d.uv)]})">UV ${d.uv}</span>` : ''}
         <span class="day-snow">${d.snow >= 1 ? inches(d.snow) : d.snow > 0 ? '<1″' : ''}</span>
       </div>`).join('')}
     </div>
-    <p class="week2">${f.week2 ? `<b>Days 8–14:</b> about ${inches(f.week2.mid)} more${rangeText(f.week2.range) ? ` (${rangeText(f.week2.range)})` : ''} · ` : ''}<span class="muted">Highs/lows in ${unitLabel()}</span></p>` : '<p class="muted">Forecast unavailable right now.</p>';
+    <p class="week2">${f.week2 ? `<b>Days 8–14:</b> about ${inches(f.week2.mid)} more${rangeText(f.week2.range) ? ` (${rangeText(f.week2.range)})` : ''} · ` : ''}<span class="muted">Highs/lows in ${unitLabel()}${f.days.some((d) => d.uv != null) ? ' · UV: the day’s peak' : ''}</span></p>` : '<p class="muted">Forecast unavailable right now.</p>';
 
   // Where every number comes from, gathered at the very bottom for anyone curious.
   const notes = [];
@@ -553,6 +554,7 @@ function renderDetail(r) {
     ${bars}
   `;
   if (f) notes.push(`Snow forecast: the middle of ${sources.length > 1 ? `${sources.length} forecasts (${esc(sources.join(', '))})` : 'the National Weather Service forecast'}${sources.length > 1 ? `, via ${sourceLink('https://www.weather.gov', 'NWS')} and ${sourceLink('https://open-meteo.com', 'Open-Meteo')}` : ''}. Small numbers are the likely range.${state.data.sources.modelsReused ? ` Model forecast from ${esc(timeAgo(state.data.sources.modelsAt))}.` : ''}`);
+  if (f?.days.some((d) => d.uv != null)) notes.push(`UV index: each day’s peak, from ${sourceLink('https://open-meteo.com', 'Open-Meteo')}. At ski-area elevations, with snow reflecting it back, sunburn comes fast even on cold days.`);
   if (f) notes.push(`Weather: ${sourceLink(`https://forecast.weather.gov/MapClick.php?lat=${r.at[0]}&lon=${r.at[1]}`, 'National Weather Service forecast')}.`);
   const season = seasonSection(r, notes);
   const temps = tempSection(r, notes);
@@ -795,6 +797,10 @@ const dateOfSeason = (d) => {
   const start = Date.parse(`${m >= 10 ? y : y - 1}-10-01T12:00:00Z`);
   return new Date(start + d * 864e5).toISOString().slice(0, 10);
 };
+
+// UV index levels (the standard scale) and their colors (in CSS).
+const uvLevel = (v) => (v <= 2 ? 'low' : v <= 5 ? 'mod' : v <= 7 ? 'high' : v <= 10 ? 'vhigh' : 'ext');
+const UV_WORDS = { low: 'low', mod: 'moderate', high: 'high', vhigh: 'very high', ext: 'extreme' };
 
 // ---------- temperature units ----------
 // Data is °F; shown in the chosen unit. diff: a difference of degrees (no 32° offset).

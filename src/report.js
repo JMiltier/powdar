@@ -1,7 +1,7 @@
 // Builds the single data.json the app reads. Pure apart from the fetch you pass in,
 // so it runs the same in the GitHub Action, the local preview server and tests.
 import { RESORTS, PLANNED } from './resorts.js';
-import { MODELS, modelUrl, snowHours } from './models.js';
+import { MODELS, modelUrl, snowHours, uvUrl } from './models.js';
 import { parseSnotel, snotelUrl, stationSeason, waterYear } from './snotel.js';
 import { LIFT_SOURCES, summarizeLifts } from './lifts.js';
 import { liftsDue } from './lift-hours.js';
@@ -408,6 +408,22 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       ...MODELS.map((m, k) => ({ id: m.id, hours: snowHours(modelData[k]?.[i]) })),
     ],
   }, now));
+
+  // UV index for each forecast day (with the model forecasts: reused between their hourly runs).
+  if (!skipModels) {
+    try {
+      const uv = await getJson(fetchFn, uvUrl(RESORTS, FORECAST_DAYS), { backoff });
+      (Array.isArray(uv) ? uv : [uv]).forEach((u, i) => {
+        const byDate = new Map((u?.daily?.time ?? []).map((t, k) => [t, u.daily.uv_index_max[k]]));
+        for (const d of forecasts[i]?.days ?? []) {
+          const v = byDate.get(d.date);
+          d.uv = v == null ? null : Math.round(v);
+        }
+      });
+    } catch (err) {
+      log(`UV index failed: ${err.message}`);
+    }
+  }
 
   const resorts = RESORTS.map((r, i) => {
     let c = r.csc ? csc.get(r.csc) : undefined;
