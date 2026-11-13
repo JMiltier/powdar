@@ -1308,7 +1308,9 @@ bodyEl.addEventListener('touchmove', (e) => {
   const dy = t.clientY - swipe.y;
   if (!swipe.mode) {
     if (Math.hypot(dx, dy) < 7) return;
-    if (Math.abs(dx) > Math.abs(dy) * 1.4 && !e.target.closest('select, input, .chart')) swipe.mode = 'side';
+    // (Sideways swipes on things that scroll sideways themselves, like the cams strip, are theirs.)
+    if (Math.abs(dx) > Math.abs(dy) * 1.4 && e.target.closest('.cams')) swipe.mode = 'scroll';
+    else if (Math.abs(dx) > Math.abs(dy) * 1.4 && !e.target.closest('select, input, .chart')) swipe.mode = 'side';
     else if (!WIDE.matches && ((dy > 0 && bodyEl.scrollTop <= 0) || (dy < 0 && state.sheet !== 'full'))) swipe.mode = 'sheet';
     else swipe.mode = 'scroll';
   }
