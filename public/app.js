@@ -865,35 +865,47 @@ function dayScore(r, which) {
   if (base) reasons.push(`${inches(base)} base`);
   return { r, score, reasons };
 }
-function bestBets(which, favsOnly = false) {
+// scope: 'all', 'favs' (starred), or 'filter' (the pass and ★ filters now on).
+function bestBets(which, scope = 'all') {
   const d = state.data;
   const tomorrow = addDaysIso(d.today, 1);
   return d.resorts
-    .filter((r) => !favsOnly || state.favs.has(r.id))
+    .filter((r) => scope === 'all' || (scope === 'favs' ? state.favs.has(r.id) : matches(r)))
     // Open that day: open now, or opening tomorrow for tomorrow's pick.
     .filter((r) => r.status.state === 'open' || (which === 1 && r.status.state === 'soon' && r.status.date === tomorrow))
     .map((r) => dayScore(r, which)).filter(Boolean).sort((a, b) => b.score - a.score);
 }
 const addDaysIso = (iso, n) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
-function bestBetCard(which, favsOnly = false) {
-  const bets = bestBets(which, favsOnly);
+function bestBetCard(which, scope = 'all') {
+  const bets = bestBets(which, scope);
   if (!bets.length) return '';
   const [top, next] = bets;
   const when = which === 0 ? 'today' : 'tomorrow';
+  const label = scope === 'all' ? `Best bet ${when}` : `${scopeName(scope)} ${when}`;
   return `
-    <button type="button" class="best-bet${favsOnly ? ' best-fav' : ''}" data-open="${esc(top.r.id)}">
-      <small>${favsOnly ? `★ Yours ${when}` : `Best bet ${when}`}</small>
+    <button type="button" class="best-bet${scope !== 'all' ? ' best-fav' : ''}" data-open="${esc(top.r.id)}">
+      <small>${esc(label)}</small>
       <b>${esc(top.r.name)}</b>
       <span>${esc(top.reasons.slice(0, 4).join(' · '))}</span>
       ${next ? `<em>Next best: ${esc(next.r.name)}</em>` : ''}
     </button>`;
 }
 
-// The same picks among the resorts you've starred (the ones you can and would ski). Shown once
-// two or more of them are open; with one there's nothing to choose.
-function favBets() {
-  if (bestBets(0, true).length < 2 && bestBets(1, true).length < 2) return '';
-  return `<div class="best-bets">${bestBetCard(0, true) || '<span></span>'}${bestBetCard(1, true)}</div>`;
+// The same picks within the filters now on (e.g. Ikon only), and among the resorts you've starred
+// (the ones you can and would ski). Each row shows once two or more of its resorts are open that
+// day; with one there's nothing to choose. A row that would repeat another is left out.
+const passFiltered = () => state.pass !== 'all' || state.favsOnly;
+function scopeName(scope) {
+  if (scope === 'favs') return '★ Yours';
+  const pass = state.pass === 'other' ? 'Other passes' : state.pass !== 'all' ? PASS_NAMES[state.pass] : '';
+  return state.favsOnly ? `★ ${pass || 'Yours'}` : pass;
+}
+const scopeRow = (scope) => (bestBets(0, scope).length < 2 && bestBets(1, scope).length < 2 ? ''
+  : `<div class="best-bets">${bestBetCard(0, scope) || '<span></span>'}${bestBetCard(1, scope)}</div>`);
+function scopedBets() {
+  const filter = passFiltered() ? scopeRow('filter') : '';
+  const favs = state.favsOnly && state.pass === 'all' ? '' : scopeRow('favs');
+  return filter + favs;
 }
 
 // ---------- Today in Colorado ----------
@@ -953,7 +965,7 @@ function todaySection() {
   return `
     <h3 class="section">Today in Colorado</h3>
     <div class="best-bets">${bestBetCard(0)}${bestBetCard(1)}</div>
-    ${favBets()}
+    ${scopedBets()}
     <p class="best-note">Picked from fresh snow, open terrain, sun, wind, temperature and base, among resorts open that day.</p>
     ${alertsBlock(ins?.alerts)}
     <ul class="highlights">${items.map((t) => `<li>${t}</li>`).join('')}</ul>
@@ -970,9 +982,12 @@ function todaySection() {
 function headlineInsight() {
   const best = bestBets(0)[0];
   const a = state.data.insights?.alerts?.[0];
-  const mine = bestBets(0, true);
-  const fav = mine.length >= 2 && mine[0].r.id !== best?.r.id ? mine[0] : null;
-  const pick = best ? `<span class="best-star">★</span>Best today: <b>${esc(best.r.name)}</b>${best.reasons[0] ? ` · ${esc(best.reasons[0])}` : ''}${fav ? ` · of yours: <b>${esc(fav.r.name)}</b>` : ''}` : '';
+  // Plus the pick within the filters now on (or, unfiltered, among your favorites), when it differs.
+  const scope = passFiltered() ? 'filter' : 'favs';
+  const mine = bestBets(0, scope);
+  const alt = mine.length >= 2 && mine[0].r.id !== best?.r.id ? mine[0] : null;
+  const altName = scope === 'favs' ? 'of yours' : scopeName('filter').replace('★ ', '');
+  const pick = best ? `<span class="best-star">★</span>Best today: <b>${esc(best.r.name)}</b>${best.reasons[0] && !alt ? ` · ${esc(best.reasons[0])}` : ''}${alt ? ` · ${esc(altName)}: <b>${esc(alt.r.name)}</b>` : ''}` : '';
   const alert = a ? `<span class="dot-alert"></span>${esc(a.event)}: ${esc(a.areas.split(';')[0].trim())}` : '';
   return [pick, alert].filter(Boolean).join('</span><span class="row-sub overview-line">');
 }
@@ -1335,6 +1350,7 @@ function render() {
   $('#map').dataset.layer = state.layer; // (the light map dims a little under white snow)
   $('#map').dataset.snowStyle = state.snowStyle;
   $('#legend').innerHTML = legendFor(state.layer);
+  $('#legend').classList.remove('pending');
   $('#updated').textContent = `Updated ${timeAgo(state.data.generated)}`;
 
   const overview = state.selected === OVERVIEW;
@@ -1933,12 +1949,10 @@ for (const type of ['gesturestart', 'gesturechange', 'gestureend']) document.add
 document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
 $('#credit-text').innerHTML = CREDITS;
-$('#info-btn').innerHTML = UI.info;
 function syncUnitPick() {
   for (const b of document.querySelectorAll('[data-unit-pick]')) b.setAttribute('aria-pressed', String(b.dataset.unitPick === state.unit));
 }
 syncUnitPick();
-$('#snow-btn').innerHTML = UI.layers;
 applyTheme();
 DARK.addEventListener('change', () => applyTheme());
 setSheet('peek', false);
