@@ -319,7 +319,8 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
 
   // Each model is one request covering every resort; NWS is two requests per resort (gridded
   // numbers + the text forecast); SNOTEL is two requests for every station (this season, normals).
-  const stations = [...new Set(RESORTS.map((r) => r.snotel[0]))];
+  const stations = [...new Set(RESORTS.flatMap((r) => [r.snotel[0], ...(r.snotelMore ?? []).map((x) => x[0])]))];
+  const stationName = (t) => RESORTS.flatMap((r) => [r.snotel, ...(r.snotelMore ?? [])]).find((x) => x[0] === t)[1];
   const wy = waterYear(today);
   const lastSeasonEnd = `${wy.startYear}-07-31`;
   const liftIds = Object.keys(LIFT_SOURCES);
@@ -410,7 +411,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
   }).then((rows) => rows));
   for (const [id, v] of Object.entries(vail)) if (v.terrain) liftsById[id] = v.terrain;
   const snowpack = Object.fromEntries(stations.map((t) => {
-    const name = RESORTS.find((r) => r.snotel[0] === t).snotel[1];
+    const name = stationName(t);
     const s = snowNow && stationSeason({ current: snowNow.get(t), normals: snowNormal?.get(t), today });
     return [t, s && { name, ...s }];
   }).filter(([, s]) => s));
@@ -501,6 +502,8 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       cams: camsWithTimes[r.id] ?? null,
       // Key into `snowpack` (resorts can share a station).
       station: snowpack[r.snotel[0]] ? r.snotel[0] : null,
+      // Every station averaged for this resort (the main one first), when there's more than one.
+      ...(r.snotelMore?.length ? { stations: [r.snotel[0], ...r.snotelMore.map((x) => x[0])].filter((t) => snowpack[t]) } : {}),
     };
   });
 

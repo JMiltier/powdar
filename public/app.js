@@ -468,7 +468,49 @@ function valueFor(r, metricKey = state.metric) {
   };
 }
 
-const station = (r) => (r.station ? state.data.snowpack?.[r.station] : null);
+// A resort's snowpack: its station's, or, where it has more than one nearby, their average (see
+// mergeStations). Cached per resort for the current data.
+const mergedStations = new WeakMap();
+function station(r) {
+  if (!r.station) return null;
+  const sp = state.data.snowpack ?? {};
+  const list = (r.stations ?? [r.station]).map((t) => sp[t] && { id: t, ...sp[t] }).filter(Boolean);
+  if (list.length < 2) return sp[r.station] ?? null;
+  const hit = mergedStations.get(r);
+  if (hit?.data === state.data) return hit.st;
+  const st = mergeStations(list);
+  mergedStations.set(r, { data: state.data, st });
+  return st;
+}
+const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+// Several [day, value] lines averaged day by day (only where every one of them has a value).
+function averageLines(lines) {
+  const days = [...new Set(lines.flatMap((l) => l.map((p) => p[0])))].sort((a, b) => a - b);
+  return days.map((d) => {
+    const vs = lines.map((l) => l.find((p) => p[0] === d)?.[1] ?? valueOn(l, d));
+    return vs.every((v) => v != null) ? [d, Math.round(mean(vs) * 100) / 100] : null;
+  }).filter(Boolean);
+}
+// Stations averaged: this season and normal line by line, % of normal from the averaged water and
+// normal, the normal peak from the averaged normal. Temperatures stay the main station's (its
+// normals are what they're compared with).
+function mergeStations(list) {
+  const normal = averageLines(list.map((s) => s.normal));
+  const peakAt = normal.reduce((b, p) => (!b || p[1] > b[1] ? p : b), null);
+  const swe = mean(list.map((s) => s.latest.swe));
+  const norm = list.every((s) => s.latest.normal != null) ? mean(list.map((s) => s.latest.normal)) : null;
+  const depths = list.map((s) => s.latest.depth).filter((v) => v != null);
+  return {
+    name: list.map((s) => s.name).join(' + '),
+    stations: list,
+    latest: { date: list[0].latest.date, swe, normal: norm, depth: depths.length ? Math.round(mean(depths)) : null },
+    pct: list.every((s) => s.pct != null) && norm ? Math.round((swe / norm) * 100) : null,
+    peak: peakAt ? { swe: Math.round(peakAt[1] * 10) / 10, date: addDays(`${state.data.today.slice(0, 4) - (state.data.today.slice(5) < '10-01' ? 1 : 0)}-10-01`, peakAt[0]) } : null,
+    season: averageLines(list.map((s) => s.season)),
+    normal,
+    temps: list[0].temps,
+  };
+}
 
 // Color band for "% of normal": well below → below → normal → above → well above.
 function seasonLevel(pct) {
@@ -869,7 +911,12 @@ function loadStateHistory() {
   return stateHistory;
 }
 // One entry per snow station (several resorts can share one).
-const stationsList = () => Object.entries(state.data.snowpack ?? {}).map(([id, s]) => ({ id, ...s }));
+// Each resort's main station once (the statewide figures and history are built from these; the extra
+// stations some resorts average in are left out so they don't count twice).
+const stationsList = () => {
+  const main = new Set(state.data.resorts.map((r) => r.station).filter(Boolean));
+  return Object.entries(state.data.snowpack ?? {}).filter(([id]) => main.has(id)).map(([id, s]) => ({ id, ...s }));
+};
 // Statewide % of normal: all the stations' snow water against all their normals.
 // (minNormal: below this much normal water, a % swings wildly; a region with one station can go lower.)
 function statewidePct(list = stationsList(), minNormal = 2) {
@@ -1178,6 +1225,7 @@ function renderOverview() {
     </div>
     ${todaySection()}
     <h3 class="section">Snowpack, ski country <span class="section-note">${list.length} mountain stations</span></h3>
+    <p class="season-head">${pct != null ? `<span class="pct lvl-${seasonLevel(pct)}">${pct}%</span> of normal snowpack for this date` : 'Too early in the season to compare with normal'}</p>
     ${snowChart}
     <h3 class="section">By region</h3>
     <ul class="regions">${regionRows}</ul>
@@ -1333,6 +1381,21 @@ function pastSeasons() {
 const SNOTEL_SITE = (triplet) => `https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=${triplet.split(':')[0]}`;
 const sourceLink = (href, text) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(text)}</a>`;
 
+// Several stations' past winters averaged: each season they all have, day by day. Cached.
+const mergedHistory = new Map();
+function mergeHistory(key, hists) {
+  if (mergedHistory.has(key)) return mergedHistory.get(key);
+  const seasons = hists[0].seasons.map(({ season }) => {
+    const all = hists.map((h) => h.seasons.find((x) => x.season === season));
+    if (all.some((x) => !x)) return null;
+    const points = averageLines(all.map((x) => x.points));
+    const top = points.reduce((b, p) => (!b || p[1] > b[1] ? p : b), null);
+    return top && { season, points, peak: { swe: Math.round(top[1] * 10) / 10, date: addDays(`${season.slice(0, 4)}-10-01`, top[0]) } };
+  }).filter(Boolean);
+  const out = { seasons };
+  mergedHistory.set(key, out);
+  return out;
+}
 // A season's value on a day of the season, between its (every-few-days) points.
 function valueOn(points, day) {
   for (let i = 0; i + 1 < points.length; i++) {
@@ -1350,15 +1413,18 @@ function seasonSection(r, notes) {
   let past = null;
   let head;
   // Past winters (for the color bands and the season picker) load in the background.
-  const h = st ? seasonHistory.get(r.station) : null;
-  const data = h && !(h instanceof Promise) ? h : null;
-  if (st && !h) {
-    loadHistory(r.station).then((loaded) => {
-      seasonHistory.set(r.station, loaded);
+  // (Several stations: each one's past winters, averaged season by season.)
+  const keys = r.stations?.length > 1 ? r.stations : [r.station];
+  const hs = st ? keys.map((t) => seasonHistory.get(t)) : [];
+  if (st && hs.some((h) => h === undefined)) {
+    Promise.all(keys.map(loadHistory)).then((loaded) => {
+      keys.forEach((t, i) => seasonHistory.set(t, loaded[i]));
       if (state.selected === r.id) render();
     });
   }
-  const bands = data ? bandsFor(r.station, data) : null;
+  const ready = st && hs.every((h) => h !== undefined && !(h instanceof Promise)) ? hs.filter(Boolean) : null;
+  const data = !ready?.length ? null : ready.length === 1 ? ready[0] : mergeHistory(keys.join('+'), ready);
+  const bands = data ? bandsFor(keys.join('+'), data) : null;
   if (st && pick) {
     past = data?.seasons.find((x) => x.season === pick) ?? null;
     if (!data) head = 'Loading past seasons…';
@@ -1378,7 +1444,10 @@ function seasonSection(r, notes) {
       : 'Too early in the season to compare with normal';
   }
   if (st) {
-    notes.push(`Snowpack: snow water at the ${sourceLink(SNOTEL_SITE(r.station), `${st.name} SNOTEL station`)} (USDA NRCS Snow Survey). Normal is the 1991–2020 median${bands ? `; color bands show how the ${bands.years} winters from ${esc(bands.first)} to ${esc(bands.last)} ranged` : ''}.`);
+    const where = st.stations
+      ? `the average of ${st.stations.length} nearby SNOTEL stations, ${st.stations.map((x) => sourceLink(SNOTEL_SITE(x.id), x.name)).join(' and ')}`
+      : `the ${sourceLink(SNOTEL_SITE(r.station), `${st.name} SNOTEL station`)}`;
+    notes.push(`Snowpack: snow water at ${where} (USDA NRCS Snow Survey). Normal is the 1991–2020 median${bands ? `; color bands show how the ${bands.years} winters from ${esc(bands.first)} to ${esc(bands.last)} ranged` : ''}.`);
   }
   const fact = (label, value) => `<li><span>${label}</span><b>${value}</b></li>`;
   const facts = [];
