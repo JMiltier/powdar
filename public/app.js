@@ -11,7 +11,7 @@ const ALL_STATES = false;
 const STATE_CODES = !ALL_STATES ? new Set(['CO']) : new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
 const validCode = (c) => (c && STATE_CODES.has(String(c).toUpperCase()) ? String(c).toUpperCase() : null);
 const STORE = {
-  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', sort: 'cs:sort', order: 'cs:order', unit: 'cs:unit', snowStyle: 'cs:snowStyle2', panel: 'cs:panel',
+  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', sort: 'cs:sort', order: 'cs:order', unit: 'cs:unit', dist: 'cs:dist', snowStyle: 'cs:snowStyle2', panel: 'cs:panel',
   state: 'cs:state', states: 'cs:states', theme: 'cs:theme',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
@@ -90,6 +90,7 @@ const state = {
   pass: read(STORE.pass, 'all'), // 'all', 'epic', 'ikon', 'indy' or 'other'
   snowStyle: read(STORE.snowStyle, 'color'), // how snow on the ground is drawn (tap its key to cycle)
   unit: read(STORE.unit, 'F'), // temperatures in 'F' or 'C' (the data is always °F)
+  dist: read(STORE.dist, 'imperial'), // snow, depth and wind: 'imperial' (in, mph) or 'metric' (cm, km/h)
   sort: read(STORE.sort, 'name'),
   order: read(STORE.order, []), // the user's own order (sort "mine"), resort ids // the list: 'name' (A–Z), 'value' (the map view's number) or 'open'
   // The map overlay: 'snow' (on the ground; the default), 'radar', 'outlook' or 'none'.
@@ -114,18 +115,26 @@ const state = {
 
 // ---------- formatting ----------
 
-// 0 → 0″, a dusting → <1″, otherwise whole inches.
+// Snow, depth, snow water and wind in the chosen units (the data is always inches and mph).
+const metric = () => state.dist === 'metric';
+// Snow: 0 → 0″, a dusting → <1″, otherwise whole inches (or centimeters).
 function inches(v) {
   if (v == null) return '–';
-  if (v === 0) return '0″';
-  if (v < 1) return '<1″';
-  return `${Math.round(v)}″`;
+  if (!metric()) return v === 0 ? '0″' : v < 1 ? '<1″' : `${Math.round(v)}″`;
+  const cm = v * 2.54;
+  return v === 0 ? '0 cm' : cm < 1 ? '<1 cm' : `${Math.round(cm)} cm`;
 }
+// A depth (base, snow on the ground): whole inches or centimeters.
+const depth = (v) => (v == null ? '–' : metric() ? `${Math.round(v * 2.54)} cm` : `${Math.round(v)}″`);
+// A bare number for tight spots (the snow-by-day bars): inches or centimeters, no unit.
+const snowNum = (v) => Math.round(metric() ? v * 2.54 : v);
+// Snow water (the snowpack charts): tenths of an inch, or millimeters.
+const water = (v) => (metric() ? `${Math.round(v * 25.4)} mm` : `${v.toFixed(1)}″`);
 // "2–5″", or nothing when the forecasts agree (or it's all under an inch).
 function rangeText(range) {
   if (!range) return '';
-  const [lo, hi] = range.map(Math.round);
-  return hi >= 1 && hi !== lo ? `${lo}–${hi}″` : '';
+  const [lo, hi] = range.map((v) => Math.round(metric() ? v * 2.54 : v));
+  return hi >= 1 && hi !== lo ? `${lo}–${hi}${metric() ? ' cm' : '″'}` : '';
 }
 const monthDay = (ymd) => new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
 const weekday = (ymd, today) => (ymd === today ? 'Today' : new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short' }));
@@ -298,7 +307,7 @@ function legendFor(layer) {
     return `<button type="button" class="day-step" data-cast-day="-1" aria-label="Earlier" ${day <= 1 ? 'disabled' : ''}>‹</button>
       <span class="radar-time">${period}</span>
       <button type="button" class="day-step" data-cast-day="1" aria-label="Later" ${day >= 3 ? 'disabled' : ''}>›</button>
-      <button type="button" class="snow-style" data-cast-amount aria-label="Chance of at least ${amount} inches; tap for another amount">${amount}″+<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 0 1 8.6-3.5M13 8a5 5 0 0 1-8.6 3.5M11.5 2v2.7H8.8M4.5 14v-2.7h2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button type="button" class="snow-style" data-cast-amount aria-label="Chance of at least ${amount} inches; tap for another amount">${metric() ? `${Math.round(amount * 2.54)} cm` : `${amount}″`}+<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 0 1 8.6-3.5M13 8a5 5 0 0 1-8.6 3.5M11.5 2v2.7H8.8M4.5 14v-2.7h2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <span class="legend-keys cast-key">${areas === 0 ? '<span class="muted">None expected</span>' : '<i class="c1"></i><i class="c2"></i><i class="c3"></i><span>10% → 70%+</span>'}</span>`;
   }
   if (layer === 'radar') {
@@ -317,7 +326,7 @@ function legendFor(layer) {
   };
   const next = SNOW_STYLES[(SNOW_STYLES.indexOf(state.snowStyle) + 1) % SNOW_STYLES.length];
   return `<button type="button" class="snow-style" data-snow-cycle aria-label="Snow drawn as: ${SNOW_STYLE_NAMES[state.snowStyle]}. Tap for ${SNOW_STYLE_NAMES[next]}.">${SNOW_STYLE_NAMES[state.snowStyle]}<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 0 1 8.6-3.5M13 8a5 5 0 0 1-8.6 3.5M11.5 2v2.7H8.8M4.5 14v-2.7h2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-    <span class="legend-keys depth-steps">${step(0, '1″')}${step(2, '4″')}${step(3, '1′')}${step(4, '2′')}${step(6, '5′')}${step(7, '8′+')}</span>`;
+    <span class="legend-keys depth-steps">${(metric() ? ['3 cm', '10 cm', '30 cm', '60 cm', '1.5 m', '2.4 m+'] : ['1″', '4″', '1′', '2′', '5′', '8′+']).map((t, k) => step([0, 2, 3, 4, 6, 7][k], t)).join('')}</span>`;
 }
 
 // ---------- webcams ----------
@@ -452,7 +461,7 @@ function valueFor(r, metricKey = state.metric) {
   }
   const v = m.get(r) ?? null;
   return {
-    text: v == null ? '–' : m.kind === 'base' ? `${Math.round(v)}″` : inches(v),
+    text: v == null ? '–' : m.kind === 'base' ? depth(v) : inches(v),
     sub: m.est?.(r) ? (v >= 0.5 ? 'est.' : '') : m.range ? rangeText(m.range(r)) : '',
     level: level(v, m.steps),
     sort: v ?? -1,
@@ -516,7 +525,7 @@ function renderHeadline() {
     const best = [...data.resorts].sort((a, b) => (m.get(b) ?? -1) - (m.get(a) ?? -1))[0];
     const v = best && m.get(best);
     if (m.kind === 'base') {
-      text = v ? `${m.top}: <strong>${esc(best.name)} ${Math.round(v)}″</strong>` : 'No snow on the ground yet';
+      text = v ? `${m.top}: <strong>${esc(best.name)} ${depth(v)}</strong>` : 'No snow on the ground yet';
     } else if (m.kind === 'season') {
       const pcts = data.resorts.map((r) => m.get(r)).filter((p) => p != null);
       const above = pcts.filter((p) => p > 110).length;
@@ -581,7 +590,7 @@ function miniDays(r) {
     const v = d.snow ?? 0;
     const h = v > 0.2 ? Math.max(4, Math.round((v / max) * 16)) : 3;
     const letter = new Date(`${d.date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'narrow', timeZone: 'UTC' });
-    return `<span class="rd ${kind}${v > 0.2 ? ' snow' : ''}"><em>${v >= 1 ? `${Math.round(v)}″` : ''}</em><i style="height:${h}px"></i><small>${esc(letter)}</small></span>`;
+    return `<span class="rd ${kind}${v > 0.2 ? ' snow' : ''}"><em>${v >= 1 ? (metric() ? snowNum(v) : `${Math.round(v)}″`) : ''}</em><i style="height:${h}px"></i><small>${esc(letter)}</small></span>`;
   };
   const label = (d) => `${weekday(d.date, state.data.today)} ${d.snow >= 0.5 ? inches(d.snow) : 'none'}`;
   // One row: the last 5 days, today (highlighted), the next 4.
@@ -654,9 +663,9 @@ function dayWind(d) {
   const nums = String(text ?? '').match(/\d+/g)?.map(Number);
   return { max: nums?.length ? Math.max(...nums) : null, dir: (d.wind ? d.windDir : d.nightWindDir) ?? '', text: text ?? '' };
 }
-const windUnit = () => (state.unit === 'C' ? 'km/h' : 'mph');
-const windNum = (mph) => Math.round(state.unit === 'C' ? mph * 1.609 : mph);
-const windText = (text) => (state.unit === 'C' ? String(text).replace(/(\d+)/g, (n) => windNum(Number(n))).replace('mph', 'km/h') : text);
+const windUnit = () => (metric() ? 'km/h' : 'mph');
+const windNum = (mph) => Math.round(metric() ? mph * 1.609 : mph);
+const windText = (text) => (metric() ? String(text).replace(/(\d+)/g, (n) => windNum(Number(n))).replace('mph', 'km/h') : text);
 const longDay = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
 // A day's full forecast, opened by tapping it: the numbers, then the forecasters' own words for the
 // day and the night (National Weather Service, as written).
@@ -676,7 +685,7 @@ function dayMore(d) {
       <p class="dm-head"><b>${esc(longDay(d.date))}</b> <span class="muted">${esc(d.sky ?? d.night ?? '')}</span></p>
       <dl class="dm-facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
       ${words.length ? `${words.map(([k, t]) => `<p class="dm-words"><b>${k}</b> ${esc(t)}</p>`).join('')}
-      <p class="source">National Weather Service forecast, as written${state.unit === 'C' ? ' (in °F and mph)' : ''}</p>` : ''}
+      <p class="source">National Weather Service forecast, as written${state.unit === 'C' || metric() ? ' (in °F, inches and mph)' : ''}</p>` : ''}
     </div>`;
 }
 
@@ -697,7 +706,7 @@ function renderDetail(r) {
         <span class="day-temp">${deg(d.hi)}<i>${deg(d.lo)}</i></span>
         <span class="day-wind${w.max >= 25 ? ' windy' : ''}" title="Wind ${esc(w.text)}">${w.max != null ? `${esc(w.dir)} ${windNum(w.max)}` : '&nbsp;'}</span>
         ${d.uv != null ? `<span class="day-uv uv-${uvLevel(d.uv)}" title="UV index ${d.uv} (${UV_WORDS[uvLevel(d.uv)]})">UV ${d.uv}</span>` : ''}
-        <span class="day-snow">${d.snow >= 1 ? inches(d.snow) : d.snow > 0 ? '<1″' : ''}</span>
+        <span class="day-snow">${d.snow > 0 ? inches(d.snow) : ''}</span>
       </button>`;
     }).join('')}
     </div>
@@ -717,7 +726,7 @@ function renderDetail(r) {
     ${meter('Lifts', rep.lifts?.open ?? 0, rep.lifts?.total)}
     ${meter('Runs', rep.trails?.open ?? 0, rep.trails?.total)}
     <ul class="report">
-      ${rep.depth != null ? `<li><span>Base depth</span><b>${rep.depth}″</b></li>` : ''}
+      ${rep.depth != null ? `<li><span>Base depth</span><b>${depth(rep.depth)}</b></li>` : ''}
       <li><span>Reported new snow</span><b>${inches(rep.new24)} 24 hr · ${inches(rep.new48)} 48 hr</b></li>
       ${rep.seasonTotal != null ? `<li><span>Season snowfall so far</span><b>${inches(rep.seasonTotal)}</b></li>` : ''}
       ${rep.surface ? `<li><span>Surface</span><b>${esc(SURFACE[rep.surface] ?? rep.surface)}</b></li>` : ''}
@@ -788,42 +797,42 @@ const SEASON_DAYS = 273; // Oct 1 → Jun 30
 const MONTHS = ['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
 const MONTH_STARTS = [0, 31, 61, 92, 123, 151, 182, 212, 243];
 
-// `shown`: the season line to draw ([day, inches] points). For this season it's st.season plus the
-// dashed 2-week projection; for a past season, that season's line with this season faintly behind it.
+// This season (with its dashed 2-week projection) against normal; with a past season picked, that
+// winter's line too, in its own color, so the two can be compared directly.
 function seasonChart(st, ahead, past, bands) {
   const W = 320;
   const H = 128;
   const pad = { l: 4, r: 4, t: 20, b: 18 }; // room above for the "normal peak" label
   const last = st.season.at(-1);
-  const proj = !past && last && ahead?.length ? [last, ...ahead.map((w, i) => [last[0] + i + 1, last[1] + w])] : [];
-  const shown = past ? past.points : st.season;
+  const proj = last && ahead?.length ? [last, ...ahead.map((w, i) => [last[0] + i + 1, last[1] + w])] : [];
+  const shown = st.season;
   const maxY = Math.max(1, ...st.normal.map((p) => p[1]), ...shown.map((p) => p[1]), ...st.season.map((p) => p[1]), ...proj.map((p) => p[1]),
-    ...(bands ? bands.p90.map((p) => p[1]) : [])) * 1.08;
+    ...(past ? past.points.map((p) => p[1]) : []), ...(bands ? bands.p90.map((p) => p[1]) : [])) * 1.08;
   const x = (d) => pad.l + (d / SEASON_DAYS) * (W - pad.l - pad.r);
   const y = (v) => H - pad.b - (v / maxY) * (H - pad.t - pad.b);
   const line = (pts) => pts.filter((p) => p[0] <= SEASON_DAYS).map((p, i) => `${i ? 'L' : 'M'}${x(p[0]).toFixed(1)} ${y(p[1]).toFixed(1)}`).join(' ');
   const area = st.normal.length ? `${line(st.normal)} L${x(Math.min(SEASON_DAYS, st.normal.at(-1)[0])).toFixed(1)} ${y(0)} L${x(st.normal[0][0]).toFixed(1)} ${y(0)} Z` : '';
   const months = MONTHS.map((m, i) => `<text x="${x(MONTH_STARTS[i] + 2).toFixed(1)}" y="${H - 4}">${m}</text>`).join('');
-  const end = past ? null : last;
+  const end = last;
   return `
-    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Snowpack ${past ? `in ${past.season}` : 'this season'} compared with normal">
+    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Snowpack this season${past ? ` and in ${past.season}` : ''} compared with normal">
       ${MONTH_STARTS.slice(1).map((d) => `<line class="grid" x1="${x(d)}" x2="${x(d)}" y1="${pad.t}" y2="${H - pad.b}"/>`).join('')}
       ${bands ? bandPaths(bands, x, y) : `<path class="normal" d="${area}"/>`}
       ${bands && st.normal.length ? `<path class="median" d="${line(st.normal)}"/>` : ''}
-      ${past ? `<path class="now faint" d="${line(st.season)}"/>` : ''}
+      ${past ? `<path class="halo" d="${line(past.points)}"/><path class="past" d="${line(past.points)}"/>` : ''}
       ${proj.length ? `<path class="halo" d="${line(proj)}"/><path class="proj" d="${line(proj)}"/>` : ''}
       <path class="halo" d="${line(shown)}"/><path class="now" d="${line(shown)}"/>
       ${end ? `<circle class="now-dot" cx="${x(end[0])}" cy="${y(end[1])}" r="3"/>
-        <text class="now-label" text-anchor="end" x="${(x(end[0]) - 6).toFixed(1)}" y="${(y(end[1]) - 8).toFixed(1)}">now ${end[1].toFixed(1)}″</text>` : ''}
+        <text class="now-label" text-anchor="end" x="${(x(end[0]) - 6).toFixed(1)}" y="${(y(end[1]) - 8).toFixed(1)}">now ${water(end[1])}</text>` : ''}
       ${proj.length > 1 ? (() => {
         const p = proj.at(-1);
         // Keep the label inside the chart: it flips to the left near the right edge.
         const flip = x(p[0]) > W - 70;
         return `<circle class="proj-dot" cx="${x(p[0])}" cy="${y(p[1])}" r="2.6"/>
-          <text class="now-label" text-anchor="${flip ? 'end' : 'start'}" x="${(x(p[0]) + (flip ? -7 : 7)).toFixed(1)}" y="${(y(p[1]) - 6).toFixed(1)}">in 2 wks ${p[1].toFixed(1)}″</text>`;
+          <text class="now-label" text-anchor="${flip ? 'end' : 'start'}" x="${(x(p[0]) + (flip ? -7 : 7)).toFixed(1)}" y="${(y(p[1]) - 6).toFixed(1)}">in 2 wks ${water(p[1])}</text>`;
       })() : ''}
       ${st.peak ? `<circle class="peak-dot" cx="${x(dayOfSeason(st.peak.date)).toFixed(1)}" cy="${y(st.peak.swe).toFixed(1)}" r="2.4"/>
-        <text class="peak" x="${x(dayOfSeason(st.peak.date)).toFixed(1)}" y="${(y(st.peak.swe) - 6).toFixed(1)}">normal peak ${st.peak.swe}″</text>` : ''}
+        <text class="peak" x="${x(dayOfSeason(st.peak.date)).toFixed(1)}" y="${(y(st.peak.swe) - 6).toFixed(1)}">normal peak ${water(st.peak.swe)}</text>` : ''}
       ${months}
     </svg>`;
 }
@@ -932,7 +941,7 @@ function dayScore(r, which) {
   if (runs != null) reasons.push(`${Math.round(runs * 100)}% of runs open`);
   else if (lifts) reasons.push(`${lifts.open} of ${lifts.total} lifts`);
   if (day.sky) reasons.push(`${day.sky.replace(/^Chance /, '').replace(/ Showers.*/, ' showers')}, ${deg(hi)}`);
-  if (wind) reasons.push(wind >= 25 ? `windy (${wind} mph)` : wind >= 15 ? `breezy (${wind} mph)` : 'light wind');
+  if (wind) reasons.push(wind >= 25 ? `windy (${windNum(wind)} ${windUnit()})` : wind >= 15 ? `breezy (${windNum(wind)} ${windUnit()})` : 'light wind');
   if (base) reasons.push(`${inches(base)} base`);
   return { r, score, reasons };
 }
@@ -1324,6 +1333,16 @@ function pastSeasons() {
 const SNOTEL_SITE = (triplet) => `https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=${triplet.split(':')[0]}`;
 const sourceLink = (href, text) => `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(text)}</a>`;
 
+// A season's value on a day of the season, between its (every-few-days) points.
+function valueOn(points, day) {
+  for (let i = 0; i + 1 < points.length; i++) {
+    const [d0, v0] = points[i];
+    const [d1, v1] = points[i + 1];
+    if (day >= d0 && day <= d1) return v0 + ((v1 - v0) * (day - d0)) / (d1 - d0 || 1);
+  }
+  return null;
+}
+
 function seasonSection(r, notes) {
   const st = station(r);
   if (!st && !r.avgSnow) return '';
@@ -1345,9 +1364,13 @@ function seasonSection(r, notes) {
     if (!data) head = 'Loading past seasons…';
     else if (!past) head = `No record from ${esc(pick)} at this station.`;
     else {
+      // This season first (it's still the point), then the past one: where it stood on this date, and its peak.
+      const today = st.season.at(-1);
+      const then = today ? valueOn(past.points, today[0]) : null;
       const ofNormal = st.peak ? Math.round((past.peak.swe / st.peak.swe) * 100) : null;
-      head = `${esc(pick)} peaked at <b>${past.peak.swe}″</b> of snow water on ${monthDay(past.peak.date)}`
-        + (ofNormal != null ? ` · <span class="pct lvl-${seasonLevel(ofNormal)}">${ofNormal}%</span> of a normal peak` : '');
+      head = `${st.pct != null ? `This season <span class="pct lvl-${seasonLevel(st.pct)}">${st.pct}%</span> of normal` : 'This season'}${today ? ` · ${water(today[1])} of snow water` : ''}`
+        + `<br><span class="past-head"><i class="k-past"></i>${esc(pick)}: ${then != null ? `${water(then)} on this date, ` : ''}peaked at ${water(past.peak.swe)} on ${monthDay(past.peak.date)}`
+        + `${ofNormal != null ? ` (${ofNormal}% of a normal peak)` : ''}</span>`;
     }
   } else if (st) {
     head = st.pct != null
@@ -1360,13 +1383,13 @@ function seasonSection(r, notes) {
   const fact = (label, value) => `<li><span>${label}</span><b>${value}</b></li>`;
   const facts = [];
   if (r.noaa?.depth != null) {
-    facts.push(fact('Natural snow on the ground', `about ${Math.round(r.noaa.depth)}″`));
-    notes.push(`Snow on the ground: ${sourceLink('https://www.nohrsc.noaa.gov/nsa/', 'NOAA NOHRSC')} SNODAS snow model, updated daily${r.noaa.water != null ? ` (${r.noaa.water}″ of water here)` : ''}.`);
+    facts.push(fact('Natural snow on the ground', `about ${depth(r.noaa.depth)}`));
+    notes.push(`Snow on the ground: ${sourceLink('https://www.nohrsc.noaa.gov/nsa/', 'NOAA NOHRSC')} SNODAS snow model, updated daily${r.noaa.water != null ? ` (${water(r.noaa.water)} of water here)` : ''}.`);
   } else if (st?.latest.depth != null && !past) {
-    facts.push(fact('Snow on the ground', `${st.latest.depth}″ at the station`));
+    facts.push(fact('Snow on the ground', `${depth(st.latest.depth)} at the station`));
   }
   if (r.avgSnow) {
-    facts.push(fact('Typical season', `about ${r.avgSnow}″ of snow`));
+    facts.push(fact('Typical season', `about ${depth(r.avgSnow)} of snow`));
     notes.push(`Typical season: ${sourceLink('https://www.zrankings.com/articles/best-snow-in-colorado', 'ZRankings')} (patrol and avalanche-center records).`);
   }
   const options = ['<option value="">This season</option>', ...pastSeasons().map((v) => `<option value="${v}"${v === pick ? ' selected' : ''}>${v}</option>`)].join('');
@@ -1377,9 +1400,7 @@ function seasonSection(r, notes) {
     </div>
     ${st ? `<p class="season-head">${head}</p>
       ${seasonChart(st, r.forecast?.waterAhead, past, bands)}
-      <p class="legend-line">${past
-        ? `<i class="k-now"></i>${esc(pick)} <i class="k-faint"></i>This season`
-        : '<i class="k-now"></i>This season <i class="k-proj"></i>Next 2 weeks'}${bands ? ' <i class="k-median"></i>Normal' : ' <i class="k-normal"></i>Normal'}</p>
+      <p class="legend-line"><i class="k-now"></i>This season <i class="k-proj"></i>Next 2 weeks${past ? ` <i class="k-past"></i>${esc(pick)}` : ''}${bands ? ' <i class="k-median"></i>Normal' : ' <i class="k-normal"></i>Normal'}</p>
       ${bands ? `<p class="band-key"><span class="b-high">Snowiest 10%</span><span class="b-above">Above</span><span class="b-normal">Typical</span><span class="b-below">Below</span><span class="b-low">Driest 10%</span></p>` : ''}
 ` : ''}
     ${facts.length ? `<ul class="report">${facts.join('')}</ul>` : ''}`;
@@ -1991,6 +2012,13 @@ document.addEventListener('click', (e) => {
     $('#info-btn').setAttribute('aria-expanded', String(!c.hidden));
     return;
   }
+  const distBtn = t.closest('[data-dist-pick]');
+  if (distBtn) {
+    state.dist = distBtn.dataset.distPick;
+    write(STORE.dist, state.dist);
+    syncUnitPick();
+    return render();
+  }
   const unitBtn = t.closest('[data-unit-pick]');
   if (unitBtn) {
     state.unit = unitBtn.dataset.unitPick;
@@ -2052,6 +2080,7 @@ document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.prev
 $('#credit-text').innerHTML = CREDITS;
 function syncUnitPick() {
   for (const b of document.querySelectorAll('[data-unit-pick]')) b.setAttribute('aria-pressed', String(b.dataset.unitPick === state.unit));
+  for (const b of document.querySelectorAll('[data-dist-pick]')) b.setAttribute('aria-pressed', String(b.dataset.distPick === state.dist));
 }
 syncUnitPick();
 applyTheme();

@@ -1038,3 +1038,11 @@ body.reordering, body.reordering * { user-select: none; cursor: grabbing; }
 /* Radar: a darker, cooler map in light mode so the white clouds read against it. */
 :root:not([data-theme="dark"]) #map[data-layer="radar"] .leaflet-tile-pane { filter: grayscale(0.7) contrast(1.15) brightness(0.62) sepia(0.12) hue-rotate(180deg); }
 .sw-cloud { background: linear-gradient(90deg, rgba(248, 250, 253, 0.35), rgba(248, 250, 253, 0.9)); border: 1px solid var(--line); margin-left: 8px; }
+
+/* A past season picked for comparison: its own color next to this season's line. */
+.chart { --past: #7c3aed; }
+:root[data-theme="dark"] .chart { --past: #c4a5ff; }
+.chart .past { fill: none; stroke: var(--past); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.k-past { display: inline-block; width: 16px; height: 0; border-top: 2px solid #7c3aed; margin-right: 4px; vertical-align: middle; }
+:root[data-theme="dark"] .k-past { border-top-color: #c4a5ff; }
+.past-head { font-size: 0.82rem; color: var(--muted); }
