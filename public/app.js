@@ -616,32 +616,30 @@ function renderList() {
     const open = r.status.state === 'open';
     const head = `
       <span class="rr-head">
-        <span class="dot dot-${esc(r.status.state)}" aria-hidden="true"></span>
         <span class="row-name">${esc(r.name)}</span>${fav ? `<span class="card-fav" aria-label="Favorite">${UI.starFilled}</span>` : ''}
         <span class="pill pill-${esc(r.status.state)}">${esc(shortStatus(r))}</span>
         ${state.sort === 'mine' ? `<span class="drag-handle" aria-label="Drag to move ${esc(r.name)}" role="button"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5.5" cy="3.5" r="1.4"/><circle cx="10.5" cy="3.5" r="1.4"/><circle cx="5.5" cy="8" r="1.4"/><circle cx="10.5" cy="8" r="1.4"/><circle cx="5.5" cy="12.5" r="1.4"/><circle cx="10.5" cy="12.5" r="1.4"/></svg></span>` : ''}
       </span>`;
-    if (!open) {
-      return `
-    <button type="button" class="row rrow rrow-closed" data-open="${esc(r.id)}">
-      ${head}
-      <span class="rr-main">${miniDays(r)}</span>
-    </button>`;
-    }
+    // Three numbers on every row, the first following the map's view (highlighted), then base, then
+    // lifts open (open resorts) or snowpack vs normal (the rest, which have no lifts to count).
     const lifts = r.report?.lifts?.total ? r.report.lifts : r.lifts?.total ? r.lifts : null;
-    // The first number follows the map's view (highlighted); then base and lifts.
     const lead = ['dates', 'base'].includes(state.metric) ? 'new24' : state.metric;
     const v = valueFor(r, lead);
-    const label = { new24: '24 hr', next72: 'Next 3d', next7: 'Next 7d', next14: 'Next 14d', season: 'Snowpack' }[lead];
+    const LABEL = { new24: '24 hr', next72: 'Next 3d', next7: 'Next 7d', next14: 'Next 14d', season: 'Pack' };
     const base = valueFor(r, 'base');
+    const third = open
+      ? { text: lifts ? `${lifts.open}/${lifts.total}` : '–', label: 'Lifts', on: false }
+      : lead === 'season'
+        ? { text: valueFor(r, 'next7').text, label: 'Next 7d', on: false }
+        : { text: valueFor(r, 'season').text, label: 'Pack', on: state.metric === 'season' };
     return `
-    <button type="button" class="row rrow" data-open="${esc(r.id)}">
+    <button type="button" class="row rrow${open ? '' : ' rrow-closed'}" data-open="${esc(r.id)}">
       ${head}
       <span class="rr-main">
         <span class="rr-stats">
-          <span class="rs${state.metric === lead ? ' on' : ''}"><b>${esc(v.text)}</b><small>${label}</small></span>
+          <span class="rs${state.metric === lead ? ' on' : ''}"><b>${esc(v.text)}</b><small>${LABEL[lead]}</small></span>
           <span class="rs${state.metric === 'base' ? ' on' : ''}"><b>${esc(base.text)}</b><small>Base</small></span>
-          <span class="rs"><b>${lifts ? `${lifts.open}/${lifts.total}` : '–'}</b><small>Lifts</small></span>
+          <span class="rs${third.on ? ' on' : ''}"><b>${esc(third.text)}</b><small>${third.label}</small></span>
         </span>
         ${miniDays(r)}
       </span>
@@ -705,7 +703,8 @@ function renderDetail(r) {
     }).join('')}
     </div>
     ${dayMore(f.days.find((d) => d.date === state.openDay))}
-    <p class="week2">${f.week2 ? `<b>Days 8–14:</b> about ${inches(f.week2.mid)} more${rangeText(f.week2.range) ? ` (${rangeText(f.week2.range)})` : ''} · ` : ''}<span class="muted">Highs/lows in ${unitLabel()} · wind in ${windUnit()}${f.days.some((d) => d.uv != null) ? ' · UV: the day’s peak' : ''} · tap a day for its full forecast</span></p>` : '<p class="muted">Forecast unavailable right now.</p>';
+    ${f.week2 ? `<p class="week2"><b>Days 8–14</b> about ${inches(f.week2.mid)} more${rangeText(f.week2.range) ? ` <span class="muted">(${rangeText(f.week2.range)})</span>` : ''}</p>` : ''}
+    <p class="fine">${unitLabel()} · wind ${windUnit()}${f.days.some((d) => d.uv != null) ? ' · UV at the day’s peak' : ''} · Tap a day for more</p>` : '<p class="muted">Forecast unavailable right now.</p>';
 
   // Where every number comes from, gathered at the very bottom for anyone curious.
   const notes = [];

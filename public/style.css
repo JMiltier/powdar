@@ -991,3 +991,43 @@ body.reordering, body.reordering * { user-select: none; cursor: grabbing; }
 .dm-words { margin: 6px 0 0; font-size: 0.84rem; line-height: 1.4; }
 .dm-words b { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
 .day-more .source { margin: 6px 0 0; }
+
+/* ---------- Finish ---------- */
+/* Status pills: a soft tint with the status color as text (solid fills shouted down the list). */
+.pill { --pc: var(--tba); color: color-mix(in srgb, var(--pc) 82%, var(--text)); background: color-mix(in srgb, var(--pc) 14%, transparent);
+  font-weight: 700; letter-spacing: 0.01em; }
+:root[data-theme="dark"] .pill { color: color-mix(in srgb, var(--pc) 75%, #fff); background: color-mix(in srgb, var(--pc) 24%, transparent); }
+.pill-open { --pc: var(--open); }
+.pill-soon { --pc: var(--soon); }
+.pill-likely { --pc: var(--likely); }
+.pill-late { --pc: var(--late); }
+.pill-closed, .pill-unknown { --pc: #7b8794; }
+.pill-open, .pill-soon, .pill-likely, .pill-late, .pill-closed, .pill-unknown { background: color-mix(in srgb, var(--pc) 14%, transparent); }
+:root[data-theme="dark"] .pill-open, :root[data-theme="dark"] .pill-soon, :root[data-theme="dark"] .pill-likely,
+:root[data-theme="dark"] .pill-late, :root[data-theme="dark"] .pill-closed, :root[data-theme="dark"] .pill-unknown { background: color-mix(in srgb, var(--pc) 24%, transparent); }
+
+/* List rows: the name starts at the edge (the pill says the status); numbers line up under it. */
+.rr-main { padding-left: 0; gap: 14px; }
+.rr-stats { gap: 14px; }
+.rs { min-width: 34px; }
+.rs b { font-size: 1rem; }
+.rs:not(.on) b { color: var(--text); }
+.rs.on b { color: var(--accent); }
+.rs small { font-weight: 600; color: var(--muted); }
+.rs.on small { color: var(--accent); }
+.rrow-closed .rs b { font-weight: 650; }
+.rrow, .rrow-closed { padding: 11px 2px 10px; }
+.rr-head .row-name { font-size: 1rem; letter-spacing: -0.005em; }
+
+/* Snow-by-day strip: empty days are quiet ticks, snow days stand out. */
+.rr-main .rd i { background: color-mix(in srgb, var(--muted) 22%, transparent); }
+.rr-main .rd.next.snow i { background: var(--snow); }
+.rr-main .rd.past.snow i { background: color-mix(in srgb, var(--snow) 50%, var(--muted)); }
+.rr-main .rd small { color: color-mix(in srgb, var(--muted) 80%, transparent); font-weight: 650; }
+
+/* Forecast strip: UV is quiet text, colored only when it's high (6+). */
+.day-uv.uv-low, .day-uv.uv-mod { background: none; color: var(--muted); font-weight: 650; padding: 1px 0; }
+.week2 { margin: 2px 2px 2px; font-size: 0.86rem; }
+.week2 b { font-weight: 700; margin-right: 4px; }
+.fine { margin: 2px 2px 14px; font-size: 0.74rem; color: var(--muted); }
+:root[data-theme="dark"] .day-uv.uv-low, :root[data-theme="dark"] .day-uv.uv-mod { background: none; color: var(--muted); }
