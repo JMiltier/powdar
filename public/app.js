@@ -50,6 +50,12 @@ const METRICS = {
   },
   next72: { kind: 'snow', get: (r) => r.forecast?.next72, range: (r) => r.forecast?.next72Range, steps: [1, 3, 6, 12], top: 'Most snow, next 3 days' },
   next7: { kind: 'snow', get: (r) => r.forecast?.next7, range: (r) => r.forecast?.next7Range, steps: [1, 3, 6, 12], top: 'Most snow, next 7 days' },
+  // Two weeks: the 7-day forecast plus days 8–14 (only the models that reach that far; rougher).
+  next14: {
+    kind: 'snow', get: (r) => (r.forecast?.week2 && r.forecast.next7 != null ? r.forecast.next7 + r.forecast.week2.mid : null),
+    range: (r) => (r.forecast?.week2 && r.forecast.next7Range ? [r.forecast.next7Range[0] + r.forecast.week2.range[0], r.forecast.next7Range[1] + r.forecast.week2.range[1]] : null),
+    steps: [2, 6, 12, 24], top: 'Most snow, next 14 days',
+  },
   // Snowpack at the nearest SNOTEL station as a % of normal for the date.
   season: { kind: 'season', get: (r) => station(r)?.pct ?? null },
   // Base depth: the resort's own report when it gives one (usually once open), otherwise NOAA's
@@ -63,6 +69,9 @@ const METRICS = {
 };
 
 const $ = (sel) => document.querySelector(sel);
+// The address says what's open, so it can be shared: #co (the list), #co/keystone (a resort),
+// #co/colorado (the state overview).
+const routeParts = () => decodeURIComponent(location.hash.slice(1)).toLowerCase().split('/');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const read = (key, fallback) => {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
@@ -98,8 +107,8 @@ const state = {
   map: null,
   // Which state: from the address, else the one picked last time on this device. A first-time visitor
   // gets the state picker (Colorado shows behind it).
-  code: validCode(location.hash.slice(1)) ?? validCode(read(STORE.state, null)) ?? 'CO',
-  firstVisit: ALL_STATES && !validCode(location.hash.slice(1)) && !validCode(read(STORE.state, null)),
+  code: validCode(routeParts()[0]) ?? validCode(read(STORE.state, null)) ?? 'CO',
+  firstVisit: ALL_STATES && !validCode(routeParts()[0]) && !validCode(read(STORE.state, null)),
   states: read(STORE.states, null), // the picker's list
 };
 
@@ -373,6 +382,12 @@ function openCam(r, i) {
       <button type="button" class="cam-close" data-cam-close aria-label="Close">×</button>
     </div>`;
   box.hidden = false;
+  // A step in the history too: the back gesture closes the cam, not the page.
+  if (!history.state?.cam) history.pushState({ ...history.state, cam: true }, '', location.hash);
+}
+function closeCam() {
+  if (history.state?.cam) return history.back(); // (followRoute hides it)
+  $('#cam-view').hidden = true;
 }
 
 function seasonText(r, today) {
@@ -444,7 +459,7 @@ function availableMetrics() {
   const rs = state.data?.resorts ?? [];
   const hasDates = rs.some((r) => r.dates?.open || r.dates?.close);
   const hasStations = rs.some((r) => r.station);
-  return ['new24', 'next72', 'next7', 'base', ...(hasStations ? ['season'] : []), ...(hasDates ? ['dates'] : [])];
+  return ['new24', 'next72', 'next7', 'next14', 'base', ...(hasStations ? ['season'] : []), ...(hasDates ? ['dates'] : [])];
 }
 function syncRibbon() {
   const avail = availableMetrics();
@@ -491,7 +506,7 @@ function renderHeadline() {
         ? `<strong>${above} above normal</strong> · ${below} below · top: <strong>${esc(best.name)} ${v}%</strong>`
         : 'Too early in the season to compare snowpack with normal';
     } else {
-      const quiet = { new24: 'No new snow in the last 24 hrs', next72: 'No real snow in the next 3 days', next7: 'No real snow in the next 7 days' };
+      const quiet = { new24: 'No new snow in the last 24 hrs', next72: 'No real snow in the next 3 days', next7: 'No real snow in the next 7 days', next14: 'No real snow in the next 14 days' };
       text = v >= 1 ? `${m.top}: <strong>${esc(best.name)} ${inches(v)}</strong>` : quiet[state.metric];
     }
   }
@@ -522,7 +537,7 @@ function shortStatus(r) {
   if (s.state === 'done') return 'Closed';
   return 'Opens TBA';
 }
-const METRIC_LABEL = { new24: 'Most −24h', next72: 'Most +3d', next7: 'Most +7d', base: 'Deepest', season: 'Snowpack', dates: 'Opening' };
+const METRIC_LABEL = { new24: 'Most −24h', next72: 'Most +3d', next7: 'Most +7d', next14: 'Most +14d', base: 'Deepest', season: 'Snowpack', dates: 'Opening' };
 
 function rowSub(r) {
   const s = r.status;
@@ -597,7 +612,7 @@ function renderList() {
     // The first number follows the map's view (highlighted); then base and lifts.
     const lead = ['dates', 'base'].includes(state.metric) ? 'new24' : state.metric;
     const v = valueFor(r, lead);
-    const label = { new24: '24 hr', next72: 'Next 3d', next7: 'Next 7d', season: 'Snowpack' }[lead];
+    const label = { new24: '24 hr', next72: 'Next 3d', next7: 'Next 7d', next14: 'Next 14d', season: 'Snowpack' }[lead];
     const base = valueFor(r, 'base');
     return `
     <button type="button" class="row rrow" data-open="${esc(r.id)}">
@@ -1375,6 +1390,11 @@ function renderMap() {
   state.map.update(items);
 }
 
+let lastSelected = null;
+const routeFor = () => `#${state.code.toLowerCase()}${state.selected ? `/${state.selected}` : ''}`;
+function syncRoute() {
+  if (location.hash !== routeFor()) history.replaceState(history.state, '', routeFor());
+}
 function render() {
   if (!state.data) return;
   syncRibbon();
@@ -1393,7 +1413,12 @@ function render() {
 
   const overview = state.selected === OVERVIEW;
   const r = overview ? null : state.data.resorts.find((x) => x.id === state.selected);
+  if (state.selected && !overview && !r) state.selected = null; // (a shared link to a resort that's gone)
   const open = Boolean(r) || overview;
+  // A forecast day opened in one resort's page closes when you go elsewhere.
+  if (state.selected !== lastSelected) state.openDay = null;
+  lastSelected = state.selected;
+  syncRoute();
   $('#list').hidden = open;
   $('#detail').hidden = !open;
   $('.foot').hidden = open; // a resort's own sources sit at the bottom of its details
@@ -1665,7 +1690,11 @@ $('#list').addEventListener('pointercancel', endReorder);
 
 // ---------- actions ----------
 
+// Opening a resort (or the overview) from the list adds a step to the browser's history, so the
+// phone's back gesture returns to the list instead of leaving the site.
 function select(id) {
+  if (!id && state.selected && history.state?.page) return history.back(); // (popstate does the rest)
+  if (id && !state.selected) history.pushState({ page: true }, '', `#${state.code.toLowerCase()}/${id}`);
   state.selected = id;
   if (id && WIDE.matches && !state.panelOpen) setPanel(true);
   render();
@@ -1803,14 +1832,11 @@ function setState(code) {
   state.firstVisit = false;
   openPicker(false);
   write(STORE.state, code.toLowerCase());
-  if (code === state.code && state.data && (state.data.state ?? 'CO') === code) {
-    history.replaceState(null, '', `#${code.toLowerCase()}`);
-    return;
-  }
+  if (code === state.code && state.data && (state.data.state ?? 'CO') === code) return syncRoute();
   state.code = code;
   write(STORE.state, code.toLowerCase());
-  history.replaceState(null, '', `#${code.toLowerCase()}`);
   state.selected = null;
+  history.replaceState(null, '', routeFor());
   state.pastSeason = null;
   state.map?.destroy();
   state.map = null;
@@ -1822,11 +1848,21 @@ function setState(code) {
   load();
 }
 
-window.addEventListener('hashchange', () => {
-  const code = validCode(location.hash.slice(1));
-  if (code && code !== state.code) setState(code);
-  else if (!code) history.replaceState(null, '', `#${state.code.toLowerCase()}`);
-});
+// Back/forward (and an edited address): follow the address. A cam open on top closes first.
+function followRoute() {
+  if (!$('#cam-view').hidden && !history.state?.cam) $('#cam-view').hidden = true;
+  const [c, id] = routeParts();
+  const code = validCode(c);
+  if (code && code !== state.code) return setState(code);
+  const want = id || null;
+  if (want === state.selected) return syncRoute();
+  state.selected = want;
+  render();
+  $('#sheet-body').scrollTop = 0;
+  if (want && (state.sheet === 'peek' || state.sheet === 'full')) setSheet('half');
+}
+window.addEventListener('popstate', followRoute);
+window.addEventListener('hashchange', followRoute);
 
 document.addEventListener('click', (e) => {
   const t = e.target;
@@ -1897,7 +1933,7 @@ document.addEventListener('click', (e) => {
     if (r) openCam(r, Number(camBtn.dataset.cam));
     return;
   }
-  if (t.closest('[data-cam-close]') || t.id === 'cam-view') { $('#cam-view').hidden = true; return; }
+  if (t.closest('[data-cam-close]') || t.id === 'cam-view') return closeCam();
   const castDay = t.closest('[data-cast-day]');
   if (castDay || t.closest('[data-cast-amount]')) {
     const c = state.cast;
@@ -1961,6 +1997,7 @@ for (const [id, key] of [['#f-open', 'openOnly'], ['#f-favs', 'favsOnly']]) {
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (!$('#picker').hidden) openPicker(false);
+  else if (!$('#cam-view').hidden) closeCam();
   else if (state.selected) select(null);
 });
 document.addEventListener('visibilitychange', () => {
@@ -2003,7 +2040,14 @@ document.body.classList.toggle('panel-hidden', WIDE.matches && !state.panelOpen)
 $('#panel-open').hidden = !WIDE.matches || state.panelOpen;
 // Show the last copy instantly, then fetch fresh data.
 if (!state.firstVisit) {
-  history.replaceState(null, '', `#${state.code.toLowerCase()}`);
+  // A shared link to a resort or the overview opens it (with the list one back step behind it).
+  const shared = routeParts()[1];
+  if (shared) {
+    history.replaceState(null, '', `#${state.code.toLowerCase()}`);
+    history.pushState({ page: true }, '', `#${state.code.toLowerCase()}/${shared}`);
+    state.selected = shared;
+    setSheet('half', false);
+  } else history.replaceState(null, '', routeFor());
   write(STORE.state, state.code.toLowerCase());
 } else if (location.hash) {
   history.replaceState(null, '', location.pathname);
