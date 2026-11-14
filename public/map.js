@@ -797,11 +797,13 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     const start = performance.now();
     // Each size first without the costly finishing steps (far-out names, map order); then those run
     // once, at the size that fit best.
+    // Every size is tried; the best is the one with the fewest labels that don't fit, then the
+    // shortest hairlines (labels close to their dots), with a small charge for smaller text.
+    const score = (a, scale) => a.misses * 400 + a.length + (1 - scale) * 1500;
     for (const [i, scale] of LABEL_SCALES.entries()) {
       el.style.setProperty('--label-scale', scale);
       const attempt = computeLayout(size, pad, start + TRIAL_MS * (i + 1), false);
-      if (!best || attempt.misses < best.misses) best = { ...attempt, scale, i };
-      if (attempt.misses === 0) break;
+      if (!best || score(attempt, scale) < score(best, best.scale)) best = { ...attempt, scale, i };
     }
     el.style.setProperty('--label-scale', best.scale);
     best = { ...computeLayout(size, pad, performance.now() + BUDGET_MS, true), scale: best.scale };
@@ -818,10 +820,13 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     // Un-hide everything first: a label hidden by the last layout would measure as zero size.
     for (const o of order) o.pin.root.classList.remove('hidden');
     for (const o of order) o.pin.bubble.classList.remove('compact');
-    const items = order.map((o) => ({ ...o, p: map.latLngToContainerPoint(o.r.at), w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight }));
+    // Crowded spots (3+ resorts within 45 px of each other): smaller labels there (see .pin.dense).
+    const pts = order.map((o) => map.latLngToContainerPoint(o.r.at));
+    order.forEach((o, i) => o.pin.root.classList.toggle('dense', pts.filter((q) => Math.hypot(q.x - pts[i].x, q.y - pts[i].y) < 45).length >= 3));
+    const items = order.map((o, i) => ({ ...o, p: pts[i], w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight }));
     const dots = items.map((it) => it.p);
     // Each resort's way out of its cluster: from the middle of its neighbors (within 70 px) to it.
-    const OUTWARD = 2500;
+    const OUTWARD = 600;
     for (const it of items) {
       const nb = items.filter((o) => o !== it && Math.hypot(o.p.x - it.p.x, o.p.y - it.p.y) < 70);
       if (!nb.length) { it.away = null; continue; }
@@ -907,55 +912,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     };
     // A label's cost: its own distance and spot, plus a penalty for each nearby pair it reads as
     // swapped with (about a 120 px hairline's worth), so layouts keep neighbors in map order.
-    const ORDER_PENALTY = 14000;
+    const ORDER_PENALTY = 3000;
     const costOf = (it, c) => (c ? c.cost + ORDER_PENALTY * misordered(it, c) : 1e7);
     // "No data" dots take part too (on their dot only), so labels keep clear of them.
-    // Resorts nearly on top of each other (3+ within 12 px of the next, like Aspen's four): their
-    // labels go in two tidy columns, the west half to the west and the east half to the east, each in
-    // north-south order, so hairlines fan out without crossing. (Looser clusters, like the I-70
-    // corridor, are left to the usual placement and its map-order rules.)
-    // A label whose column spot breaks a hard rule (off the map, over a dot) is placed as usual.
-    const real = items.filter((it) => !it.empty && it.cands.length);
-    const seen = new Set();
-    for (const start of real) {
-      if (seen.has(start)) continue;
-      const group = [start];
-      seen.add(start);
-      for (let k = 0; k < group.length; k++) {
-        for (const o of real) {
-          if (!seen.has(o) && Math.hypot(o.p.x - group[k].p.x, o.p.y - group[k].p.y) < 12) { seen.add(o); group.push(o); }
-        }
-      }
-      if (group.length < 3) continue;
-      const xs = group.map((it) => it.p.x).sort((a, b) => a - b);
-      const med = xs[Math.floor(xs.length / 2)];
-      for (const east of [false, true]) {
-        const side = group.filter((it) => (east ? it.p.x >= med : it.p.x < med)).sort((a, b) => a.p.y - b.p.y);
-        if (!side.length) continue;
-        const edge = east ? Math.max(...side.map((it) => it.p.x)) + 20 : Math.min(...side.map((it) => it.p.x)) - 20;
-        // Stack top to bottom, each as near its own dot's height as the one above allows; then
-        // centre the stack on the dots.
-        const ys = [];
-        side.forEach((it, i) => { ys.push(i ? Math.max(it.p.y, ys[i - 1] + (side[i - 1].h + it.h) / 2 + 4) : it.p.y); });
-        const shift = (side.reduce((t, it) => t + it.p.y, 0) - ys.reduce((t, y) => t + y, 0)) / side.length;
-        side.forEach((it, i) => {
-          const cy = Math.min(area[3] - it.h / 2 - GAP, Math.max(area[1] + it.h / 2 + GAP, ys[i] + shift));
-          const cx = east ? edge + it.w / 2 : edge - it.w / 2;
-          const sp = [cx - it.p.x, cy - it.p.y, 0];
-          const box = boxOf(it, sp);
-          if (box[0] < area[0] || box[2] > area[2] || box[1] < area[1] || box[3] > area[3]) return;
-          if (dots.some((d) => d !== it.p && d.x + DOT_R + 1 > box[0] && d.x - DOT_R - 1 < box[2] && d.y + DOT_R + 1 > box[1] && d.y - DOT_R - 1 < box[3])) return;
-          if (onTown(box)) return;
-          const lead = leader(it, sp);
-          const tail = lead.seg ? { seg: lead.seg } : null;
-          // (Its hairline may pass its own cluster's dots: Aspen's four are nearly on top of each other.)
-          if (tail && dots.some((d) => d !== it.p && !group.some((g) => g.p === d) && segPointDist(tail.seg, d) < DOT_R + 2)) return;
-          it.cands = [{ s: sp, box, tail, cost: lead.len * lead.len * 0.25 }];
-          it.column = true;
-        });
-      }
-    }
-
     const labels = items.filter((it) => it.cands.length);
     const pick = new Map();
     const free = (it, c) => labels.every((o) => o === it || !pick.get(o) || !clash(c, pick.get(o)));
@@ -1234,7 +1193,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       if (!changed) break;
     }
     };
-    if (!finish) return { result: null, misses: items.filter((it) => !it.empty && !pick.get(it)).length };
+    // (Total hairline length, for choosing the label size.)
+    const lineLength = () => labels.reduce((t, it) => { const c = pick.get(it); return t + (c?.tail ? Math.hypot(c.tail.seg[2] - c.tail.seg[0], c.tail.seg[3] - c.tail.seg[1]) : 0); }, 0);
+    if (!finish) return { result: null, misses: items.filter((it) => !it.empty && !pick.get(it)).length, length: lineLength() };
 
     // 5) Still no room for name and number: show just the number chip (tap it for the resort).
     //    Most important first; one that matters (open, favorite, filter match) and still has no spot
