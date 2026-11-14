@@ -965,3 +965,20 @@ body.reordering, body.reordering * { user-select: none; cursor: grabbing; }
   .ic-radar .ring { animation: none; }
   .ic-radar .ring-1 { transform: scale(0.72); }
 }
+
+/* Forecast days: tap one for its full forecast. */
+.day { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.day[aria-expanded="true"] { background: var(--accent-soft); }
+.day-wind { font-size: 0.64rem; font-weight: 700; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.day-wind.windy { color: #c2410c; }
+:root[data-theme="dark"] .day-wind.windy { color: #fb923c; }
+.day-more { margin: -4px 0 12px; padding: 10px 12px; border-radius: 14px; background: var(--accent-soft); }
+.dm-head { margin: 0 0 6px; font-size: 0.9rem; }
+.dm-facts { margin: 0 0 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+.dm-facts div { min-width: 0; }
+.dm-facts dt { font-size: 0.68rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.dm-facts dd { margin: 0; font-size: 0.88rem; font-weight: 650; }
+.dm-facts small { color: var(--muted); font-weight: 500; }
+.dm-words { margin: 6px 0 0; font-size: 0.84rem; line-height: 1.4; }
+.dm-words b { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.day-more .source { margin: 6px 0 0; }
