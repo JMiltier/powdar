@@ -323,7 +323,8 @@ function legendFor(layer) {
 // ---------- webcams ----------
 // A swipeable strip of each resort's cams (current stills, refreshed every few minutes); tap one for a
 // full-size view with a link to the live camera or the resort's cam page.
-const camBucket = () => Math.floor(Date.now() / 300000); // a fresh frame every 5 minutes
+const CAM_EVERY_MS = 120000;
+const camBucket = () => Math.floor(Date.now() / CAM_EVERY_MS); // a fresh frame every 2 minutes
 const camSrc = (url) => `${url}${url.includes('?') ? '&' : '?'}t=${camBucket()}`;
 function camsSection(r, notes) {
   const c = r.cams;
@@ -337,10 +338,12 @@ function camsSection(r, notes) {
     <h3 class="section">Cams <span class="section-note">live video on the resort's player</span></h3>
     <div class="cam-links">${links.map((v) => `<a class="cam-link" href="${esc(v.live)}" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>${esc(v.name)}</a>`).join('')}</div>`;
   }
-  notes.push(`Webcams: ${sourceLink(c.page, `${r.name}’s cams`)}, refreshed every few minutes.`);
+  notes.push(`Webcams: ${sourceLink(c.page, `${r.name}’s cams`)}, refreshed every couple of minutes while open.`);
+  // The snow stake first: the quickest read of how much fell.
+  const order = c.cams.map((cam, i) => i).sort((a, b) => /stake/i.test(c.cams[b].name) - /stake/i.test(c.cams[a].name));
   return `
     <h3 class="section">Cams <span class="section-note">latest from the mountain</span></h3>
-    <div class="cams" role="list">${c.cams.map((cam, i) => `
+    <div class="cams" role="list">${order.map((i) => [c.cams[i], i]).map(([cam, i]) => `
       <button type="button" class="cam" role="listitem" data-cam="${i}" aria-label="${esc(cam.name)} webcam">
         <img src="${esc(camSrc(cam.image))}" alt="" loading="lazy" decoding="async" onerror="this.closest('.cam').hidden = true">
         <span>${esc(cam.name)}</span>
@@ -367,6 +370,23 @@ function refreshCamAges(r) {
     }).catch(() => {});
   });
 }
+// While a resort's cams are on screen, swap in the newest frames every couple of minutes (each loads
+// in the background first, so a picture never blanks), and re-read when they were taken.
+let camBucketShown = camBucket();
+setInterval(() => {
+  if (document.visibilityState !== 'visible' || camBucket() === camBucketShown) return;
+  camBucketShown = camBucket();
+  const r = state.data?.resorts.find((x) => x.id === state.selected);
+  if (!r?.cams?.cams?.length) return;
+  for (const img of document.querySelectorAll('.cam img, #cam-view img')) {
+    const next = img.src.replace(/([?&])t=\d+/, `$1t=${camBucketShown}`);
+    if (next === img.src) continue;
+    const pre = new Image();
+    pre.onload = () => { img.src = next; };
+    pre.src = next;
+  }
+  refreshCamAges(r);
+}, 20000);
 function openCam(r, i) {
   const c = r.cams?.cams?.[i];
   if (!c) return;
