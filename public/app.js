@@ -478,14 +478,13 @@ function seasonLevel(pct) {
 function availableMetrics() {
   const rs = state.data?.resorts ?? [];
   const hasDates = rs.some((r) => r.dates?.open || r.dates?.close);
-  const hasStations = rs.some((r) => r.station);
-  return ['new24', 'next72', 'next7', 'next14', 'base', ...(hasStations ? ['season'] : []), ...(hasDates ? ['dates'] : [])];
+  // (Snowpack vs normal isn't a map view any more: it's on every resort row and page, and the overview.)
+  return ['new24', 'next72', 'next7', 'next14', 'base', ...(hasDates ? ['dates'] : [])];
 }
 function syncRibbon() {
   const avail = availableMetrics();
   if (state.metric === 'depth') state.metric = 'base'; // its old name
   if (!avail.includes(state.metric)) state.metric = 'new24';
-  document.querySelector('[data-metric="season"]').hidden = !avail.includes('season');
   document.querySelector('[data-metric="dates"]').hidden = !avail.includes('dates');
 }
 

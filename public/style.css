@@ -962,7 +962,10 @@ body.reordering, body.reordering * { user-select: none; cursor: grabbing; }
 
 /* Layers button: two radar rings spread out from the snowflake to the button's edge and fade, one
    after the other, like a sweep. Held still (one inside the other) for anyone who prefers less motion. */
-.ribbon .snow-toggle .ic-radar { width: 34px; height: 34px; margin: -4px; }
+/* The layers button: a circle the same height as the views, its icon inside it (not spilling past
+   the bar's edge). */
+.ribbon .snow-toggle, .ribbon .snow-toggle:is([aria-pressed], [aria-expanded]) { flex: none; width: 36px; height: 36px; min-height: 36px; padding: 0; border-radius: 50%; margin-left: 2px; }
+.ribbon .snow-toggle .ic-radar { width: 30px; height: 30px; margin: 0; }
 .ic-radar .ring { transform-box: view-box; transform-origin: 12px 12px; animation: radar-ring 3.6s cubic-bezier(0.25, 0.6, 0.45, 1) infinite; }
 .ic-radar .ring-2 { animation-delay: -1.8s; }
 @keyframes radar-ring {
