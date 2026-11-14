@@ -33,7 +33,9 @@ const liveCo = (process.env.LIVE_URL || DATA_BRANCH) ? await published('data/co.
 // (Not when the saved forecast predates a field the app now reads: then it's fetched fresh.)
 const currentShape = (d) => d?.resorts?.every((r) => !r.forecast || r.forecast.pastDays)
   && d.resorts.some((r) => r.forecast?.days?.some((x) => x.detail || x.nightDetail))
-  && 'ensemble' in d; // (written by every build since ensembles were added, null if they failed)
+  // Ensembles there, or tried within the hour (so a failing ensemble service doesn't mean refetching
+  // every model on every run).
+  && (d.ensemble?.byId || Date.now() - Date.parse(d.sources?.ensembleTriedAt ?? 0) < 3_600_000);
 const skipModels = Boolean(liveCo?.sources?.modelsAt && Date.now() - Date.parse(liveCo.sources.modelsAt) < MODELS_EVERY_MS && currentShape(liveCo));
 if (skipModels) console.log('Colorado model forecasts are under an hour old: reusing them.');
 

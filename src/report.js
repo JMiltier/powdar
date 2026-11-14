@@ -451,7 +451,9 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
   }).filter(([, s]) => s));
   // Ensembles: fresh every 6 hours (and each new day), otherwise the last ones.
   let ensemble = prevEnsemble?.today === today && now - Date.parse(prevEnsemble.at ?? 0) < ENSEMBLE_EVERY_MS ? prevEnsemble : null;
+  let ensembleTriedAt = null;
   if (!ensemble && !skipModels) {
+    ensembleTriedAt = now.toISOString();
     try {
       const data = await getJson(fetchFn, ensembleUrl(RESORTS), { backoff });
       const locs = Array.isArray(data) ? data : [data];
@@ -577,6 +579,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       models: Object.fromEntries(MODELS.map((m, k) => [m.id, Boolean(modelData[k])])),
       // When the model forecasts were fetched (carried forward if a later update reuses them).
       modelsAt: modelData.some(Boolean) ? now.toISOString() : null,
+      ensembleTriedAt,
       snotel: Object.keys(snowpack).length,
       lifts: liftData.filter(Boolean).length,
       noaa: noaaSnow.filter(Boolean).length,
