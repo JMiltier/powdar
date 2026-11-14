@@ -11,7 +11,7 @@ const ALL_STATES = false;
 const STATE_CODES = !ALL_STATES ? new Set(['CO']) : new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
 const validCode = (c) => (c && STATE_CODES.has(String(c).toUpperCase()) ? String(c).toUpperCase() : null);
 const STORE = {
-  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', sort: 'cs:sort', order: 'cs:order', unit: 'cs:unit', dist: 'cs:dist', snowStyle: 'cs:snowStyle2', panel: 'cs:panel',
+  data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', sort: 'cs:sort', order: 'cs:order', unit: 'cs:unit', dist: 'cs:dist', labels: 'cs:labels', snowStyle: 'cs:snowStyle2', panel: 'cs:panel',
   state: 'cs:state', states: 'cs:states', theme: 'cs:theme',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
@@ -90,6 +90,7 @@ const state = {
   pass: read(STORE.pass, 'all'), // 'all', 'epic', 'ikon', 'indy' or 'other'
   snowStyle: read(STORE.snowStyle, 'color'), // how snow on the ground is drawn (tap its key to cycle)
   unit: read(STORE.unit, 'F'), // temperatures in 'F' or 'C' (the data is always °F)
+  labels: read(STORE.labels, true), // resort labels on the map (off: just the dots, to see the weather)
   dist: read(STORE.dist, 'imperial'), // snow, depth and wind: 'imperial' (in, mph) or 'metric' (cm, km/h)
   sort: read(STORE.sort, 'name'),
   order: read(STORE.order, []), // the user's own order (sort "mine"), resort ids // the list: 'name' (A–Z), 'value' (the map view's number) or 'open'
@@ -1858,6 +1859,7 @@ function startMap() {
     onCast: (c) => { state.cast = { ...state.cast, ...c }; if (state.layer === 'snowcast') $('#legend').innerHTML = legendFor('snowcast'); },
     places: state.code === 'CO' ? CO_TOWNS : [],
   });
+  state.map.setLabels(state.labels);
   applyLayer();
   // Major highways (I-70, I-25, US-285…), Colorado only for now.
   if (state.code === 'CO') {
@@ -2075,6 +2077,13 @@ document.addEventListener('click', (e) => {
   if (!t.closest('#layers')) openLayers(false);
   if (t.closest('#panel-close')) return setPanel(false);
   if (t.closest('#panel-open')) return setPanel(true);
+  if (t.closest('#labels-btn')) {
+    state.labels = !state.labels;
+    write(STORE.labels, state.labels);
+    $('#labels-btn').setAttribute('aria-pressed', String(state.labels));
+    state.map?.setLabels(state.labels);
+    return toast(state.labels ? 'Resort labels on' : 'Labels off: tap a dot for its resort');
+  }
   if (t.closest('#info-btn')) {
     const c = $('#credits');
     c.hidden = !c.hidden;
@@ -2176,4 +2185,5 @@ startMap();
 render();
 load();
 $('#state-btn').hidden = !ALL_STATES;
+$('#labels-btn').setAttribute('aria-pressed', String(state.labels));
 if (ALL_STATES) loadStates().then(() => { if (state.firstVisit) openPicker(true); });

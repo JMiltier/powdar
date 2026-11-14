@@ -452,7 +452,8 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
   .top { left: 404px; }
   .legend { left: 404px; bottom: 12px; }
   .info-btn { bottom: 12px; }
-  .credits { bottom: 50px; }
+  .labels-btn { bottom: 50px; }
+  .credits { bottom: 88px; }
   .panel-close {
     display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
     border: 0; border-radius: 50%; background: var(--bg); font-size: 1.3rem; cursor: pointer;
@@ -1046,3 +1047,21 @@ body.reordering, body.reordering * { user-select: none; cursor: grabbing; }
 .k-past { display: inline-block; width: 16px; height: 0; border-top: 2px solid #7c3aed; margin-right: 4px; vertical-align: middle; }
 :root[data-theme="dark"] .k-past { border-top-color: #c4a5ff; }
 .past-head { font-size: 0.82rem; color: var(--muted); }
+
+/* ---------- Weather you can see ---------- */
+/* Labels button, stacked above ⓘ: hides the resort labels (the dots stay) to see what's under them. */
+.labels-btn { bottom: calc(var(--sheet-visible) + 48px); }
+.labels-btn .slash { display: none; }
+.labels-btn[aria-pressed="false"] .slash { display: inline; }
+.labels-btn[aria-pressed="false"] { color: var(--muted); }
+.credits { bottom: calc(var(--sheet-visible) + 86px); }
+#map.labels-off .pin-bubble, #map.labels-off .pin-tail { display: none; }
+
+/* Under the radar: a flat, neutral grey map (no blue tint to compete with the snow, little relief
+   texture), dark enough for the white clouds to read. */
+:root:not([data-theme="dark"]) #map[data-layer="radar"] .leaflet-tile-pane { filter: grayscale(1) contrast(0.8) brightness(0.66); }
+:root[data-theme="dark"] #map[data-layer="radar"] .leaflet-tile-pane { filter: grayscale(1) contrast(0.85) brightness(0.8); opacity: 0.85; }
+/* Labels step back over weather: see-through capsules, so snow under them still shows. */
+#map[data-layer="radar"] .pin-bubble, #map[data-layer="snowcast"] .pin-bubble {
+  background: color-mix(in srgb, var(--card) 70%, transparent); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}

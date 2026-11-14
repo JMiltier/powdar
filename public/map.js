@@ -117,7 +117,7 @@ const CLOUDS_WMS = 'https://nowcoast.noaa.gov/geoserver/satellite/wms';
 const CLEAR = [0, 0, 0, 0];
 const cloudColor = (r) => {
   const a = Math.max(0, Math.min(1, (r - 125) / 95));
-  return a < 0.04 ? CLEAR : [248, 250, 253, Math.round(a ** 1.3 * 165)];
+  return a < 0.04 ? CLEAR : [236, 240, 246, Math.round(a ** 1.3 * 125)];
 };
 const RADAR_STOPS = [[124, 137, 175], [80, 104, 163], [70, 170, 190], [40, 180, 80], [20, 130, 40], [230, 220, 40], [240, 140, 20], [220, 30, 30], [200, 40, 200]];
 // (Saturated from the lightest step up: falling snow has to stand out on the white clouds under it.)
@@ -324,6 +324,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     g.drawImage(img, 0, 0);
     const data = g.getImageData(0, 0, w, h);
     const d = data.data;
+    // How much of the picture has anything on it (radar frames NOAA lists before they're ready come back blank).
+    let painted = 0;
+    for (let i = 3; i < d.length; i += 4) if (d[i] >= 8) painted++;
     // Depth field: class index (0 = under 2″ … 7 = 8 ft+), −1.5 where there's no snow, smoothed.
     let raw = null;
     let f = null;
@@ -458,7 +461,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       }
       G.stroke();
     }
-    return L.imageOverlay(big.toDataURL('image/png'), map.getBounds(), { pane: 'snow', interactive: false });
+    const overlay = L.imageOverlay(big.toDataURL('image/png'), map.getBounds(), { pane: 'snow', interactive: false });
+    overlay.coverage = painted / (w * h);
+    return overlay;
   }
   async function outlookLayer() {
     if (!outlookData) {
@@ -529,7 +534,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     if (!times.length) throw new Error('no radar frames');
     const built = await Promise.all(times.map(async (t) => {
       const [radar, clouds] = await Promise.all([
-        frameCache.get(t) ?? picture(radarSrc(t), radarColor),
+        frameCache.get(t) ?? picture(radarSrc(t), radarColor, { shadow: isDark() ? 'rgba(0, 0, 0, 0.7)' : 'rgba(12, 28, 70, 0.6)' }),
         cloudCache.has(t) ? cloudCache.get(t) : picture(cloudSrc(t), cloudColor).catch(() => null),
       ]);
       frameCache.set(t, radar);
@@ -537,7 +542,13 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       return { t, layer: radar, clouds };
     }));
     for (const t of frameCache.keys()) if (!times.includes(t)) { frameCache.delete(t); cloudCache.delete(t); }
-    return built;
+    // NOAA lists its newest times a little before their pictures are ready, and those come back blank:
+    // a frame far emptier than the others is left out (and not kept, so the next refresh tries again).
+    const covs = built.map((f) => f.layer.coverage).sort((a, b) => a - b);
+    const median = covs[Math.floor(covs.length / 2)] ?? 0;
+    const good = median > 0.005 ? built.filter((f) => f.layer.coverage >= median * 0.3) : built;
+    for (const f of built) if (!good.includes(f)) { frameCache.delete(f.t); cloudCache.delete(f.t); }
+    return good;
   }
 
   // Snow forecast areas for a day (1–3) and amount (4, 8, 12), cached per pair.
@@ -1377,6 +1388,10 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       baseKind = kind;
       satDate = date;
       swapBase();
+    },
+    // Resort labels on or off (the dots stay, and stay tappable), to see what's under them.
+    setLabels(on) {
+      el.classList.toggle('labels-off', !on);
     },
     // Radar loop: play or pause (paused shows the newest frame).
     playRadar(on) {
