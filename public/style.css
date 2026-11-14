@@ -1063,5 +1063,5 @@ body.reordering, body.reordering * { user-select: none; cursor: grabbing; }
 :root[data-theme="dark"] #map[data-layer="radar"] .leaflet-tile-pane { filter: grayscale(1) contrast(0.85) brightness(0.8); opacity: 0.85; }
 /* Labels step back over weather: see-through capsules, so snow under them still shows. */
 #map[data-layer="radar"] .pin-bubble, #map[data-layer="snowcast"] .pin-bubble {
-  background: color-mix(in srgb, var(--card) 70%, transparent); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  background: color-mix(in srgb, var(--card) 60%, transparent); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }

@@ -266,12 +266,11 @@ function openLayers(open) {
 
 const PLAY_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>';
 const PAUSE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" fill="currentColor"/></svg>';
-// "3:05 PM" for the frame showing, plus "now" on the newest.
+// "3:05 PM": the frame's own time (the newest is usually several minutes old, so never "now").
 function radarTimeText() {
-  const { time, index, count } = state.radar;
+  const { time } = state.radar;
   if (!time) return 'Latest';
-  const t = new Date(time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  return index === count - 1 ? `${t} · now` : t;
+  return new Date(time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 function syncRadarKey() {
   const btn = $('#radar-play');
