@@ -88,6 +88,7 @@ const state = {
   outlookSeason: null, // e.g. "NDJ 2026-2027", once the outlook has loaded
   radar: { time: null, playing: false, count: 0 }, // the radar loop's current frame
   cast: { day: 1, amount: 4, areas: null }, // the snow forecast's period and amount
+  openDay: null, // the forecast day opened in a resort's page (YYYY-MM-DD)
   satDate: null, // the satellite views' day (YYYY-MM-DD), newest real one by default
   satLatest: null,
   selected: null,
@@ -614,6 +615,39 @@ function renderList() {
   $('#list').innerHTML = overviewCard() + sortBar + (rows || `<p class="empty">${state.openOnly && !state.favsOnly && state.pass === 'all' ? 'Nothing open yet.' : 'No resorts match these filters.'} <button type="button" class="link" data-clear-filters>Show all</button></p>`);
 }
 
+// Wind for a day column: the strongest speed in the Weather Service's wording ("10 to 15 mph"), with
+// its direction (the night's when only the night is left today).
+function dayWind(d) {
+  const text = d.wind ?? d.nightWind;
+  const nums = String(text ?? '').match(/\d+/g)?.map(Number);
+  return { max: nums?.length ? Math.max(...nums) : null, dir: (d.wind ? d.windDir : d.nightWindDir) ?? '', text: text ?? '' };
+}
+const windUnit = () => (state.unit === 'C' ? 'km/h' : 'mph');
+const windNum = (mph) => Math.round(state.unit === 'C' ? mph * 1.609 : mph);
+const windText = (text) => (state.unit === 'C' ? String(text).replace(/(\d+)/g, (n) => windNum(Number(n))).replace('mph', 'km/h') : text);
+const longDay = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC' });
+// A day's full forecast, opened by tapping it: the numbers, then the forecasters' own words for the
+// day and the night (National Weather Service, as written).
+function dayMore(d) {
+  if (!d) return '';
+  const facts = [
+    ['High / low', `${deg(d.hi)} / ${deg(d.lo)}`],
+    ['New snow', d.snow >= 0.5 ? `${inches(d.snow)}${rangeText([d.snowLo, d.snowHi]) ? ` <small>(${esc(rangeText([d.snowLo, d.snowHi]))})</small>` : ''}` : 'None'],
+    d.pop != null || d.nightPop != null ? ['Chance of snow or rain', `${d.pop != null ? `${d.pop}%` : ''}${d.pop != null && d.nightPop != null ? ' · ' : ''}${d.nightPop != null ? `${d.nightPop}% tonight` : ''}`] : null,
+    d.wind ? ['Wind', `${esc(d.windDir ?? '')} ${esc(windText(d.wind))}`] : null,
+    d.nightWind ? ['Wind tonight', `${esc(d.nightWindDir ?? '')} ${esc(windText(d.nightWind))}`] : null,
+    d.uv != null ? ['UV index', `${d.uv} <small>(${UV_WORDS[uvLevel(d.uv)]})</small>`] : null,
+  ].filter(Boolean);
+  const words = [d.detail && ['Day', d.detail], d.nightDetail && ['Night', d.nightDetail]].filter(Boolean);
+  return `
+    <div class="day-more">
+      <p class="dm-head"><b>${esc(longDay(d.date))}</b> <span class="muted">${esc(d.sky ?? d.night ?? '')}</span></p>
+      <dl class="dm-facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+      ${words.length ? `${words.map(([k, t]) => `<p class="dm-words"><b>${k}</b> ${esc(t)}</p>`).join('')}
+      <p class="source">National Weather Service forecast, as written${state.unit === 'C' ? ' (in °F and mph)' : ''}</p>` : ''}
+    </div>`;
+}
+
 function renderDetail(r) {
   const today = state.data.today;
   const f = r.forecast;
@@ -622,16 +656,21 @@ function renderDetail(r) {
   const stat = (num, label, sub = '') => `<div class="stat"><b>${num}</b><span>${label}</span>${sub ? `<small>${sub}</small>` : ''}</div>`;
 
   const bars = f ? `
-    <div class="days">${f.days.map((d) => `
-      <div class="day${d.snow >= 1 ? ' has-snow' : ''}">
+    <div class="days">${f.days.map((d) => {
+      const w = dayWind(d);
+      return `
+      <button type="button" class="day${d.snow >= 1 ? ' has-snow' : ''}" data-day="${esc(d.date)}" aria-expanded="${state.openDay === d.date}" aria-label="${esc(longDay(d.date))}: full forecast">
         <span class="day-name">${weekday(d.date, today)}</span>
         <span class="day-sky" title="${esc(d.sky ?? d.night ?? '')}">${weatherIcon(d.sky ?? d.night) || '&nbsp;'}</span>
         <span class="day-temp">${deg(d.hi)}<i>${deg(d.lo)}</i></span>
+        <span class="day-wind${w.max >= 25 ? ' windy' : ''}" title="Wind ${esc(w.text)}">${w.max != null ? `${esc(w.dir)} ${windNum(w.max)}` : '&nbsp;'}</span>
         ${d.uv != null ? `<span class="day-uv uv-${uvLevel(d.uv)}" title="UV index ${d.uv} (${UV_WORDS[uvLevel(d.uv)]})">UV ${d.uv}</span>` : ''}
         <span class="day-snow">${d.snow >= 1 ? inches(d.snow) : d.snow > 0 ? '<1″' : ''}</span>
-      </div>`).join('')}
+      </button>`;
+    }).join('')}
     </div>
-    <p class="week2">${f.week2 ? `<b>Days 8–14:</b> about ${inches(f.week2.mid)} more${rangeText(f.week2.range) ? ` (${rangeText(f.week2.range)})` : ''} · ` : ''}<span class="muted">Highs/lows in ${unitLabel()}${f.days.some((d) => d.uv != null) ? ' · UV: the day’s peak' : ''}</span></p>` : '<p class="muted">Forecast unavailable right now.</p>';
+    ${dayMore(f.days.find((d) => d.date === state.openDay))}
+    <p class="week2">${f.week2 ? `<b>Days 8–14:</b> about ${inches(f.week2.mid)} more${rangeText(f.week2.range) ? ` (${rangeText(f.week2.range)})` : ''} · ` : ''}<span class="muted">Highs/lows in ${unitLabel()} · wind in ${windUnit()}${f.days.some((d) => d.uv != null) ? ' · UV: the day’s peak' : ''} · tap a day for its full forecast</span></p>` : '<p class="muted">Forecast unavailable right now.</p>';
 
   // Where every number comes from, gathered at the very bottom for anyone curious.
   const notes = [];
@@ -1813,6 +1852,11 @@ document.addEventListener('click', (e) => {
   const row = t.closest('[data-open]');
   if (row) return select(row.dataset.open);
   if (t.closest('[data-back]')) return select(null);
+  const dayBtn = t.closest('[data-day]');
+  if (dayBtn) {
+    state.openDay = state.openDay === dayBtn.dataset.day ? null : dayBtn.dataset.day;
+    return render();
+  }
   const star = t.closest('[data-fav]');
   if (star) {
     const id = star.dataset.fav;

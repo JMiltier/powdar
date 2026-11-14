@@ -94,8 +94,10 @@ export function nwsDaily(periods) {
     const date = localDate(new Date(Date.parse(p.startTime)));
     const day = out.get(date) ?? {};
     const pop = p.probabilityOfPrecipitation?.value ?? null;
-    if (p.isDaytime) Object.assign(day, { sky: p.shortForecast, wind: p.windSpeed, pop });
-    else Object.assign(day, { night: p.shortForecast, nightPop: pop });
+    // Plus the forecasters' full wording for the day and the night, and the wind's direction.
+    const extra = (k, v) => (v ? { [k]: v } : {});
+    if (p.isDaytime) Object.assign(day, { sky: p.shortForecast, wind: p.windSpeed, pop }, extra('windDir', p.windDirection), extra('detail', p.detailedForecast));
+    else Object.assign(day, { night: p.shortForecast, nightPop: pop }, extra('nightWind', p.windSpeed), extra('nightWindDir', p.windDirection), extra('nightDetail', p.detailedForecast));
     out.set(date, day);
   }
   return out;

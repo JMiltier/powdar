@@ -31,7 +31,8 @@ async function published(file) {
 }
 const liveCo = (process.env.LIVE_URL || DATA_BRANCH) ? await published('data/co.json') : null;
 // (Not when the saved forecast predates a field the app now reads: then it's fetched fresh.)
-const currentShape = (d) => d?.resorts?.every((r) => !r.forecast || r.forecast.pastDays);
+const currentShape = (d) => d?.resorts?.every((r) => !r.forecast || r.forecast.pastDays)
+  && d.resorts.some((r) => r.forecast?.days?.some((x) => x.detail || x.nightDetail));
 const skipModels = Boolean(liveCo?.sources?.modelsAt && Date.now() - Date.parse(liveCo.sources.modelsAt) < MODELS_EVERY_MS && currentShape(liveCo));
 if (skipModels) console.log('Colorado model forecasts are under an hour old: reusing them.');
 

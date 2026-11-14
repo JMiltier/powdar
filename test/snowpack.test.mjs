@@ -49,10 +49,10 @@ test('week 2 and the water projection only use sources that reach that far', () 
 
 test('nwsDaily splits day and night periods by local date', () => {
   const d = nwsDaily([
-    { startTime: '2026-11-14T06:00:00-07:00', isDaytime: true, shortForecast: 'Snow Showers', windSpeed: '10 to 15 mph', probabilityOfPrecipitation: { value: 97 } },
+    { startTime: '2026-11-14T06:00:00-07:00', isDaytime: true, shortForecast: 'Snow Showers', windSpeed: '10 to 15 mph', windDirection: 'W', detailedForecast: 'Snow showers. High near 25.', probabilityOfPrecipitation: { value: 97 } },
     { startTime: '2026-11-14T18:00:00-07:00', isDaytime: false, shortForecast: 'Mostly Cloudy', probabilityOfPrecipitation: { value: 20 } },
   ]);
-  assert.deepEqual(d.get('2026-11-14'), { sky: 'Snow Showers', wind: '10 to 15 mph', pop: 97, night: 'Mostly Cloudy', nightPop: 20 });
+  assert.deepEqual(d.get('2026-11-14'), { sky: 'Snow Showers', wind: '10 to 15 mph', pop: 97, windDir: 'W', detail: 'Snow showers. High near 25.', night: 'Mostly Cloudy', nightPop: 20 });
 });
 
 test('despike drops one-off sensor spikes and dropouts but keeps real storms', () => {
