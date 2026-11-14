@@ -304,7 +304,7 @@ function legendFor(layer) {
   if (layer === 'radar') {
     return `<button type="button" class="radar-play" id="radar-play" aria-label="Play the last hour" ${state.radar.count > 1 ? '' : 'disabled'}>${state.radar.playing ? PAUSE_ICON : PLAY_ICON}</button>
       <span class="radar-time" id="radar-time">${radarTimeText()}</span>
-      <span class="legend-keys"><span>Light</span><i class="ramp ramp-radar" aria-hidden="true"></i><span>Heavy</span></span>`;
+      <span class="legend-keys"><span>Light</span><i class="ramp ramp-radar" aria-hidden="true"></i><span>Heavy</span><i class="sw-mini sw-cloud" aria-hidden="true"></i><span>Clouds</span></span>`;
   }
   if (layer === 'outlook') {
     return `<span class="legend-title">${esc(seasonSpan(state.outlookSeason))} outlook</span><span class="legend-keys"><span>Drier</span><i class="ramp ramp-outlook" aria-hidden="true"></i><span>Wetter</span><span class="muted">· ${esc(seasonSpan(state.outlookSeason))}</span></span>`;

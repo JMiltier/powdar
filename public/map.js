@@ -72,7 +72,7 @@ const SHADE = 'https://services.arcgisonline.com/arcgis/rest/services/Elevation/
 export const CREDITS = 'Hillshade © <a href="https://www.esri.com">Esri</a> and its data partners (USGS, NASA, NGA, CGIAR and others) · '
   + 'satellite: <a href="https://earthdata.nasa.gov/gibs">NASA GIBS</a> (VIIRS, NOAA-21 and NOAA-20) · '
   + 'highways © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · '
-  + 'snow cover: <a href="https://www.nohrsc.noaa.gov/nsa/">NOAA NOHRSC</a> · radar: <a href="https://www.nssl.noaa.gov/projects/mrms/">NOAA MRMS</a> · '
+  + 'snow cover: <a href="https://www.nohrsc.noaa.gov/nsa/">NOAA NOHRSC</a> · radar: <a href="https://www.nssl.noaa.gov/projects/mrms/">NOAA MRMS</a> · clouds: <a href="https://nowcoast.noaa.gov/">NOAA nowCOAST</a> (GOES-East) · '
   + 'snow forecast: <a href="https://www.wpc.ncep.noaa.gov/wwd/winter_wx.shtml">NWS Weather Prediction Center</a> · '
   + 'season outlook: <a href="https://www.cpc.ncep.noaa.gov/products/predictions/long_range/seasonal.php">NOAA Climate Prediction Center</a> · <a href="https://leafletjs.com">Leaflet</a>';
 // NOAA's daily national snow analysis (NOHRSC): modelled snow depth on the ground, cloud-free.
@@ -111,6 +111,14 @@ const classOf = (r, g, b) => {
 const RADAR_WMS = 'https://mapservices.weather.noaa.gov/eventdriven/services/radar/radar_base_reflectivity/MapServer/WMSServer';
 // The same radar with its past frames (about the last 2 hours), for the loop.
 const RADAR_TIME = 'https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity_time/ImageServer';
+// Clouds under the radar: GOES-East longwave infrared every 5 minutes (NOAA nowCOAST), so they show
+// day and night; cold (high, thick) cloud is bright in it, the ground dark. Shown as soft white cloud.
+const CLOUDS_WMS = 'https://nowcoast.noaa.gov/geoserver/satellite/wms';
+const CLEAR = [0, 0, 0, 0];
+const cloudColor = (r) => {
+  const a = Math.max(0, Math.min(1, (r - 125) / 95));
+  return a < 0.04 ? CLEAR : [248, 250, 253, Math.round(a ** 1.3 * 165)];
+};
 const RADAR_STOPS = [[124, 137, 175], [80, 104, 163], [70, 170, 190], [40, 180, 80], [20, 130, 40], [230, 220, 40], [240, 140, 20], [220, 30, 30], [200, 40, 200]];
 export const RADAR_RAMP = [
   [235, 250, 255, 120], [205, 238, 255, 150], [160, 220, 255, 175], [110, 190, 255, 195], [70, 150, 250, 210],
@@ -472,8 +480,13 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // Radar loop: the last hour of NOAA's radar frames (about 5 minutes apart), each repainted once and
   // kept; playing steps through them, holding a moment on the newest. Falls back to the single
   // latest picture if the frames can't be listed.
-  let frames = []; // [{ t, layer }] oldest first
+  let frames = []; // [{ t, layer, clouds }] oldest first
   const frameCache = new Map(); // time → overlay (cleared when the map's size changes)
+  const cloudCache = new Map(); // time → cloud overlay (or null when the satellite didn't answer)
+  const cloudSrc = (t) => (w, h, sw, ne) => `${CLOUDS_WMS}?${new URLSearchParams({
+    service: 'WMS', version: '1.3.0', request: 'GetMap', layers: 'goes_longwave_imagery', styles: '', crs: 'EPSG:3857',
+    bbox: [sw.x, sw.y, ne.x, ne.y].join(','), width: w, height: h, format: 'image/png', time: new Date(t).toISOString(),
+  })}`;
   let frameAt = 0;
   let playing = false;
   let playTimer = null;
@@ -494,7 +507,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   }
   function showFrame(i) {
     frameAt = i;
-    frames.forEach((f, k) => f.layer.setOpacity(k === i ? 1 : 0));
+    frames.forEach((f, k) => { f.layer.setOpacity(k === i ? 1 : 0); f.clouds?.setOpacity(k === i ? 1 : 0); });
     onRadar?.({ time: frames[i]?.t ?? null, playing, index: i, count: frames.length });
   }
   function step() {
@@ -514,10 +527,15 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     const times = await radarTimes();
     if (!times.length) throw new Error('no radar frames');
     const built = await Promise.all(times.map(async (t) => {
-      if (!frameCache.has(t)) frameCache.set(t, await picture(radarSrc(t), radarColor));
-      return { t, layer: frameCache.get(t) };
+      const [radar, clouds] = await Promise.all([
+        frameCache.get(t) ?? picture(radarSrc(t), radarColor),
+        cloudCache.has(t) ? cloudCache.get(t) : picture(cloudSrc(t), cloudColor).catch(() => null),
+      ]);
+      frameCache.set(t, radar);
+      cloudCache.set(t, clouds);
+      return { t, layer: radar, clouds };
     }));
-    for (const t of frameCache.keys()) if (!times.includes(t)) frameCache.delete(t);
+    for (const t of frameCache.keys()) if (!times.includes(t)) { frameCache.delete(t); cloudCache.delete(t); }
     return built;
   }
 
@@ -564,7 +582,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       else if (layerName === 'radar') {
         try {
           nextFrames = await radarLayer();
-          next = L.layerGroup(nextFrames.map((f) => f.layer.setOpacity(0)));
+          // (Each frame's clouds first, so its radar sits on top.)
+          next = L.layerGroup(nextFrames.flatMap((f) => [f.clouds?.setOpacity(0), f.layer.setOpacity(0)]).filter(Boolean));
         } catch {
           next = await picture(wms(RADAR_WMS), radarColor); // just the latest
         }
@@ -1389,6 +1408,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       fit();
       layout();
       frameCache.clear(); // pictures were for the old size
+      cloudCache.clear();
       if (layerName !== 'none') drawLayer();
     },
   };

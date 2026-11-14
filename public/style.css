@@ -1031,3 +1031,7 @@ body.reordering, body.reordering * { user-select: none; cursor: grabbing; }
 .week2 b { font-weight: 700; margin-right: 4px; }
 .fine { margin: 2px 2px 14px; font-size: 0.74rem; color: var(--muted); }
 :root[data-theme="dark"] .day-uv.uv-low, :root[data-theme="dark"] .day-uv.uv-mod { background: none; color: var(--muted); }
+
+/* Radar: a darker, cooler map in light mode so the white clouds read against it. */
+:root:not([data-theme="dark"]) #map[data-layer="radar"] .leaflet-tile-pane { filter: grayscale(0.7) contrast(1.15) brightness(0.62) sepia(0.12) hue-rotate(180deg); }
+.sw-cloud { background: linear-gradient(90deg, rgba(248, 250, 253, 0.35), rgba(248, 250, 253, 0.9)); border: 1px solid var(--line); margin-left: 8px; }
