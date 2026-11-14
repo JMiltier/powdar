@@ -11,7 +11,7 @@ import { VAIL_SITES, camsPage, parseVailCams } from '../src/vail.js';
 const UA = { 'User-Agent': 'Powdar/1.0 (github.com/JMiltier/powdar)' };
 // Names for cameras whose ids don't read well.
 const NAMES = {
-  vailch11: 'Chair 11', vailch21: 'Chair 21', vailch2: 'Chair 2', breckenridge7: 'Peak 7', breckenridge9: 'Peak 9',
+  vailch11: 'Chair 11', vailch21: 'Chair 21', vailch2: 'Chair 2', vailsnowsummit: 'Snow Stake', breckenridge7: 'Peak 7', breckenridge9: 'Peak 9',
   breckenridge10: 'Peak 10', bcsnowstake2: 'Snow Stake', bcspruce: 'Spruce Saddle', bcredbuffalo: 'Red Buffalo', bcmccoy: 'McCoy Park',
   bctalons: 'Talons', bcahoutsidebar: 'Outside Bar',
 };

@@ -3,6 +3,11 @@
   "page": "https://www.vail.com/the-mountain/mountain-conditions/mountain-cams.aspx",
   "cams": [
    {
+    "name": "Snow Stake",
+    "image": "https://player.brownrice.com/snapshot/vailsnowsummit",
+    "live": "https://player.brownrice.com/embed/vailsnowsummit"
+   },
+   {
     "name": "Chair 11",
     "image": "https://player.brownrice.com/snapshot/vailch11",
     "live": "https://player.brownrice.com/embed/vailch11"
@@ -21,11 +26,6 @@
     "name": "Eagles Nest",
     "image": "https://player.brownrice.com/snapshot/vaileaglesnest",
     "live": "https://player.brownrice.com/embed/vaileaglesnest"
-   },
-   {
-    "name": "Snow Summit",
-    "image": "https://player.brownrice.com/snapshot/vailsnowsummit",
-    "live": "https://player.brownrice.com/embed/vailsnowsummit"
    }
   ]
  },
