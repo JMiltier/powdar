@@ -749,7 +749,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // so tapping a resort, switching back to a view or re-rendering the same data is instant.
   // Never below ~9 px text: past that, a label shows just its number chip instead.
   const LABEL_SCALES = [1, 0.9, 0.82];
-  const BUDGET_MS = 70; // per label size
+  const BUDGET_MS = 90; // the finished layout
+  const TRIAL_MS = 45; // each label size's trial (only to see how many fit)
   const layoutCache = new Map();
   function layout() {
     const size = map.getSize();
@@ -763,20 +764,23 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     let best = null;
     // Time budget: on a slow phone, settle for a slightly less polished layout instead of freezing.
     const start = performance.now();
+    // Each size first without the costly finishing steps (far-out names, map order); then those run
+    // once, at the size that fit best.
     for (const [i, scale] of LABEL_SCALES.entries()) {
       el.style.setProperty('--label-scale', scale);
-      const attempt = computeLayout(size, pad, start + BUDGET_MS * (i + 1));
-      if (!best || attempt.misses < best.misses) best = { ...attempt, scale };
+      const attempt = computeLayout(size, pad, start + TRIAL_MS * (i + 1), false);
+      if (!best || attempt.misses < best.misses) best = { ...attempt, scale, i };
       if (attempt.misses === 0) break;
     }
     el.style.setProperty('--label-scale', best.scale);
+    best = { ...computeLayout(size, pad, performance.now() + BUDGET_MS, true), scale: best.scale };
     if (layoutCache.size > 40) layoutCache.clear();
     layoutCache.set(key, best);
     apply(best.result);
   }
 
   // One layout at the current label size → { result, misses } (misses: labels shown number-only or hidden).
-  function computeLayout(size, pad, deadline) {
+  function computeLayout(size, pad, deadline, finish = true) {
     const late = () => performance.now() > deadline;
     const area = [pad.left + 2, pad.top + 2, size.x - pad.right - 2, size.y - pad.bottom - 2];
     const maxLead = Math.max(28, Math.min(90, 0.1 * Math.min(area[2] - area[0], area[3] - area[1])));
@@ -785,12 +789,22 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     for (const o of order) o.pin.bubble.classList.remove('compact');
     const items = order.map((o) => ({ ...o, p: map.latLngToContainerPoint(o.r.at), w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight }));
     const dots = items.map((it) => it.p);
+    // Each resort's way out of its cluster: from the middle of its neighbors (within 70 px) to it.
+    const OUTWARD = 2500;
+    for (const it of items) {
+      const nb = items.filter((o) => o !== it && Math.hypot(o.p.x - it.p.x, o.p.y - it.p.y) < 70);
+      if (!nb.length) { it.away = null; continue; }
+      const cx = nb.reduce((t, o) => t + o.p.x, 0) / nb.length;
+      const cy = nb.reduce((t, o) => t + o.p.y, 0) / nb.length;
+      const d = Math.hypot(it.p.x - cx, it.p.y - cy);
+      it.away = d > 3 ? [(it.p.x - cx) / d, (it.p.y - cy) / d] : null;
+    }
     const reserved = reserveTowns(size, area);
     const onTown = (box) => reserved.some((r) => box[0] < r[2] && box[2] > r[0] && box[1] < r[3] && box[3] > r[1]);
     const boxOf = (it, [dx, dy]) => [it.p.x + dx - it.w / 2 - GAP, it.p.y + dy - it.h / 2 - GAP, it.p.x + dx + it.w / 2 + GAP, it.p.y + dy + it.h / 2 + GAP];
 
     // Candidate spots for a label at its current width (recomputed if it falls back to chip-only).
-    const buildCands = (it, relaxed = false) => {
+    const buildCands = (it, relaxed = false, far = false) => {
       const spots = it.empty ? [] : spotsFor(it.w, it.h); // "no data" resorts show just a grey dot
       it.cands = [];
       for (const s of spots) {
@@ -805,12 +819,21 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         // (Relaxed, for the number-only fallback: a hairline may pass beside other points, and reach further.)
         if (!relaxed && tail && dots.some((d) => d !== it.p && segPointDist(tail.seg, d) < DOT_R + 3)) continue;
         // Labels that matter (open, favorite, filter match) may reach further when they must.
-        if (lead.len > ((it.prio ?? 0) > 0 ? maxLead * 2.3 : relaxed ? maxLead * 1.5 : maxLead)) continue;
+        // (Far: the last try for a full name before number-only.)
+        if (lead.len > (far ? maxLead * 3.2 : (it.prio ?? 0) > 0 ? maxLead * 2.3 : relaxed ? maxLead * 1.5 : maxLead)) continue;
         // Distance from the dot (squared), a small preference for the classic spots, and a big one for
         // touching the dot: a hairline is only worth it when there's no room right beside it.
-        it.cands.push({ s, box, tail, cost: lead.len * lead.len + (s[2] ?? 60) + (tail ? 1200 : 0) });
+        // Outward: in a cluster, a label pointing back across its neighbors costs extra (the
+        // cartographer's rule: Keystone, on the cluster's east side, labels east; Copper, west).
+        const out = it.away ? Math.max(0, -(s[0] * it.away[0] + s[1] * it.away[1]) / (Math.hypot(s[0], s[1]) || 1)) : 0;
+        it.cands.push({ s, box, tail, cost: lead.len * lead.len + (s[2] ?? 60) + (tail ? 1200 : 0) + out * OUTWARD });
       }
       it.cands.sort((a, b) => a.cost - b.cost);
+    };
+    // Far-out spots for a full label (computed once per label, then reused).
+    const useFar = (it) => {
+      if (!it.far) { const keep = it.cands; buildCands(it, true, true); it.far = it.cands; it.cands = keep; }
+      it.cands = it.far;
     };
     for (const it of items) {
       it.pin.bubble.classList.remove('compact');
@@ -826,8 +849,82 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       || (a.tail && segRect(a.tail.seg, b.box))
       || (b.tail && segRect(b.tail.seg, a.box))
       || (a.tail && b.tail && segSeg(a.tail.seg, b.tail.seg));
-    const costOf = (it, c) => (c ? c.cost : 1e7);
+    const mid = (it, c) => [it.p.x + c.s[0], it.p.y + c.s[1]];
+    // A pair reads as swapped when each label is nearer the other's dot than its own (the two labels'
+    // distances to their dots, added up, beaten by a margin with the dots traded), or when close
+    // neighbors' labels sit in the opposite order to their dots.
+    const inverted = (a, ca, b, cb) => {
+      const [ax, ay] = mid(a, ca);
+      const [bx, by] = mid(b, cb);
+      const own = Math.hypot(ax - a.p.x, ay - a.p.y) + Math.hypot(bx - b.p.x, by - b.p.y);
+      const traded = Math.hypot(ax - b.p.x, ay - b.p.y) + Math.hypot(bx - a.p.x, by - a.p.y);
+      if (own - traded > 24) return true;
+      // Close neighbors also keep their east-west and north-south order (Copper's dot is west of
+      // Keystone's, so its label shouldn't be east of Keystone's).
+      const dx = b.p.x - a.p.x;
+      const dy = b.p.y - a.p.y;
+      if (Math.hypot(dx, dy) > 80) return false;
+      return (Math.abs(dx) > 12 && (bx - ax) * dx < 0 && Math.abs(bx - ax) > 20)
+        || (Math.abs(dy) > 12 && (by - ay) * dy < 0 && Math.abs(by - ay) > 10);
+    };
+    // (Each label's neighbors within 160 px, found once: this runs inside the layout's inner loops.)
+    for (const it of items) it.nearby = items.filter((o) => o !== it && Math.hypot(o.p.x - it.p.x, o.p.y - it.p.y) < 160);
+    const misordered = (it, c) => {
+      let n = 0;
+      for (const o of it.nearby) { const oc = pick.get(o); if (oc && inverted(it, c, o, oc)) n++; }
+      return n;
+    };
+    // A label's cost: its own distance and spot, plus a penalty for each nearby pair it reads as
+    // swapped with (about a 120 px hairline's worth), so layouts keep neighbors in map order.
+    const ORDER_PENALTY = 14000;
+    const costOf = (it, c) => (c ? c.cost + ORDER_PENALTY * misordered(it, c) : 1e7);
     // "No data" dots take part too (on their dot only), so labels keep clear of them.
+    // Resorts nearly on top of each other (3+ within 12 px of the next, like Aspen's four): their
+    // labels go in two tidy columns, the west half to the west and the east half to the east, each in
+    // north-south order, so hairlines fan out without crossing. (Looser clusters, like the I-70
+    // corridor, are left to the usual placement and its map-order rules.)
+    // A label whose column spot breaks a hard rule (off the map, over a dot) is placed as usual.
+    const real = items.filter((it) => !it.empty && it.cands.length);
+    const seen = new Set();
+    for (const start of real) {
+      if (seen.has(start)) continue;
+      const group = [start];
+      seen.add(start);
+      for (let k = 0; k < group.length; k++) {
+        for (const o of real) {
+          if (!seen.has(o) && Math.hypot(o.p.x - group[k].p.x, o.p.y - group[k].p.y) < 12) { seen.add(o); group.push(o); }
+        }
+      }
+      if (group.length < 3) continue;
+      const xs = group.map((it) => it.p.x).sort((a, b) => a - b);
+      const med = xs[Math.floor(xs.length / 2)];
+      for (const east of [false, true]) {
+        const side = group.filter((it) => (east ? it.p.x >= med : it.p.x < med)).sort((a, b) => a.p.y - b.p.y);
+        if (!side.length) continue;
+        const edge = east ? Math.max(...side.map((it) => it.p.x)) + 20 : Math.min(...side.map((it) => it.p.x)) - 20;
+        // Stack top to bottom, each as near its own dot's height as the one above allows; then
+        // centre the stack on the dots.
+        const ys = [];
+        side.forEach((it, i) => { ys.push(i ? Math.max(it.p.y, ys[i - 1] + (side[i - 1].h + it.h) / 2 + 4) : it.p.y); });
+        const shift = (side.reduce((t, it) => t + it.p.y, 0) - ys.reduce((t, y) => t + y, 0)) / side.length;
+        side.forEach((it, i) => {
+          const cy = Math.min(area[3] - it.h / 2 - GAP, Math.max(area[1] + it.h / 2 + GAP, ys[i] + shift));
+          const cx = east ? edge + it.w / 2 : edge - it.w / 2;
+          const sp = [cx - it.p.x, cy - it.p.y, 0];
+          const box = boxOf(it, sp);
+          if (box[0] < area[0] || box[2] > area[2] || box[1] < area[1] || box[3] > area[3]) return;
+          if (dots.some((d) => d !== it.p && d.x + DOT_R + 1 > box[0] && d.x - DOT_R - 1 < box[2] && d.y + DOT_R + 1 > box[1] && d.y - DOT_R - 1 < box[3])) return;
+          if (onTown(box)) return;
+          const lead = leader(it, sp);
+          const tail = lead.seg ? { seg: lead.seg } : null;
+          // (Its hairline may pass its own cluster's dots: Aspen's four are nearly on top of each other.)
+          if (tail && dots.some((d) => d !== it.p && !group.some((g) => g.p === d) && segPointDist(tail.seg, d) < DOT_R + 2)) return;
+          it.cands = [{ s: sp, box, tail, cost: lead.len * lead.len * 0.25 }];
+          it.column = true;
+        });
+      }
+    }
+
     const labels = items.filter((it) => it.cands.length);
     const pick = new Map();
     const free = (it, c) => labels.every((o) => o === it || !pick.get(o) || !clash(c, pick.get(o)));
@@ -898,8 +995,15 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     // Neighbors trade places: lift two nearby labels, re-seat them both (each order), and keep the
     // cheaper result. Catches "Copper above, Cooper below" swaps one-at-a-time moves can't make.
     const reseatBest = (it) => {
+      // (Cheapest free spot counting map order too; the sorted base cost is a lower bound.)
       let c = null;
-      for (const x of it.cands) if (free(it, x)) { c = x; break; } // sorted: the first free is best
+      let best = Infinity;
+      for (const x of it.cands) {
+        if (x.cost >= best) break;
+        if (!free(it, x)) continue;
+        const v = costOf(it, x);
+        if (v < best) { best = v; c = x; }
+      }
       return c;
     };
     // (Its own small time allowance past the deadline: a slow phone gets the swaps it has time for.)
@@ -910,8 +1014,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
           const b = labels[j];
           if (Math.hypot(a.p.x - b.p.x, a.p.y - b.p.y) > 160) continue;
           const was = [pick.get(a), pick.get(b)];
-          // Only worth it when one of them has a hairline or no spot at all.
-          if (was[0] && !was[0].tail && was[1] && !was[1].tail) continue;
+          // Only worth it when one of them has a hairline or no spot at all, or they read swapped.
+          if (was[0] && !was[0].tail && was[1] && !was[1].tail && !inverted(a, was[0], b, was[1])) continue;
           const before = costOf(a, was[0]) + costOf(b, was[1]);
           let best = null;
           for (const [x, y] of [[a, b], [b, a]]) {
@@ -1022,15 +1126,135 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       }
     }
 
+    // 4c) Keep neighbors in map order: when one resort is east of another, its label shouldn't end
+    //     up by the other (Keystone's label where Copper is, Copper's off to the east). Such a pair
+    //     is re-seated together in the cheapest spots that read right, even at some extra length.
+    const keepOrder = (extra) => {
+    for (let round = 0; round < 3 && (round === 0 || performance.now() < deadline + extra); round++) {
+      let changed = false;
+      for (let i = 0; i < labels.length; i++) {
+        for (let j = i + 1; j < labels.length; j++) {
+          const a = labels[i];
+          const b = labels[j];
+          const ca = pick.get(a);
+          const cb = pick.get(b);
+          if (!ca || !cb || Math.hypot(a.p.x - b.p.x, a.p.y - b.p.y) > 160 || !inverted(a, ca, b, cb)) continue;
+          const wrongBefore = misordered(a, ca) + misordered(b, cb);
+          pick.set(a, null);
+          pick.set(b, null);
+          let best = null;
+          for (const x of a.cands.slice(0, 100)) {
+            if (!free(a, x)) continue;
+            pick.set(a, x);
+            for (const y of b.cands.slice(0, 100)) {
+              if (inverted(a, x, b, y) || !free(b, y)) continue;
+              pick.set(b, y);
+              const wrong = misordered(a, x) + misordered(b, y);
+              pick.set(b, null);
+              const cost = x.cost + y.cost + wrong * 20000;
+              if (wrong < wrongBefore && (!best || cost < best.cost)) best = { cost, x, y };
+            }
+            pick.set(a, null);
+          }
+          // No free pair of spots: make room, moving up to 3 other labels (each must find a spot).
+          if (!best) {
+            const combos = [];
+            for (const x of a.cands.slice(0, 50)) {
+              for (const y of b.cands.slice(0, 50)) {
+                if (clash(x, y) || inverted(a, x, b, y)) continue;
+                combos.push({ x, y, c: x.cost + y.cost });
+              }
+            }
+            combos.sort((p1, p2) => p1.c - p2.c);
+            let tried = 0;
+            for (const { x, y } of combos) {
+              if (tried >= 10) break;
+              const blockers = labels.filter((o) => o !== a && o !== b && pick.get(o) && (clash(x, pick.get(o)) || clash(y, pick.get(o))));
+              if (blockers.length > 4) continue;
+              tried++;
+              const saved = blockers.map((o) => [o, pick.get(o)]);
+              for (const o of blockers) pick.set(o, null);
+              pick.set(a, x);
+              pick.set(b, y);
+              let ok = true;
+              for (const o of blockers) {
+                let n = bestFree(o);
+                if (!n && !o.compact) {
+                  const keep = o.cands;
+                  useFar(o);
+                  n = bestFree(o);
+                  if (!n) o.cands = keep;
+                }
+                if (!n) { ok = false; break; }
+                pick.set(o, n);
+              }
+              const wrong = ok ? misordered(a, x) + misordered(b, y) + blockers.reduce((t, o) => t + misordered(o, pick.get(o)), 0) : Infinity;
+              if (ok && wrong < wrongBefore) { best = { x, y }; break; }
+              for (const [o, v] of saved) pick.set(o, v);
+              pick.set(a, null);
+              pick.set(b, null);
+            }
+          }
+          pick.set(a, best ? best.x : ca);
+          pick.set(b, best ? best.y : cb);
+          if (best) changed = true;
+        }
+      }
+      if (!changed) break;
+    }
+    };
+    if (!finish) return { result: null, misses: items.filter((it) => !it.empty && !pick.get(it)).length };
+
     // 5) Still no room for name and number: show just the number chip (tap it for the resort).
     //    Most important first; one that matters (open, favorite, filter match) and still has no spot
     //    pushes less important labels down to number-only (they're placed again after it).
     const pending = items.filter((x) => !x.empty && !pick.get(x)).sort((a, b) => prio(b) - prio(a));
+    // Take a spot for `it` anyway and move the (up to 3) labels in its way elsewhere (further out if
+    // need be); kept only if every one of them finds a new spot. → the spot, or null.
+    const makeRoom = (it) => {
+      const options = it.cands
+        .map((c) => ({ c, blockers: labels.filter((o) => o !== it && pick.get(o) && clash(c, pick.get(o))) }))
+        .filter((o) => o.blockers.length && o.blockers.length <= 3)
+        .sort((x, y) => x.blockers.length - y.blockers.length || x.c.cost - y.c.cost)
+        .slice(0, 60);
+      for (const { c, blockers } of options) {
+        const saved = blockers.map((o) => [o, pick.get(o)]);
+        for (const o of blockers) pick.set(o, null);
+        pick.set(it, c);
+        let ok = true;
+        for (const o of blockers) {
+          let n = bestFree(o);
+          if (!n && !o.compact) {
+            const keep = o.cands;
+            useFar(o);
+            n = bestFree(o);
+            if (!n) o.cands = keep;
+          }
+          if (!n) { ok = false; break; }
+          pick.set(o, n);
+        }
+        if (ok) return c;
+        pick.set(it, null);
+        for (const [o, v] of saved) pick.set(o, v);
+      }
+      return null;
+    };
+    // Names stay: first the full label further out (a longer hairline, allowed past other points);
+    // number-only is the very last resort.
+    for (const it of [...pending]) {
+      if (it.compact) continue;
+      useFar(it);
+      if (!labels.includes(it)) labels.push(it);
+      let best = null;
+      for (const x of it.cands) if (free(it, x) && (!best || x.cost < best.cost)) best = x;
+      if (!best) best = makeRoom(it);
+      if (best) { pick.set(it, best); pending.splice(pending.indexOf(it), 1); }
+    }
     for (const it of pending) {
       if (!it.compact) {
         it.compact = true;
         it.w = it.pin.val.offsetWidth;
-        buildCands(it, true);
+        buildCands(it, true, true);
         if (!labels.includes(it)) labels.push(it);
       }
       let c = it.cands.find((x) => free(it, x));
@@ -1043,8 +1267,16 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
           break;
         }
       }
+      if (!c) c = makeRoom(it); // (a number chip at least: nothing goes missing)
       if (c) pick.set(it, c);
     }
+
+    // Tidy up after the far-out placements: single moves and neighbor swaps (which also weigh map
+    // order), then the order pass itself.
+    settle();
+    swapPass();
+    settle();
+    keepOrder(120);
 
     const misses = items.filter((it) => !it.empty && (it.compact || !pick.get(it))).length;
     const result = items.map((it) => {

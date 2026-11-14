@@ -1739,6 +1739,9 @@ function startMap() {
   if (state.map || !state.data) return;
   state.map = createSnowMap($('#map'), {
     resorts: state.data.resorts,
+    // Colorado: a little room east of the Front Range resorts (toward Denver), where the I-70
+    // corridor's eastern labels stack up.
+    extend: state.code === 'CO' ? [39.75, -105.3] : null,
     getPadding: coveredPadding,
     onSelect: (id) => select(id),
     onOutlook: (season) => { state.outlookSeason = season; render(); },
