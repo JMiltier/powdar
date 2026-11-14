@@ -2,6 +2,7 @@
 // so it runs the same in the GitHub Action, the local preview server and tests.
 import { RESORTS, PLANNED } from './resorts.js';
 import { MODELS, modelUrl, snowHours, uvUrl } from './models.js';
+import { ensembleUrl, summarizeEnsemble } from './ensemble.js';
 import { parseSnotel, snotelUrl, stationSeason, waterYear } from './snotel.js';
 import { LIFT_SOURCES, summarizeLifts } from './lifts.js';
 import { liftsDue } from './lift-hours.js';
@@ -110,7 +111,11 @@ const covers = (lastT, ymd) => lastT >= Date.parse(`${ymd}T12:00:00Z`) + 16 * HO
 // sources: [{ id, hours: [{ t, v (inches of snow), w? (inches of water as snow) }] | null }];
 // nws: raw NWS gridpoint properties (temperatures); periods: NWS text-forecast periods (sky, wind).
 // Each day and total uses only the sources whose forecast reaches that far.
-export function blendForecast({ sources, nws, periods }, now) {
+// ens (optional): this resort's ensemble summary for today ({ days: [{ date, mid, lo, hi }], next7,
+// week2, runs }), see src/ensemble.js. Days 1–3 stay with the single runs and the Weather Service
+// (strongest up close); days 4–7 average their consensus with the ensembles' middle; days 8–14 come
+// from the ensembles alone.
+export function blendForecast({ sources, nws, periods, ens = null }, now) {
   const today = localDate(now);
   const dates = Array.from({ length: OUTLOOK_DAYS }, (_, i) => addDays(today, i));
   const pastDates = [5, 4, 3, 2, 1].map((n) => addDays(today, -n));
@@ -150,13 +155,26 @@ export function blendForecast({ sources, nws, periods }, now) {
 
   const temps = nwsTemps(nws, dates.slice(0, FORECAST_DAYS));
   const sky = nwsDaily(periods);
+  const ensOn = (date) => ens?.days?.find((d) => d.date === date) ?? null;
   const days = dates.slice(0, FORECAST_DAYS).map((date, i) => {
-    const s = pick(reach(i), (p) => p.snow.get(date)) ?? spread(per.map((p) => p.snow.get(date)));
+    let s = pick(reach(i), (p) => p.snow.get(date)) ?? spread(per.map((p) => p.snow.get(date)));
+    const e = i >= 3 ? ensOn(date) : null;
+    if (e) s = { mid: round1((s.mid + e.mid) / 2), lo: round1(Math.min(s.lo, e.lo)), hi: round1(Math.max(s.hi, e.hi)) };
     return { date, snow: s.mid, snowLo: s.lo, snowHi: s.hi, ...temps.get(date), ...sky.get(date) };
   });
   const n72 = pick((p) => p.lastT >= nowMs + 66 * HOUR, (p) => p.next72) ?? spread(per.map((p) => p.next72));
-  const n7 = pick(reach(FORECAST_DAYS - 1), (p) => sumDays(p, 0, FORECAST_DAYS - 1)) ?? spread(per.map((p) => sumDays(p, 0, FORECAST_DAYS - 1)));
-  const wk2 = pick(reach(OUTLOOK_DAYS - 1), (p) => sumDays(p, FORECAST_DAYS, OUTLOOK_DAYS - 1));
+  let n7 = pick(reach(FORECAST_DAYS - 1), (p) => sumDays(p, 0, FORECAST_DAYS - 1)) ?? spread(per.map((p) => sumDays(p, 0, FORECAST_DAYS - 1)));
+  // With ensembles: the week is the days above added up (so it matches them), the range taking in both.
+  if (ens?.next7 && days.slice(3).every((d) => ensOn(d.date))) {
+    n7 = { mid: round1(days.reduce((a, d) => a + d.snow, 0)), lo: round1(Math.min(n7.lo, ens.next7.lo)), hi: round1(Math.max(n7.hi, ens.next7.hi)) };
+  }
+  // Days 8–14: the ensembles. Without them, the single runs that reach that far; with only one or two
+  // of those, their middle could be a number neither forecasts (2″ and 39″ make "20″"), so the lower
+  // one stands, with the range showing how much more is possible.
+  const reaching = per.filter(reach(OUTLOOK_DAYS - 1)).map((p) => sumDays(p, FORECAST_DAYS, OUTLOOK_DAYS - 1)).sort((a, b) => a - b);
+  const wk2 = ens?.week2 ? { ...ens.week2, sources: 'ensemble', runs: ens.runs }
+    : reaching.length >= 3 ? { ...pick(reach(OUTLOOK_DAYS - 1), (p) => sumDays(p, FORECAST_DAYS, OUTLOOK_DAYS - 1)), sources: reaching.length }
+      : reaching.length ? { mid: round1(reaching[0]), lo: round1(reaching[0]), hi: round1(reaching.at(-1)), sources: reaching.length } : null;
   const p24 = pick((p) => p.coversPast, (p) => p.past24);
   // The last five days' snow, from the models that cover each whole day (estimates, not reports).
   const pastDays = pastDates.map((date) => {
@@ -184,7 +202,7 @@ export function blendForecast({ sources, nws, periods }, now) {
     next72Range: [n72.lo, n72.hi],
     next7: n7.mid,
     next7Range: [n7.lo, n7.hi],
-    week2: wk2 ? { mid: wk2.mid, range: [wk2.lo, wk2.hi], sources: per.filter(reach(OUTLOOK_DAYS - 1)).length } : null,
+    week2: wk2 ? { mid: wk2.mid, range: [wk2.lo, wk2.hi], sources: wk2.sources, ...(wk2.runs ? { runs: wk2.runs } : {}) } : null,
     waterAhead,
     sources: usable.map((s) => s.id),
   };
@@ -316,7 +334,10 @@ export function nightFor(r, lifts, today, open = true) {
 }
 
 // skipModels: don't fetch the weather models this time (the caller reuses the last hour's forecast).
-export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), log = () => {}, backoff = 2000, skipModels = false, prevLifts = {} } = {}) {
+// prevEnsemble: the last published ensemble summaries ({ at, today, byId }), reused for up to 6 hours
+// (the ensembles themselves only update every 6 hours, and each request is a big one).
+const ENSEMBLE_EVERY_MS = 6 * 3_600_000;
+export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), log = () => {}, backoff = 2000, skipModels = false, prevLifts = {}, prevEnsemble = null } = {}) {
   const today = localDate(now);
   const season = seasonOf(today);
   const planned = PLANNED[season.name] ?? {};
@@ -428,7 +449,28 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     const s = snowNow && stationSeason({ current: snowNow.get(t), normals: snowNormal?.get(t), today });
     return [t, s && { name, ...s }];
   }).filter(([, s]) => s));
+  // Ensembles: fresh every 6 hours (and each new day), otherwise the last ones.
+  let ensemble = prevEnsemble?.today === today && now - Date.parse(prevEnsemble.at ?? 0) < ENSEMBLE_EVERY_MS ? prevEnsemble : null;
+  if (!ensemble && !skipModels) {
+    try {
+      const data = await getJson(fetchFn, ensembleUrl(RESORTS), { backoff });
+      const locs = Array.isArray(data) ? data : [data];
+      const byId = {};
+      RESORTS.forEach((r, i) => {
+        const e = summarizeEnsemble(locs[i], (ms) => localDate(new Date(ms)));
+        const at = e?.dates.indexOf(today) ?? -1;
+        if (e && at >= 0 && e.dates.length >= at + OUTLOOK_DAYS) {
+          byId[r.id] = { runs: e.runs, days: e.days.slice(at, at + OUTLOOK_DAYS), next7: e.sum(at, at + FORECAST_DAYS - 1), week2: e.sum(at + FORECAST_DAYS, at + OUTLOOK_DAYS - 1) };
+        }
+      });
+      ensemble = Object.keys(byId).length ? { at: now.toISOString(), today, byId } : null;
+    } catch (err) {
+      log(`Ensemble forecasts failed: ${err.message}`);
+      ensemble = prevEnsemble?.today === today ? prevEnsemble : null; // (older is still better than none, same day)
+    }
+  }
   const forecasts = RESORTS.map((r, i) => blendForecast({
+    ens: ensemble?.byId?.[r.id] ?? null,
     nws: nwsData[i],
     periods: nwsText[i],
     sources: [
@@ -523,6 +565,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
 
   return {
     insights,
+    ensemble,
     generated: now.toISOString(),
     today,
     season: season.name,

@@ -825,6 +825,7 @@ function renderDetail(r) {
     ${bars}
   `;
   if (f) notes.push(`Snow forecast: the middle of ${sources.length > 1 ? `${sources.length} forecasts (${esc(sources.join(', '))})` : 'the National Weather Service forecast'}${sources.length > 1 ? `, via ${sourceLink('https://www.weather.gov', 'NWS')} and ${sourceLink('https://open-meteo.com', 'Open-Meteo')}` : ''}. Small numbers are the likely range.${state.data.sources.modelsReused ? ` Model forecast from ${esc(timeAgo(state.data.sources.modelsAt))}.` : ''}`);
+  if (f?.week2?.runs) notes.push(`Days 4–14 also draw on ${f.week2.runs} ensemble runs (European, American and Canadian models, each run many times from slightly different starts; ${sourceLink('https://open-meteo.com/en/docs/ensemble-api', 'Open-Meteo')}): days 4–7 average their middle with the forecasts above, days 8–14 are their middle alone, the range the middle half of the runs.`);
   if (f?.days.some((d) => d.uv != null)) notes.push(`UV index: each day’s peak, from ${sourceLink('https://open-meteo.com', 'Open-Meteo')}. At ski-area elevations, with snow reflecting it back, sunburn comes fast even on cold days.`);
   if (f) notes.push(`Weather: ${sourceLink(`https://forecast.weather.gov/MapClick.php?lat=${r.at[0]}&lon=${r.at[1]}`, 'National Weather Service forecast')}.`);
   const cams = camsSection(r, notes);

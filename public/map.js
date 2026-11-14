@@ -798,8 +798,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     // Each size first without the costly finishing steps (far-out names, map order); then those run
     // once, at the size that fit best.
     // Every size is tried; the best is the one with the fewest labels that don't fit, then the
-    // shortest hairlines (labels close to their dots), with a small charge for smaller text.
-    const score = (a, scale) => a.misses * 400 + a.length + (1 - scale) * 1500;
+    // shortest hairlines (labels close to their dots). Smaller text costs a lot: full size wins unless
+    // a smaller size really is needed to fit names.
+    const score = (a, scale) => a.misses * 400 + a.length + (1 - scale) * 5000;
     for (const [i, scale] of LABEL_SCALES.entries()) {
       el.style.setProperty('--label-scale', scale);
       const attempt = computeLayout(size, pad, start + TRIAL_MS * (i + 1), false);
@@ -820,10 +821,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     // Un-hide everything first: a label hidden by the last layout would measure as zero size.
     for (const o of order) o.pin.root.classList.remove('hidden');
     for (const o of order) o.pin.bubble.classList.remove('compact');
-    // Crowded spots (3+ resorts within 45 px of each other): smaller labels there (see .pin.dense).
-    const pts = order.map((o) => map.latLngToContainerPoint(o.r.at));
-    order.forEach((o, i) => o.pin.root.classList.toggle('dense', pts.filter((q) => Math.hypot(q.x - pts[i].x, q.y - pts[i].y) < 45).length >= 3));
-    const items = order.map((o, i) => ({ ...o, p: pts[i], w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight }));
+    const items = order.map((o) => ({ ...o, p: map.latLngToContainerPoint(o.r.at), w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight }));
     const dots = items.map((it) => it.p);
     // Each resort's way out of its cluster: from the middle of its neighbors (within 70 px) to it.
     const OUTWARD = 600;
