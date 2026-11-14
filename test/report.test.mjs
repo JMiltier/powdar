@@ -184,3 +184,14 @@ test('buildReport keeps going when a source fails', async () => {
   assert.equal(byId['arapahoe-basin'].live, false);
   assert.equal(byId['arapahoe-basin'].status.state, 'tba');
 });
+
+test('nightFor: night skiing from lift hours, or the published schedule on its days', async () => {
+  const { nightFor } = await import('../src/report.js');
+  const lifts = { lifts: [{ name: 'River Run Gondola', closes: '20:00' }, { name: 'Peru Express', closes: '16:00' }] };
+  assert.deepEqual(nightFor({}, lifts, '2026-12-18'), { until: '20:00', lifts: ['River Run Gondola'], source: 'lifts' });
+  assert.equal(nightFor({}, { lifts: [{ name: 'A', closes: '16:00' }] }, '2026-12-18'), null);
+  const echo = { night: { days: [3, 4, 5, 6], from: '16:30', to: '21:00', source: 'x' } };
+  assert.deepEqual(nightFor(echo, null, '2026-12-18'), { from: '16:30', until: '21:00', source: 'x' }); // a Friday
+  assert.equal(nightFor(echo, null, '2026-12-20'), null); // Sunday
+  assert.equal(nightFor(echo, null, '2026-12-18', false), null); // not open
+});

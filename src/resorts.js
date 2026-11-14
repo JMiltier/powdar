@@ -9,6 +9,9 @@
 //         resort's snowpack is the average of them all (charts, % of normal, past seasons).
 //   avgSnow: average season snowfall in inches, from ZRankings' "True Snow" (patrol and avalanche-center
 //         records, Nov–Apr), not resort marketing figures. Left out where ZRankings has no figure.
+//   night: a published night-skiing schedule, for resorts whose live feed has no lift hours:
+//         { days: [0–6, Sunday = 0], from: 'HH:MM', to: 'HH:MM', source }. (Keystone's night sessions
+//         come straight from its lift hours each day instead.)
 //   elev: rough mid-mountain elevation in feet ((base + summit) / 2); forecasts are run for this height.
 //   nws:  National Weather Service forecast grid [office, x, y] near mid-mountain,
 //         looked up once from api.weather.gov/points/{lat},{lon}.
@@ -23,7 +26,7 @@ export const RESORTS = [
   { id: 'cooper', at: [39.3606, -106.3017], elev: 11100, snotel: ['485:CO:SNTL', 'Fremont Pass'], name: 'Ski Cooper', region: 'Central', csc: 'cooper', nws: ['PUB', 40, 119], url: 'https://www.skicooper.com' },
   { id: 'winter-park', at: [39.8868, -105.7625], elev: 10500, snotel: ['335:CO:SNTL', 'Berthoud Summit'], avgSnow: 347, name: 'Winter Park', region: 'Front Range', csc: 'winter-park', nws: ['BOU', 37, 70], url: 'https://www.winterparkresort.com' },
   { id: 'eldora', at: [39.9372, -105.5828], elev: 10000, snotel: ['564:CO:SNTL', 'Lake Eldora'], snotelMore: [['838:CO:SNTL', 'University Camp']], avgSnow: 225, name: 'Eldora', region: 'Front Range', csc: 'eldora', nws: ['BOU', 43, 72], url: 'https://www.eldora.com' },
-  { id: 'echo-mountain', at: [39.6847, -105.5194], elev: 10350, snotel: ['936:CO:SNTL', 'Echo Lake'], name: 'Echo Mountain', region: 'Front Range', csc: 'echo-mountain', nws: ['BOU', 44, 60], url: 'https://www.echomtn.com' },
+  { id: 'echo-mountain', at: [39.6847, -105.5194], elev: 10350, snotel: ['936:CO:SNTL', 'Echo Lake'], name: 'Echo Mountain', region: 'Front Range', csc: 'echo-mountain', nws: ['BOU', 44, 60], url: 'https://www.echomtn.com', night: { days: [3, 4, 5, 6], from: '16:30', to: '21:00', source: 'https://echomtn.com/night-ski-snowboard' } },
   { id: 'granby-ranch', at: [40.0447, -105.9061], elev: 8700, snotel: ['335:CO:SNTL', 'Berthoud Summit'], avgSnow: 200, name: 'Granby Ranch', region: 'Front Range', csc: 'granby-ranch', nws: ['BOU', 32, 78], url: 'https://granbyranch.com' },
   { id: 'steamboat', at: [40.4572, -106.8045], elev: 8700, snotel: ['457:CO:SNTL', 'Dry Lake'], snotelMore: [['709:CO:SNTL', 'Rabbit Ears']], avgSnow: 368, name: 'Steamboat', region: 'Northwest', csc: 'steamboat', nws: ['GJT', 162, 159], url: 'https://www.steamboat.com' },
   { id: 'howelsen-hill', at: [40.4834, -106.8381], elev: 7000, snotel: ['457:CO:SNTL', 'Dry Lake'], name: 'Howelsen Hill', region: 'Northwest', csc: 'howelsen-hill', nws: ['GJT', 161, 160], url: 'https://www.coloradoski.com/resorts/howelsen-hill' },

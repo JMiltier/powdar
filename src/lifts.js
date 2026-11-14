@@ -108,7 +108,7 @@ export function summarizeLifts(lifts, page, checked) {
   const times = lifts.map((l) => l.updated).filter(Boolean).sort();
   return {
     open: count('open'), hold: count('hold'), scheduled: count('scheduled'), total: lifts.length,
-    lifts: lifts.map(({ name, status, hours }) => ({ name, status, hours })),
+    lifts: lifts.map(({ name, status, hours, closes }) => ({ name, status, hours, ...(closes ? { closes } : {}) })),
     page,
     // The resort's own last-change time when the feed has one; otherwise when we checked.
     updated: times.at(-1) ?? null,

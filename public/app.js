@@ -137,6 +137,12 @@ function rangeText(range) {
   const [lo, hi] = range.map((v) => Math.round(metric() ? v * 2.54 : v));
   return hi >= 1 && hi !== lo ? `${lo}–${hi}${metric() ? ' cm' : '″'}` : '';
 }
+// "20:00" → "8 PM", "16:30" → "4:30 PM".
+const hourText = (hm) => {
+  const [h, m] = hm.split(':').map(Number);
+  return `${((h + 11) % 12) + 1}${m ? `:${String(m).padStart(2, '0')}` : ''} ${h < 12 ? 'AM' : 'PM'}`;
+};
+const denverHour = () => Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
 const monthDay = (ymd) => new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
 const weekday = (ymd, today) => (ymd === today ? 'Today' : new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short' }));
 
@@ -666,7 +672,7 @@ function renderList() {
     const open = r.status.state === 'open';
     const head = `
       <span class="rr-head">
-        <span class="row-name">${esc(r.name)}</span>${fav ? `<span class="card-fav" aria-label="Favorite">${UI.starFilled}</span>` : ''}
+        <span class="row-name">${esc(r.name)}</span>${fav ? `<span class="card-fav" aria-label="Favorite">${UI.starFilled}</span>` : ''}${r.night ? `<span class="row-night" title="Night skiing to ${esc(hourText(r.night.until))}" aria-label="Night skiing to ${esc(hourText(r.night.until))}">${UI.moon}</span>` : ''}
         <span class="pill pill-${esc(r.status.state)}">${esc(shortStatus(r))}</span>
         ${state.sort === 'mine' ? `<span class="drag-handle" aria-label="Drag to move ${esc(r.name)}" role="button"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5.5" cy="3.5" r="1.4"/><circle cx="10.5" cy="3.5" r="1.4"/><circle cx="5.5" cy="8" r="1.4"/><circle cx="10.5" cy="8" r="1.4"/><circle cx="5.5" cy="12.5" r="1.4"/><circle cx="10.5" cy="12.5" r="1.4"/></svg></span>` : ''}
       </span>`;
@@ -758,6 +764,11 @@ function renderDetail(r) {
 
   // Where every number comes from, gathered at the very bottom for anyone curious.
   const notes = [];
+  if (r.night) {
+    notes.push(r.night.source === 'lifts'
+      ? `Night skiing: from ${esc(r.name)}’s lift hours for today (${esc(r.night.lifts.join(', '))}).`
+      : `Night skiing: ${sourceLink(r.night.source, `${r.name}’s published schedule`)}.`);
+  }
 
   // How much of the mountain is open, as simple bars.
   const meter = (label, open, total) => (total ? `
@@ -801,7 +812,7 @@ function renderDetail(r) {
       <div class="detail-title">
         <h2><span>${esc(r.name)}<a class="site-link" href="${esc(r.url)}" target="_blank" rel="noopener" aria-label="${esc(r.name)} website (${esc(siteName(r.url))})" title="${esc(siteName(r.url))}">${EXT_ICON}</a></span>
           <span class="pill pill-${esc(r.status.state)}">${esc(r.status.label)}</span></h2>
-        ${seasonText(r, today) ? `<p>${esc(seasonText(r, today))}</p>` : ''}
+        ${seasonText(r, today) || r.night ? `<p>${esc(seasonText(r, today))}${seasonText(r, today) && r.night ? ' · ' : ''}${r.night ? `<span class="night">${UI.moon}Night skiing to ${esc(hourText(r.night.until))}</span>` : ''}</p>` : ''}
       </div>
       <button type="button" class="icon star" data-fav="${esc(r.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Unpin' : 'Pin'} ${esc(r.name)}">${fav ? UI.starFilled : UI.star}</button>
     </div>`;
@@ -990,14 +1001,19 @@ function dayScore(r, which) {
   if (day.sky) reasons.push(`${day.sky.replace(/^Chance /, '').replace(/ Showers.*/, ' showers')}, ${deg(hi)}`);
   if (wind) reasons.push(wind >= 25 ? `windy (${windNum(wind)} ${windUnit()})` : wind >= 15 ? `breezy (${windNum(wind)} ${windUnit()})` : 'light wind');
   if (base) reasons.push(`${inches(base)} base`);
+  if (which === 0 && r.night) reasons.unshift(`lifts to ${hourText(r.night.until)}`);
   return { r, score, reasons };
 }
 // scope: 'all', 'favs' (starred), or 'filter' (the pass and ★ filters now on).
+// Late afternoon on, today's pick is for tonight: among resorts with night skiing still to come.
+const tonight = () => denverHour() >= 15 && state.data.resorts.some((r) => r.status.state === 'open' && r.night && Number(r.night.until.slice(0, 2)) > denverHour());
 function bestBets(which, scope = 'all') {
   const d = state.data;
   const tomorrow = addDaysIso(d.today, 1);
+  const night = which === 0 && tonight();
   return d.resorts
     .filter((r) => scope === 'all' || (scope === 'favs' ? state.favs.has(r.id) : matches(r)))
+    .filter((r) => !night || r.night)
     // Open that day: open now, or opening tomorrow for tomorrow's pick.
     .filter((r) => r.status.state === 'open' || (which === 1 && r.status.state === 'soon' && r.status.date === tomorrow))
     .map((r) => dayScore(r, which)).filter(Boolean).sort((a, b) => b.score - a.score);
@@ -1007,7 +1023,7 @@ function bestBetCard(which, scope = 'all') {
   const bets = bestBets(which, scope);
   if (!bets.length) return '';
   const [top, next] = bets;
-  const when = which === 0 ? 'today' : 'tomorrow';
+  const when = which === 0 ? (tonight() ? 'tonight' : 'today') : 'tomorrow';
   const label = scope === 'all' ? `Best bet ${when}` : `${scopeName(scope)} ${when}`;
   return `
     <button type="button" class="best-bet${scope !== 'all' ? ' best-fav' : ''}" data-open="${esc(top.r.id)}">

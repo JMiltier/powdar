@@ -302,6 +302,19 @@ export async function pool(items, limit, fn) {
   return out;
 }
 
+// Night skiing today: from the lift hours where the feed has them (a lift closing at 5 pm or later),
+// otherwise the resort's published schedule on its night days. → { until, lifts?, source } or null.
+export function nightFor(r, lifts, today, open = true) {
+  const late = (lifts?.lifts ?? []).filter((l) => l.closes && l.closes >= '17:00');
+  if (late.length) {
+    return { until: late.map((l) => l.closes).sort().at(-1), lifts: late.map((l) => l.name), source: 'lifts' };
+  }
+  const n = r.night;
+  if (!n || !open || lifts?.lifts?.length) return null;
+  const dow = new Date(`${today}T12:00:00Z`).getUTCDay();
+  return n.days.includes(dow) ? { from: n.from, until: n.to, source: n.source } : null;
+}
+
 // skipModels: don't fetch the weather models this time (the caller reuses the last hour's forecast).
 export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), log = () => {}, backoff = 2000, skipModels = false, prevLifts = {} } = {}) {
   const today = localDate(now);
@@ -495,6 +508,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       report,
       forecast: forecasts[i],
       lifts: liftsById[r.id] ?? null,
+      night: nightFor(r, liftsById[r.id], today, live && (c?.isOpen ?? true)),
       noaa: noaaSnow[i] ?? null,
       avgSnow: r.avgSnow ?? null,
       // Webcams (src/cams.json, scripts/cams.mjs): still images that update on their own, with when

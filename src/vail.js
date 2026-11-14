@@ -86,6 +86,7 @@ export function parseVailTerrain(html) {
     name: l.Name,
     status: LIFT_STATUS[l.Status] ?? 'closed',
     hours: l.OpenTime && l.CloseTime ? `${hhmm(l.OpenTime)}–${hhmm(l.CloseTime)}` : null,
+    closes: /^\d{1,2}:\d{2}/.test(l.CloseTime ?? '') ? l.CloseTime.slice(0, 5).padStart(5, '0') : null, // "20:00": today's closing time
   }));
   const trails = (d.GroomingAreas ?? []).flatMap((a) => a.Trails ?? []);
   return { lifts, trails: { open: trails.filter((t) => t.IsOpen).length, total: trails.length } };

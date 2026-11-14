@@ -1,6 +1,7 @@
 // Lift status only changes while lifts can be running, so feeds are checked during the ski day only,
 // plus once after it ends (so the last word overnight is "closed", not a stale "open").
-// Colorado lifts run about 8:30–4; elsewhere, night skiing (Midwest, East) runs to about 9–10 pm.
+// Colorado lifts run about 8:30–4, with night skiing at Keystone (to about 8 pm) and Echo (to 9);
+// elsewhere, night skiing (Midwest, East) runs to about 9–10 pm.
 
 // Each state's main time zone (good enough for a check window).
 export const STATE_TZ = {
@@ -13,7 +14,7 @@ export const STATE_TZ = {
 const tzOf = (code) => STATE_TZ[code] ?? 'America/New_York';
 
 // Hours (local) when lift status is worth checking.
-export const windowFor = (code) => (code === 'CO' ? [7, 17] : [7, 22]);
+export const windowFor = (code) => (code === 'CO' ? [7, 21.5] : [7, 22]);
 
 const localHour = (date, tz) => {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: 'numeric', hourCycle: 'h23' })
