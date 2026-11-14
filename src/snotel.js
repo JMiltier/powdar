@@ -66,7 +66,9 @@ export function despike(values, { maxRise = 4, maxDrop = 3, back = 10 } = {}) {
       const returned = j < v.length && j - i < back;
       // At the very end of the record we can't see a return yet: drop only truly absurd jumps.
       const atEnd = j >= v.length && Math.abs(jump) > maxRise * 1.5 * days;
-      if (returned || atEnd) {
+      // (j > i: on a deep snowpack a jump can pass the limit yet already be "back" by the return
+      // test; that's no spike, and skipping zero readings would loop forever.)
+      if ((returned || atEnd) && j > i) {
         i = j;
         continue;
       }

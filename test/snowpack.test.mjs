@@ -74,3 +74,8 @@ test('parseNohrsc converts NOAA snow model values to inches', async () => {
   assert.deepEqual(parseNohrsc(json), { depth: 27.2, water: 8.6 });
   assert.equal(parseNohrsc({ results: [] }), null);
 });
+
+test('despike keeps a big real gain on a deep snowpack (and never stalls)', () => {
+  const v = [{ date: '2025-02-01', value: 20 }, { date: '2025-02-02', value: 24.5 }, { date: '2025-02-03', value: 24.6 }];
+  assert.deepEqual(despike(v).map((x) => x.value), [20, 24.5, 24.6]);
+});

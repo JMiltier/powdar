@@ -27,16 +27,24 @@ for (const [triplet, name] of stations) {
     const age = await stat(file).then((f) => Date.now() - f.mtimeMs).catch(() => Infinity);
     if (age < Number(process.env.FRESH_HOURS) * 3_600_000) continue;
   }
-  const url = snotelUrl([triplet], `${FIRST_SEASON}-10-01`, `${startYear}-07-31`);
-  // The snow-station service is sometimes slow or hangs: time out and retry.
-  let res;
-  for (let i = 0; i < 4 && !res?.ok; i++) {
-    res = await fetch(url, { signal: AbortSignal.timeout(60_000) }).catch(() => null);
-    if (!res?.ok) await new Promise((r) => setTimeout(r, 3000 * (i + 1)));
+  // Five winters per request: the snow-station service sometimes hangs on a long span. Each request
+  // times out and is retried.
+  const raw = [];
+  let failed = false;
+  for (let from = FIRST_SEASON; from < startYear && !failed; from += 5) {
+    const to = Math.min(from + 5, startYear);
+    const url = snotelUrl([triplet], `${from}-10-01`, `${to}-07-31`);
+    let res;
+    for (let i = 0; i < 4 && !res?.ok; i++) {
+      res = await fetch(url, { signal: AbortSignal.timeout(60_000) }).catch(() => null);
+      if (!res?.ok) await new Promise((r) => setTimeout(r, 3000 * (i + 1)));
+    }
+    if (!res?.ok) failed = true;
+    else raw.push(...(parseSnotel(await res.json()).get(triplet)?.swe ?? []));
+    if (process.env.VERBOSE) console.log(`${name} ${from}–${to}: ${raw.length} days`);
   }
-  if (!res?.ok) { console.warn(`${name}: no response, skipped`); continue; }
+  if (failed) { console.warn(`${name}: no response, skipped`); continue; }
   // Bad sensor readings (one-day spikes or dropouts) are removed before anything else.
-  const raw = parseSnotel(await res.json()).get(triplet)?.swe ?? [];
   const values = despike(raw);
 
   // Group by season (Oct 1 – Jul 31), as [day of season, inches of water] every 3rd day.
