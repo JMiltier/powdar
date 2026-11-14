@@ -592,7 +592,7 @@ function miniDays(r) {
 
 // Each resort as a card: status, then the numbers that matter side by side (the map's current view
 // highlighted).
-const CARD_STATS = [['new24', '−24h'], ['next72', '+3d'], ['next7', '+7d'], ['base', 'Base'], ['season', 'Season']];
+const CARD_STATS = [['new24', '−24h'], ['next72', '+3d'], ['next7', '+7d'], ['base', 'Base'], ['season', 'Pack\u202f%']];
 function cardSub(r) {
   const s = r.status;
   const lifts = r.report?.lifts ?? (r.lifts?.total ? { open: r.lifts.open, total: r.lifts.total } : null);
