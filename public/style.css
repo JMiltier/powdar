@@ -569,7 +569,7 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .sw-radar { background: radial-gradient(circle at 40% 40%, #ebfaff, #6eb4ff 45%, #9650dc); }
 .sw-outlook { background: linear-gradient(90deg, #cf9548 0 50%, #4f93d8 50% 100%); }
 .sw-none { background: var(--bg); }
-.ramp-radar { background: linear-gradient(90deg, rgba(235, 250, 255, 0.5), rgba(160, 220, 255, 0.7), rgba(70, 150, 250, 0.82), rgba(110, 80, 230, 0.9), rgba(190, 50, 210, 0.94)); }
+.ramp-radar { background: linear-gradient(90deg, rgb(95, 200, 255), rgb(35, 145, 250), rgb(55, 85, 235), rgb(135, 50, 220), rgb(210, 35, 190)); }
 .ramp-outlook { background: linear-gradient(90deg, #a96a24, #e3bd7f, transparent 45% 55%, #86b8e8, #2a6fbe); }
 
 /* Radar loop controls in the key. */
