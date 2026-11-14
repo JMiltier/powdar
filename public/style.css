@@ -487,8 +487,17 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
   .legend-title { display: none; } /* the ❄ button already says what this is */
   .legend-keys { gap: 5px; }
 }
+/* Seven views and the layers button across a phone: a little tighter. */
+@media (max-width: 440px) {
+  .ribbon { width: 100%; }
+  .ribbon button { flex: 1 1 auto; min-width: 0; padding: 7px 2px; font-size: 0.86rem; }
+  .ribbon .snow-toggle { flex: none; padding: 7px 8px; }
+}
+@media (max-width: 374px) {
+  .ribbon button { font-size: 0.8rem; }
+}
 @media (max-width: 340px) {
-  .ribbon button { padding: 6px 5px; font-size: 0.76rem; }
+  .ribbon button { padding: 6px 1px; font-size: 0.72rem; }
   .ribbon { gap: 0; }
 }
 
