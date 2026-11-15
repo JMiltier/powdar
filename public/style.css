@@ -1081,3 +1081,5 @@ body.reordering, body.reordering * { user-select: none; cursor: grabbing; }
   .pin-bubble { gap: 3px; padding: 1px 6px 1px 1px; }
   .pin-val { padding: 2px 4px; }
 }
+#map.dots-off .pin-dot { display: none; }
+.labels-btn[data-marks="none"] { background: var(--accent); color: var(--card); }

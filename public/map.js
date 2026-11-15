@@ -554,8 +554,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // Snow forecast areas for a day (1–3) and amount (4, 8, 12), cached per pair.
   let cast = { day: 1, amount: 4 };
   const castCache = new Map();
-  async function snowcastLayer() {
-    const layer = (cast.day - 1) * 5 + 1 + CAST_AMOUNTS.indexOf(cast.amount);
+  const castData = async (day, amount) => {
+    const layer = (day - 1) * 5 + 1 + CAST_AMOUNTS.indexOf(amount);
     if (!castCache.has(layer)) {
       const q = new URLSearchParams({
         where: '1=1', outFields: 'dn,start_time,end_time,issue_time', f: 'geojson', outSR: '4326', maxAllowableOffset: '0.01',
@@ -563,8 +563,22 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       });
       castCache.set(layer, await (await fetch(`${SNOWCAST}/${layer}/query?${q}`)).json());
     }
-    const data = castCache.get(layer);
-    onCast?.({ ...cast, areas: data.features?.length ?? 0, start: data.features?.[0]?.properties?.start_time ?? null });
+    return castCache.get(layer);
+  };
+  async function snowcastLayer() {
+    // Nothing at the chosen amount: the next smaller amount that has areas, rather than an empty map.
+    // (Only areas on the visible map count: the query covers the neighboring states too.)
+    const view = map.getBounds();
+    const onMap = (d) => (d.features ?? []).filter((f) => L.geoJSON(f).getBounds().intersects(view)).length;
+    let shown = cast.amount;
+    let data = await castData(cast.day, shown);
+    for (const a of CAST_AMOUNTS.filter((x) => x < cast.amount).reverse()) {
+      if (onMap(data)) break;
+      data = await castData(cast.day, a);
+      shown = a;
+    }
+    if (!onMap(data)) shown = cast.amount;
+    onCast?.({ ...cast, shown, areas: onMap(data), start: data.features?.[0]?.properties?.start_time ?? null });
     return L.geoJSON(data, {
       pane: 'snow', interactive: false,
       style: (f) => ({ className: 'snowcast', stroke: true, weight: 0.8, color: '#7c3aed', opacity: 0.6, fillColor: '#8b5cf6', fillOpacity: CAST_SHADES[f.properties.dn] ?? 0.25 }),
@@ -1348,9 +1362,11 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       satDate = date;
       swapBase();
     },
-    // Resort labels on or off (the dots stay, and stay tappable), to see what's under them.
-    setLabels(on) {
-      el.classList.toggle('labels-off', !on);
+    // How much of the resorts to show: 'all', 'dots' (labels off, the dots stay tappable) or 'none'
+    // (just the map), to see what's under them.
+    setMarks(mode) {
+      el.classList.toggle('labels-off', mode !== 'all');
+      el.classList.toggle('dots-off', mode === 'none');
     },
     // Radar loop: play or pause (paused shows the newest frame).
     playRadar(on) {

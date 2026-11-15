@@ -90,7 +90,9 @@ const state = {
   pass: read(STORE.pass, 'all'), // 'all', 'epic', 'ikon', 'indy' or 'other'
   snowStyle: read(STORE.snowStyle, 'color'), // how snow on the ground is drawn (tap its key to cycle)
   unit: read(STORE.unit, 'F'), // temperatures in 'F' or 'C' (the data is always °F)
-  labels: read(STORE.labels, true), // resort labels on the map (off: just the dots, to see the weather)
+  // What the map shows of the resorts: 'all' (labels and dots), 'dots' (to see the weather) or 'none'
+  // (just the map). (An older saved true/false means all/dots.)
+  marks: ((v) => (v === true ? 'all' : v === false ? 'dots' : ['all', 'dots', 'none'].includes(v) ? v : 'all'))(read(STORE.labels, 'all')),
   dist: read(STORE.dist, 'imperial'), // snow, depth and wind: 'imperial' (in, mph) or 'metric' (cm, km/h)
   sort: read(STORE.sort, 'name'),
   order: read(STORE.order, []), // the user's own order (sort "mine"), resort ids // the list: 'name' (A–Z), 'value' (the map view's number) or 'open'
@@ -308,13 +310,15 @@ function legendFor(layer) {
       <span class="legend-keys">${layer === 'satsnow' ? '<i class="sw-mini sw-cyan"></i><span>Snow</span><i class="sw-mini sw-white"></i><span>Cloud</span>' : '<span>NASA satellite photo</span>'}</span>`;
   }
   if (layer === 'snowcast') {
-    const { day, amount, areas } = state.cast;
+    const { day, amount, areas, shown = amount } = state.cast;
+    const amt = (v) => (metric() ? `${Math.round(v * 2.54)} cm` : `${v}″`);
     const period = ['Next 24h', '24–48h', '48–72h'][day - 1];
     return `<button type="button" class="day-step" data-cast-day="-1" aria-label="Earlier" ${day <= 1 ? 'disabled' : ''}>‹</button>
       <span class="radar-time">${period}</span>
       <button type="button" class="day-step" data-cast-day="1" aria-label="Later" ${day >= 3 ? 'disabled' : ''}>›</button>
       <button type="button" class="snow-style" data-cast-amount aria-label="Chance of at least ${amount} inches; tap for another amount">${metric() ? `${Math.round(amount * 2.54)} cm` : `${amount}″`}+<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 0 1 8.6-3.5M13 8a5 5 0 0 1-8.6 3.5M11.5 2v2.7H8.8M4.5 14v-2.7h2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-      <span class="legend-keys cast-key">${areas === 0 ? '<span class="muted">None expected</span>' : '<i class="c1"></i><i class="c2"></i><i class="c3"></i><span>10% → 70%+</span>'}</span>`;
+      <span class="legend-keys cast-key">${areas === 0 ? `<span class="muted">No ${amt(CAST_AMOUNTS[0])}+ snow likely</span>`
+        : `${shown < amount ? `<span class="muted">None at ${amt(amount)}+ · ${amt(shown)}+:</span>` : ''}<i class="c1"></i><i class="c2"></i><i class="c3"></i><span>10% → 70%+</span>`}</span>`;
   }
   if (layer === 'radar') {
     return `<button type="button" class="radar-play" id="radar-play" aria-label="Play the last hour" ${state.radar.count > 1 ? '' : 'disabled'}>${state.radar.playing ? PAUSE_ICON : PLAY_ICON}</button>
@@ -969,6 +973,49 @@ function todayStats() {
 // fresh snow (most), how much terrain is open, sun vs storm, wind, temperature, and base. Each pick
 // lists its reasons so it can be judged, not just trusted.
 const windMph = (s) => Math.max(0, ...String(s ?? '').match(/\d+/g)?.map(Number) ?? [0]);
+// How good the snow itself is likely to be, beyond what fell overnight: the snow-quality part of the
+// best bet (about −25 to +30 points, next to fresh snow's 40). Untouched snow beats skied-off snow, and
+// early-season machine-made snow that's had days of traffic and melt-freeze nights turns icy.
+//  - Just opened (or tomorrow, opening): runs nobody has skied yet. Fades over about a week.
+//  - The resort's surface report: powder or packed powder up, groomed fine, hard pack / icy down.
+//  - Snow in the last week (resort report, else the models): recent snow keeps it soft; a week
+//    or more with none, once it's been open a while, means skied-off, firm runs.
+//  - Melt-freeze: at the nearest snow station, recent days averaging at or above freezing mean
+//    soft afternoons and firm, icy mornings.
+//  - Mostly machine-made: the base far deeper than the natural snow around it (once open a while).
+//  - Crowding: open over a week with only a sliver of the mountain open: lots of skiers on few runs.
+function snowQuality(r, which) {
+  const reasons = [];
+  let score = 0;
+  const today = state.data.today;
+  const openedDaysAgo = r.dates?.open ? Math.round((Date.parse(today) - Date.parse(r.dates.open)) / 864e5) + which : null;
+  if (openedDaysAgo != null && openedDaysAgo >= 0 && openedDaysAgo <= 6) {
+    score += openedDaysAgo <= 1 ? 14 : openedDaysAgo <= 3 ? 9 : 4;
+    reasons.push(openedDaysAgo <= 1 ? 'just opened: fresh, untouched runs' : `opened ${openedDaysAgo} days ago: little traffic yet`);
+  }
+  const surface = String(r.report?.surface ?? '').trim();
+  const code = surface.toUpperCase();
+  const word = SURFACE[code] ?? surface;
+  if (/^(P|PDR|P\/PP)$/.test(code) || /powder/i.test(surface) && !/packed/i.test(surface)) { score += 10; reasons.push(word.toLowerCase()); }
+  else if (code === 'PP' || /packed powder/i.test(surface)) { score += 6; reasons.push('packed powder'); }
+  else if (/^(HP|FG|ICY)$/.test(code) || /hard|icy|frozen/i.test(surface)) { score -= 10; reasons.push(word.toLowerCase()); }
+  else if (/^(WP|WG|SC|SPR)$/.test(code) || /wet|spring/i.test(surface)) { score -= 2; }
+  const week = r.report?.new7d ?? (r.forecast?.pastDays ?? []).reduce((a, d) => a + (d.snow ?? 0), 0) + (r.report?.new24 ?? 0);
+  const longOpen = openedDaysAgo != null && openedDaysAgo > 6;
+  if (week >= 6) { score += 6; reasons.push(`${inches(week)} this week`); }
+  else if (week >= 2) score += 2;
+  else if (longOpen) { score -= 6; reasons.push('no new snow in a week: skied-off, firm'); }
+  const temps = station(r)?.temps ?? [];
+  const warmDays = temps.slice(-3).filter(([, t]) => t >= 32).length;
+  if (warmDays >= 2) { score -= 6; reasons.push('melt-freeze: firm, icy mornings'); }
+  const base = r.report?.depth;
+  const natural = r.noaa?.depth;
+  if (longOpen && base >= 12 && natural != null && natural < base * 0.35) { score -= 4; reasons.push('mostly machine-made snow'); }
+  const trails = r.report?.trails;
+  if (longOpen && trails?.total && trails.open / trails.total < 0.15) { score -= 5; reasons.push('few runs open: crowded'); }
+  return { score, reasons };
+}
+
 function dayScore(r, which) {
   const f = r.forecast;
   const day = f?.days?.[which];
@@ -994,6 +1041,8 @@ function dayScore(r, which) {
   score += /sunny|clear/.test(sky) ? 8 : /snow/.test(sky) ? 4 : /cloud/.test(sky) ? 3 : 0;
   score -= wind >= 25 ? 12 : wind >= 15 ? 5 : 0;
   if (hi != null) score += hi >= 18 && hi <= 38 ? 7 : hi > 45 || hi < 5 ? -6 : 0;
+  const q = snowQuality(r, which);
+  score += q.score;
   const reasons = [];
   if (fresh >= 1) reasons.push(`${inches(fresh)} fresh`);
   if (during >= 1) reasons.push(`${inches(during)} more during the day`);
@@ -1002,6 +1051,8 @@ function dayScore(r, which) {
   if (day.sky) reasons.push(`${day.sky.replace(/^Chance /, '').replace(/ Showers.*/, ' showers')}, ${deg(hi)}`);
   if (wind) reasons.push(wind >= 25 ? `windy (${windNum(wind)} ${windUnit()})` : wind >= 15 ? `breezy (${windNum(wind)} ${windUnit()})` : 'light wind');
   if (base) reasons.push(`${inches(base)} base`);
+  // What the snow will be like leads (after any fresh snow, which is first).
+  reasons.splice(fresh >= 1 ? 1 : 0, 0, ...q.reasons.slice(0, 2));
   if (which === 0 && r.night) reasons.unshift(`lifts to ${hourText(r.night.until)}`);
   return { r, score, reasons };
 }
@@ -1875,7 +1926,7 @@ function startMap() {
     onCast: (c) => { state.cast = { ...state.cast, ...c }; if (state.layer === 'snowcast') $('#legend').innerHTML = legendFor('snowcast'); },
     places: state.code === 'CO' ? CO_TOWNS : [],
   });
-  state.map.setLabels(state.labels);
+  state.map.setMarks(state.marks);
   applyLayer();
   // Major highways (I-70, I-25, US-285…), Colorado only for now.
   if (state.code === 'CO') {
@@ -2094,11 +2145,11 @@ document.addEventListener('click', (e) => {
   if (t.closest('#panel-close')) return setPanel(false);
   if (t.closest('#panel-open')) return setPanel(true);
   if (t.closest('#labels-btn')) {
-    state.labels = !state.labels;
-    write(STORE.labels, state.labels);
-    $('#labels-btn').setAttribute('aria-pressed', String(state.labels));
-    state.map?.setLabels(state.labels);
-    return toast(state.labels ? 'Resort labels on' : 'Labels off: tap a dot for its resort');
+    state.marks = { all: 'dots', dots: 'none', none: 'all' }[state.marks];
+    write(STORE.labels, state.marks);
+    syncMarksBtn();
+    state.map?.setMarks(state.marks);
+    return toast({ all: 'Resort labels on', dots: 'Labels off: tap a dot for its resort', none: 'Just the map (tap again for labels)' }[state.marks]);
   }
   if (t.closest('#info-btn')) {
     const c = $('#credits');
@@ -2201,5 +2252,11 @@ startMap();
 render();
 load();
 $('#state-btn').hidden = !ALL_STATES;
-$('#labels-btn').setAttribute('aria-pressed', String(state.labels));
+function syncMarksBtn() {
+  const b = $('#labels-btn');
+  b.setAttribute('aria-pressed', String(state.marks === 'all'));
+  b.dataset.marks = state.marks;
+  b.title = { all: 'Hide resort labels', dots: 'Hide the dots too (just the map)', none: 'Show resort labels' }[state.marks];
+}
+syncMarksBtn();
 if (ALL_STATES) loadStates().then(() => { if (state.firstVisit) openPicker(true); });
