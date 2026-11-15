@@ -1091,3 +1091,7 @@ body.reordering, body.reordering * { user-select: none; cursor: grabbing; }
 .surface-good { border-left-color: var(--open); }
 .surface-fair { border-left-color: var(--likely); }
 .surface-poor { border-left-color: var(--late); }
+
+/* "Mine": press and hold a row to move it (no text selection or callout from the long press). */
+body:has([data-sort="mine"][aria-pressed="true"]) #list .rrow { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+body.reordering .rrow.dragging { transform-origin: center; }

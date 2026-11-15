@@ -678,7 +678,6 @@ function renderList() {
       <span class="rr-head">
         <span class="row-name">${esc(r.name)}</span>${fav ? `<span class="card-fav" aria-label="Favorite">${UI.starFilled}</span>` : ''}${r.night ? `<span class="row-night" title="Night skiing to ${esc(hourText(r.night.until))}" aria-label="Night skiing to ${esc(hourText(r.night.until))}">${UI.moon}</span>` : ''}
         <span class="pill pill-${esc(r.status.state)}">${esc(shortStatus(r))}</span>
-        ${state.sort === 'mine' ? `<span class="drag-handle" aria-label="Drag to move ${esc(r.name)}" role="button"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5.5" cy="3.5" r="1.4"/><circle cx="10.5" cy="3.5" r="1.4"/><circle cx="5.5" cy="8" r="1.4"/><circle cx="10.5" cy="8" r="1.4"/><circle cx="5.5" cy="12.5" r="1.4"/><circle cx="10.5" cy="12.5" r="1.4"/></svg></span>` : ''}
       </span>`;
     // Three numbers on every row, the first following the map's view (highlighted), then base, then
     // lifts open (open resorts) or snowpack vs normal (the rest, which have no lifts to count).
@@ -1808,7 +1807,7 @@ bodyEl.addEventListener('touchmove', (e) => {
   if (!swipe.mode) {
     if (Math.hypot(dx, dy) < 7) return;
     // (Sideways swipes on things that scroll sideways themselves, like the cams strip, are theirs.)
-    if (e.target.closest('.drag-handle')) { swipe = null; return; } // reordering, not a swipe
+    if (reorder || press) { swipe = null; return; } // reordering (or about to), not a swipe
     if (Math.abs(dx) > Math.abs(dy) * 1.4 && e.target.closest('.cams')) swipe.mode = 'scroll';
     else if (Math.abs(dx) > Math.abs(dy) * 1.4 && !e.target.closest('select, input, .chart')) swipe.mode = 'side';
     else if (!WIDE.matches && ((dy > 0 && bodyEl.scrollTop <= 0) || (dy < 0 && state.sheet !== 'full'))) swipe.mode = 'sheet';
@@ -1879,22 +1878,37 @@ grabEl.addEventListener('pointercancel', (e) => {
 });
 
 // ---------- reordering ("Mine") ----------
-// Press the ⋮⋮ handle and drag: the row follows the finger, the others slide aside, the list scrolls
-// near its edges, and letting go saves the new order.
+// Press and hold a row (about a third of a second, without moving) and it lifts: drag it and the
+// others slide aside, the list scrolls near its edges, and letting go saves the new order. A quick
+// swipe still scrolls; a tap still opens the resort.
 let reorder = null;
-$('#list').addEventListener('pointerdown', (e) => {
-  const handle = e.target.closest('.drag-handle');
-  if (!handle) return;
-  e.preventDefault();
+let press = null;
+let reorderedAt = 0;
+function startReorder(row, y, pointerId) {
   const rows = [...$('#list').querySelectorAll('.rrow')];
-  const row = handle.closest('.rrow');
   const rects = rows.map((x) => x.getBoundingClientRect());
   const from = rows.indexOf(row);
-  reorder = { rows, rects, row, from, to: from, y0: e.clientY, scroll0: bodyEl.scrollTop, h: rects[from].height };
-  handle.setPointerCapture(e.pointerId);
+  reorder = { rows, rects, row, from, to: from, y0: y, scroll0: bodyEl.scrollTop, h: rects[from].height };
+  try { row.setPointerCapture(pointerId); } catch { /* (the finger already lifted) */ }
   row.classList.add('dragging');
   document.body.classList.add('reordering');
+  navigator.vibrate?.(12);
+}
+$('#list').addEventListener('pointerdown', (e) => {
+  if (state.sort !== 'mine' || reorder) return;
+  const row = e.target.closest('.rrow');
+  if (!row) return;
+  const p = { x: e.clientX, y: e.clientY };
+  p.timer = setTimeout(() => { if (press === p) { press = null; startReorder(row, p.y, e.pointerId); } }, 350);
+  press = p;
 });
+const cancelPress = () => { if (press) { clearTimeout(press.timer); press = null; } };
+$('#list').addEventListener('pointermove', (e) => { if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 8) cancelPress(); });
+$('#list').addEventListener('pointerup', cancelPress);
+$('#list').addEventListener('pointercancel', cancelPress);
+$('#list').addEventListener('contextmenu', (e) => { if (state.sort === 'mine') e.preventDefault(); });
+// While a row is lifted, the finger moves it, not the page.
+document.addEventListener('touchmove', (e) => { if (reorder) e.preventDefault(); }, { passive: false });
 function reorderMove(clientY) {
   const o = reorder;
   const dy = clientY - o.y0 + (bodyEl.scrollTop - o.scroll0);
@@ -1926,6 +1940,7 @@ const endReorder = () => {
   const o = reorder;
   if (!o) return;
   reorder = null;
+  reorderedAt = Date.now(); // (the click that ends the press isn't a tap on the row)
   clearInterval(o.timer);
   document.body.classList.remove('reordering');
   const ids = o.rows.map((x) => x.dataset.open);
@@ -2138,7 +2153,7 @@ document.addEventListener('click', (e) => {
     write(STORE.metric, state.metric);
     return render();
   }
-  if (t.closest('.drag-handle')) return; // (a drag, not a tap on the row)
+  if (Date.now() - reorderedAt < 400) return; // (the end of a drag, not a tap on the row)
   if (t.closest('[data-reset-order]')) {
     state.order = [];
     write(STORE.order, state.order);
@@ -2169,6 +2184,7 @@ document.addEventListener('click', (e) => {
       state.order = ordered(true).map(({ r }) => r.id);
       write(STORE.order, state.order);
     }
+    if (sortBtn.dataset.sort === 'mine' && state.sort !== 'mine') toast('Press and hold a resort, then drag to move it');
     state.sort = sortBtn.dataset.sort;
     write(STORE.sort, state.sort);
     return renderList();
