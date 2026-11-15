@@ -195,3 +195,13 @@ test('nightFor: night skiing from lift hours, or the published schedule on its d
   assert.equal(nightFor(echo, null, '2026-12-20'), null); // Sunday
   assert.equal(nightFor(echo, null, '2026-12-18', false), null); // not open
 });
+
+test('snowLog: the 24-hour report is the day before, 48-hour fills the day before that', async () => {
+  const { snowLog } = await import('../src/report.js');
+  let log = snowLog([], '2026-12-10', { new24: 4, new48: 7 });
+  assert.deepEqual(log, [{ date: '2026-12-08', snow: 3 }, { date: '2026-12-09', snow: 4 }]);
+  log = snowLog(log, '2026-12-10', { new24: 5, new48: 8 }); // a later update that day adds
+  assert.deepEqual(log.at(-1), { date: '2026-12-09', snow: 5 });
+  log = snowLog(log, '2026-12-11', { new24: 0, new48: 5 });
+  assert.deepEqual(log.map((e) => e.snow), [3, 5, 0]);
+});

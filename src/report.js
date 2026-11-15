@@ -364,6 +364,19 @@ export async function pool(items, limit, fn) {
   return out;
 }
 
+// Snow the resort reported, day by day (the last 14 days): each morning's 24-hour figure is the day
+// before's snowfall; the 48-hour figure fills in the day before that when it's missing. A day keeps
+// the most reported for it (a later report that day can only add to the overnight number).
+export function snowLog(prev, today, report) {
+  const log = new Map((prev ?? []).filter((e) => e.date >= addDays(today, -14)).map((e) => [e.date, e.snow]));
+  const put = (date, v) => { if (v != null && v >= 0) log.set(date, Math.max(v, log.get(date) ?? 0)); };
+  if (report?.new24 != null) {
+    put(addDays(today, -1), report.new24);
+    if (report.new48 != null && !log.has(addDays(today, -2))) put(addDays(today, -2), Math.max(0, report.new48 - report.new24));
+  }
+  return [...log.entries()].map(([date, snow]) => ({ date, snow })).sort((a, b) => a.date.localeCompare(b.date));
+}
+
 // The terrain log: one entry per day ({ date, runs, lifts } open), today's replaced as it updates.
 export function terrainLog(prev, today, runs, lifts) {
   const log = (prev ?? []).filter((e) => e.date !== today && e.date >= addDays(today, -7));
@@ -610,6 +623,8 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       wx: surfaceWeather(MODELS.map((m, k) => modelData[k]?.[i]), today) ?? (prevResorts[r.id]?.wx?.some((d) => d.date === today) ? prevResorts[r.id].wx : null),
       // Runs and lifts open each day (the last 8 days), to see new terrain opening.
       terrainLog: terrainLog(prevResorts[r.id]?.terrainLog, today, report?.trails?.open ?? null, (liftsById[r.id] ?? report?.lifts)?.open ?? null),
+      // What the resort reported falling, day by day (see snowLog).
+      snowLog: snowLog(prevResorts[r.id]?.snowLog, today, report),
       aspect: r.aspect ?? null,
       noaa: noaaSnow[i] ?? null,
       avgSnow: r.avgSnow ?? null,

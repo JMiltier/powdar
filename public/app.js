@@ -629,13 +629,45 @@ function rowSub(r) {
 // Snow by day, like a ski app's list but both ways: the last 5 days (what fell, model estimates; the
 // resort's own report for the last 24 hours where it has one), today, and the next 4 (forecast), as
 // small bars with day letters and the inches above any bar with an inch or more.
+// The last n days' snow, oldest first: what the resort reported where it did (r.snowLog, and this
+// morning's 24-hour figure for yesterday), otherwise the weather models' estimate (est: true).
+function pastSnow(r, n) {
+  const today = state.data.today;
+  const logged = new Map((r.snowLog ?? []).map((e) => [e.date, e.snow]));
+  if (r.report?.new24 != null) logged.set(addDays(today, -1), r.report.new24);
+  const model = new Map((r.forecast?.pastDays ?? []).map((d) => [d.date, d.snow]));
+  return Array.from({ length: n }, (_, i) => {
+    const date = addDays(today, i - n);
+    if (logged.has(date)) return { date, snow: logged.get(date), est: false };
+    const m = model.get(date);
+    return { date, snow: m ?? null, est: m != null };
+  });
+}
+// A resort page's "Last 7 days": a bar per day with its total, the resort's own numbers solid and the
+// models' estimates (where the resort didn't report) lighter and marked.
+function pastStrip(r) {
+  const days = pastSnow(r, 7);
+  if (days.every((d) => d.snow == null)) return '';
+  const max = Math.max(4, ...days.map((d) => d.snow ?? 0));
+  const total = r.report?.new7d ?? days.reduce((a, d) => a + (d.snow ?? 0), 0);
+  const allReported = r.report?.new7d != null || days.every((d) => !d.est);
+  return `
+    <h3 class="section">Last 7 days <span class="section-note">${esc(inches(total))} ${allReported ? 'reported by the resort' : 'with model estimates'}</span></h3>
+    <div class="past-days">${days.map((d) => {
+      const v = d.snow ?? 0;
+      const h = v > 0.2 ? Math.max(5, Math.round((v / max) * 36)) : 3;
+      const day = new Date(`${d.date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+      return `<span class="pd${d.est ? ' est' : ''}${v > 0.2 ? ' snow' : ''}" title="${esc(d.date)}${d.est ? ' (estimate)' : ''}">
+        <em>${d.snow == null ? '–' : v >= 0.5 ? inches(v) : v > 0 ? '<1' : ''}</em><i style="height:${h}px"></i><small>${day}</small></span>`;
+    }).join('')}</div>
+    ${days.some((d) => d.est) ? '<p class="fine">Lighter bars: the weather models’ estimate, where the resort didn’t report</p>' : ''}`;
+}
+
 function miniDays(r) {
   const f = r.forecast;
   const future = (f?.days ?? []).slice(0, 5);
   if (!future.length) return '';
-  const past = (f.pastDays ?? []).slice(-5);
-  const yesterday = past.at(-1);
-  if (yesterday && r.report?.new24 != null) yesterday.snow = r.report.new24; // (the resort's own number)
+  const past = pastSnow(r, 5);
   const all = [...past, ...future].map((d) => d.snow ?? 0);
   const max = Math.max(4, ...all);
   const bar = (d, kind) => {
@@ -827,6 +859,7 @@ function renderDetail(r) {
     </div>
     ${surfaceLine(r)}
     ${bars}
+    ${pastStrip(r)}
   `;
   if (f) notes.push(`Snow forecast: the middle of ${sources.length > 1 ? `${sources.length} forecasts (${esc(sources.join(', '))})` : 'the National Weather Service forecast'}${sources.length > 1 ? `, via ${sourceLink('https://www.weather.gov', 'NWS')} and ${sourceLink('https://open-meteo.com', 'Open-Meteo')}` : ''}. Small numbers are the likely range.${state.data.sources.modelsReused ? ` Model forecast from ${esc(timeAgo(state.data.sources.modelsAt))}.` : ''}`);
   if (f?.week2?.runs) notes.push(`Days 4–14 also draw on ${f.week2.runs} ensemble runs (European, American and Canadian models, each run many times from slightly different starts; ${sourceLink('https://open-meteo.com/en/docs/ensemble-api', 'Open-Meteo')}): days 4–7 average their middle with the forecasts above, days 8–14 are their middle alone, the range the middle half of the runs.`);
