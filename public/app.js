@@ -980,6 +980,10 @@ const windMph = (s) => Math.max(0, ...String(s ?? '').match(/\d+/g)?.map(Number)
 // night's low, sunshine, gusts), the terrain log (runs open each day), which way the terrain faces,
 // the resort's surface report and the snow it's had.
 //  - Untouched: just opened, or runs opened since the day before (nobody's skied them yet).
+//  - Refreshes: light snow most days keeps runs soft and covers the skied-off spots, without a big
+//    storm's crowds and closures (the "Goldilocks" pattern ski forecasters favor).
+//  - New snow's character: falling into a cold night it's light and dry; near freezing, heavy and wet.
+//    Fresh snow with sun and light wind is the classic best day; a huge dump brings delays and crowds.
 //  - Melt-freeze: a day above freezing then a night well below turns the surface firm and icy until
 //    the sun softens it again; worse after a sunny day and on terrain facing south or west.
 //  - Cold days keep packed snow dry and grippy.
@@ -1017,11 +1021,31 @@ function snowSurface(r, which) {
     add(newRuns >= 6 ? 10 : 6, `${newRuns} run${newRuns === 1 ? '' : 's'} newly opened: untouched`);
   }
 
+  // Refreshes: light snow on most of the last few days (the resort's 24-hour report for today).
+  const past = (f?.pastDays ?? []).map((d) => d.snow ?? 0).reverse(); // yesterday first
+  const recent = which === 0 ? [r.report?.new24 ?? past[0] ?? 0, ...past.slice(1, 4)] : [f?.days?.[0]?.snow ?? 0, r.report?.new24 ?? past[0] ?? 0, ...past.slice(1, 3)];
+  const snowyDays = recent.filter((v) => v >= 1).length;
+  if (snowyDays >= 3) add(8, `light snow ${snowyDays} of the last 4 days: soft, refreshed`);
+  else if (snowyDays === 2 && fresh < 6) add(4, 'refreshed by recent light snow');
+
+  // The new snow itself.
+  if (fresh >= 2 && day?.lo != null) {
+    if (day.lo <= 20) add(3, 'light, dry new snow');
+    else if (day.lo >= 29) add(-3, 'heavy, wet new snow');
+  }
+  if (fresh >= 3 && (day?.sun ?? 0) > 350 && (day?.gust ?? 0) < 25) add(4, 'bluebird after new snow');
+  if (fresh >= 18) add(-3, 'huge dump: expect terrain delays and crowds');
+
   // Melt-freeze, or cold and dry.
   if (before?.hi != null && day?.lo != null && before.hi >= 34 && day.lo <= 28) {
-    const bake = (SUN_EXPOSURE[r.aspect] ?? 1) * (before.sun == null ? 1 : before.sun > 400 ? 1.3 : before.sun < 150 ? 0.7 : 1);
+    const exposure = SUN_EXPOSURE[r.aspect] ?? 1;
+    const bake = exposure * (before.sun == null ? 1 : before.sun > 400 ? 1.3 : before.sun < 150 ? 0.7 : 1);
     add(-Math.round(6 * bake), `melt-freeze: ${deg(before.hi)} the day before, ${deg(day.lo)} overnight, so firm and icy early${bake > 1.2 ? ' (sun-baked)' : ''}`);
-    if (day.hi != null && day.hi >= 34 && (day.sun ?? 0) > 300) add(3, 'softening by early afternoon in the sun');
+    // When it softens: the sun reaches east and south faces first; shaded north faces hold firm longest.
+    if (day.hi != null && day.hi >= 34 && (day.sun ?? 0) > 300) {
+      if (exposure >= 1.1) add(3, 'softening by late morning in the sun');
+      else add(1, 'softening by early afternoon; shaded runs stay firm');
+    }
   } else if (fresh < 1 && day?.hi != null && day.hi < 30 && (before?.hi ?? 99) < 32) {
     add(2, 'staying cold: dry, grippy snow');
   }
@@ -1032,10 +1056,9 @@ function snowSurface(r, which) {
   if (fresh >= 2 && gust >= 35) add(-4, `gusts to ${windNum(gust)} ${windUnit()}: drifts and wind-scoured spots`);
   else if (fresh < 1 && gustBefore >= 45) add(-6, `gusts to ${windNum(gustBefore)} ${windUnit()} the day before: wind-scoured, hard snow`);
 
-  // Traffic since the last refresh (fresh snow or new terrain).
-  if (r.status.state === 'open' && fresh < 3 && !untouched) {
-    const past = (f?.pastDays ?? []).map((d) => d.snow ?? 0).reverse(); // yesterday first
-    let since = past.findIndex((v) => v >= 3);
+  // Traffic since the last refresh (2″+ of new snow, a run of light snow, or new terrain).
+  if (r.status.state === 'open' && fresh < 3 && !untouched && snowyDays < 2) {
+    let since = past.findIndex((v) => v >= 2);
     since = since < 0 ? 6 : since + 1 + which;
     if (opened != null && opened >= 0) since = Math.min(since, opened);
     const trails = r.report?.trails;
