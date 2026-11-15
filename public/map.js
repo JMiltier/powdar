@@ -1367,6 +1367,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     setMarks(mode) {
       el.classList.toggle('labels-off', mode !== 'all');
       el.classList.toggle('dots-off', mode === 'none');
+      requestAnimationFrame(placeTowns); // (towns fill the room the labels leave)
     },
     // Radar loop: play or pause (paused shows the newest frame).
     playRadar(on) {

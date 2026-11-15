@@ -1953,14 +1953,20 @@ function showNotice(text) {
   $('#notice').textContent = text ?? '';
 }
 
-// Towns for orientation on the Colorado map, most important first. `true`: always shown (the
+// Towns for orientation on the Colorado map, most important first (ski towns and the ones people
+// drive through to get there). `true`: always shown (the
 // resort labels make room for it); the rest show where there's space.
 const CO_TOWNS = [
   ['Denver', 39.7392, -104.9903, true], ['Colorado Springs', 38.8339, -104.8214, true], ['Fort Collins', 40.5853, -105.0844, true],
   ['Durango', 37.2753, -107.8801, true], ['Grand Junction', 39.0639, -108.5506],
   ['Boulder', 40.015, -105.2705], ['Pueblo', 38.2544, -104.6091], ['Glenwood Springs', 39.5505, -107.3248], ['Gunnison', 38.5458, -106.9253],
   ['Montrose', 38.4783, -107.8762], ['Alamosa', 37.4695, -105.87], ['Salida', 38.5347, -105.9989],
-  ['Leadville', 39.2508, -106.2925], ['Craig', 40.5153, -107.5464],
+  ['Leadville', 39.2508, -106.2925], ['Pagosa Springs', 37.2694, -107.0098], ['Eagle', 39.6553, -106.8287], ['Craig', 40.5153, -107.5464],
+  ['Frisco', 39.5744, -106.0975], ['Silverthorne', 39.6297, -106.0717], ['Buena Vista', 38.8422, -106.1312], ['Estes Park', 40.3772, -105.5217],
+  ['Kremmling', 40.0589, -106.3889], ['Rifle', 39.5347, -107.7831], ['Carbondale', 39.4022, -107.2112], ['Ouray', 38.0228, -107.6714],
+  ['Idaho Springs', 39.7425, -105.5136], ['Avon', 39.6314, -106.5222], ['Fairplay', 39.2247, -105.9967], ['Meeker', 40.0375, -107.9131],
+  ['Delta', 38.7422, -108.069], ['Cortez', 37.3489, -108.5859], ['Walden', 40.7317, -106.2836], ['Trinidad', 37.1695, -104.5005],
+  ['Cañon City', 38.441, -105.2425], ['Lake City', 38.03, -107.3156], ['Georgetown', 39.7061, -105.6975], ['Basalt', 39.3689, -107.0328],
 ];
 
 function startMap() {
