@@ -111,6 +111,50 @@ const covers = (lastT, ymd) => lastT >= Date.parse(`${ymd}T12:00:00Z`) + 16 * HO
 // sources: [{ id, hours: [{ t, v (inches of snow), w? (inches of water as snow) }] | null }];
 // nws: raw NWS gridpoint properties (temperatures); periods: NWS text-forecast periods (sky, wind).
 // Each day and total uses only the sources whose forecast reaches that far.
+// The weather that shapes the snow surface, day by day (yesterday, today, tomorrow) at mid-mountain,
+// from the models' hourly data (each hour the middle of the models that have it):
+//   hi: the day's warmest (°F), lo: the coldest of the night before (midnight–8 am),
+//   sun: average sunshine 10 am–3 pm (W/m², 0 overcast … ~600+ bright), cloud: average cover (%),
+//   gust: strongest gust (mph).
+export function surfaceWeather(locs, today) {
+  const hours = new Map(); // ms → { t: [], s: [], c: [], g: [] }
+  for (const loc of locs) {
+    const h = loc?.hourly;
+    if (!h?.time) continue;
+    h.time.forEach((t, i) => {
+      const ms = t * 1000;
+      if (!hours.has(ms)) hours.set(ms, { t: [], s: [], c: [], g: [] });
+      const e = hours.get(ms);
+      if (h.temperature_2m?.[i] != null) e.t.push(h.temperature_2m[i]);
+      if (h.shortwave_radiation?.[i] != null) e.s.push(h.shortwave_radiation[i]);
+      if (h.cloud_cover?.[i] != null) e.c.push(h.cloud_cover[i]);
+      if (h.wind_gusts_10m?.[i] != null) e.g.push(h.wind_gusts_10m[i]);
+    });
+  }
+  if (!hours.size) return null;
+  const med = (a) => { if (!a.length) return null; const s2 = [...a].sort((x, y) => x - y); return s2[Math.floor(s2.length / 2)]; };
+  const hourOf = (ms) => Number(new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', hourCycle: 'h23' }).format(new Date(ms)));
+  const rows = [...hours.entries()].map(([ms, e]) => ({ date: localDate(new Date(ms)), hour: hourOf(ms), t: med(e.t), s: med(e.s), c: med(e.c), g: med(e.g) }));
+  const f = (c) => Math.round(c * 9 / 5 + 32);
+  return [-1, 0, 1].map((n) => {
+    const date = addDays(today, n);
+    const day = rows.filter((r) => r.date === date);
+    const night = day.filter((r) => r.hour < 8 && r.t != null);
+    const mid = day.filter((r) => r.hour >= 10 && r.hour <= 15);
+    const vals = (list, k) => list.map((r) => r[k]).filter((v) => v != null);
+    const mean = (a) => (a.length ? Math.round(a.reduce((x, y) => x + y, 0) / a.length) : null);
+    const temps = vals(day, 't');
+    return {
+      date,
+      hi: temps.length ? f(Math.max(...temps)) : null,
+      lo: night.length ? f(Math.min(...vals(night, 't'))) : null,
+      sun: mean(vals(mid, 's')),
+      cloud: mean(vals(mid, 'c')),
+      gust: vals(day, 'g').length ? Math.round(Math.max(...vals(day, 'g'))) : null,
+    };
+  });
+}
+
 // ens (optional): this resort's ensemble summary for today ({ days: [{ date, mid, lo, hi }], next7,
 // week2, runs }), see src/ensemble.js. Days 1–3 stay with the single runs and the Weather Service
 // (strongest up close); days 4–7 average their consensus with the ensembles' middle; days 8–14 come
@@ -320,6 +364,13 @@ export async function pool(items, limit, fn) {
   return out;
 }
 
+// The terrain log: one entry per day ({ date, runs, lifts } open), today's replaced as it updates.
+export function terrainLog(prev, today, runs, lifts) {
+  const log = (prev ?? []).filter((e) => e.date !== today && e.date >= addDays(today, -7));
+  if (runs != null || lifts != null) log.push({ date: today, runs, lifts });
+  return log.sort((a, b) => a.date.localeCompare(b.date));
+}
+
 // Night skiing today: from the lift hours where the feed has them (a lift closing at 5 pm or later),
 // otherwise the resort's published schedule on its night days. → { until, lifts?, source } or null.
 export function nightFor(r, lifts, today, open = true) {
@@ -337,7 +388,8 @@ export function nightFor(r, lifts, today, open = true) {
 // prevEnsemble: the last published ensemble summaries ({ at, today, byId }), reused for up to 6 hours
 // (the ensembles themselves only update every 6 hours, and each request is a big one).
 const ENSEMBLE_EVERY_MS = 6 * 3_600_000;
-export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), log = () => {}, backoff = 2000, skipModels = false, prevLifts = {}, prevEnsemble = null } = {}) {
+// prevResorts: last published resorts by id (their surface weather and terrain log carry forward).
+export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), log = () => {}, backoff = 2000, skipModels = false, prevLifts = {}, prevEnsemble = null, prevResorts = {} } = {}) {
   const today = localDate(now);
   const season = seasonOf(today);
   const planned = PLANNED[season.name] ?? {};
@@ -553,6 +605,12 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       forecast: forecasts[i],
       lifts: liftsById[r.id] ?? null,
       night: nightFor(r, liftsById[r.id], today, live && (c?.isOpen ?? true)),
+      // The weather that shapes the snow surface (yesterday, today, tomorrow); the last one when the
+      // models weren't fetched this time.
+      wx: surfaceWeather(MODELS.map((m, k) => modelData[k]?.[i]), today) ?? (prevResorts[r.id]?.wx?.some((d) => d.date === today) ? prevResorts[r.id].wx : null),
+      // Runs and lifts open each day (the last 8 days), to see new terrain opening.
+      terrainLog: terrainLog(prevResorts[r.id]?.terrainLog, today, report?.trails?.open ?? null, (liftsById[r.id] ?? report?.lifts)?.open ?? null),
+      aspect: r.aspect ?? null,
       noaa: noaaSnow[i] ?? null,
       avgSnow: r.avgSnow ?? null,
       // Webcams (src/cams.json, scripts/cams.mjs): still images that update on their own, with when

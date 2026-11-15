@@ -826,6 +826,7 @@ function renderDetail(r) {
       ${stat(inches(f?.next72), 'next 3 days', rangeText(f?.next72Range))}
       ${stat(inches(f?.next7), 'next 7 days', rangeText(f?.next7Range))}
     </div>
+    ${surfaceLine(r)}
     ${bars}
   `;
   if (f) notes.push(`Snow forecast: the middle of ${sources.length > 1 ? `${sources.length} forecasts (${esc(sources.join(', '))})` : 'the National Weather Service forecast'}${sources.length > 1 ? `, via ${sourceLink('https://www.weather.gov', 'NWS')} and ${sourceLink('https://open-meteo.com', 'Open-Meteo')}` : ''}. Small numbers are the likely range.${state.data.sources.modelsReused ? ` Model forecast from ${esc(timeAgo(state.data.sources.modelsAt))}.` : ''}`);
@@ -973,47 +974,98 @@ function todayStats() {
 // fresh snow (most), how much terrain is open, sun vs storm, wind, temperature, and base. Each pick
 // lists its reasons so it can be judged, not just trusted.
 const windMph = (s) => Math.max(0, ...String(s ?? '').match(/\d+/g)?.map(Number) ?? [0]);
-// How good the snow itself is likely to be, beyond what fell overnight: the snow-quality part of the
-// best bet (about −25 to +30 points, next to fresh snow's 40). Untouched snow beats skied-off snow, and
-// early-season machine-made snow that's had days of traffic and melt-freeze nights turns icy.
-//  - Just opened (or tomorrow, opening): runs nobody has skied yet. Fades over about a week.
-//  - The resort's surface report: powder or packed powder up, groomed fine, hard pack / icy down.
-//  - Snow in the last week (resort report, else the models): recent snow keeps it soft; a week
-//    or more with none, once it's been open a while, means skied-off, firm runs.
-//  - Melt-freeze: at the nearest snow station, recent days averaging at or above freezing mean
-//    soft afternoons and firm, icy mornings.
-//  - Mostly machine-made: the base far deeper than the natural snow around it (once open a while).
-//  - Crowding: open over a week with only a sliver of the mountain open: lots of skiers on few runs.
-function snowQuality(r, which) {
-  const reasons = [];
-  let score = 0;
+// What the snow surface is likely to be like on a day (0 today, 1 tomorrow), and why: the snow-quality
+// part of the best bet (about −30 to +30 points, next to fresh snow's 40), and the "Snow today" line on
+// a resort's page. Built from the weather at mid-mountain (r.wx: yesterday/today/tomorrow highs, the
+// night's low, sunshine, gusts), the terrain log (runs open each day), which way the terrain faces,
+// the resort's surface report and the snow it's had.
+//  - Untouched: just opened, or runs opened since the day before (nobody's skied them yet).
+//  - Melt-freeze: a day above freezing then a night well below turns the surface firm and icy until
+//    the sun softens it again; worse after a sunny day and on terrain facing south or west.
+//  - Cold days keep packed snow dry and grippy.
+//  - Wind: with fresh snow, drifts and scoured spots; strong wind without it scours the snow hard.
+//  - Traffic: days since fresh snow or new terrain, heavier with few runs open, on weekends, and
+//    near Denver; that's how runs get skied off.
+//  - The resort's own surface report, and whether the base is mostly machine-made.
+const SUN_EXPOSURE = { S: 1.5, SW: 1.5, W: 1.3, SE: 1.3, E: 1.1, NW: 0.9, NE: 0.8, N: 0.7 };
+const NEAR_DENVER = new Set(['I-70 / Summit', 'Front Range', 'Vail Valley']);
+function snowSurface(r, which) {
+  const out = { score: 0, notes: [] };
+  const add = (pts, text) => { out.score += pts; if (text) out.notes.push(text); };
   const today = state.data.today;
-  const openedDaysAgo = r.dates?.open ? Math.round((Date.parse(today) - Date.parse(r.dates.open)) / 864e5) + which : null;
-  if (openedDaysAgo != null && openedDaysAgo >= 0 && openedDaysAgo <= 6) {
-    score += openedDaysAgo <= 1 ? 14 : openedDaysAgo <= 3 ? 9 : 4;
-    reasons.push(openedDaysAgo <= 1 ? 'just opened: fresh, untouched runs' : `opened ${openedDaysAgo} days ago: little traffic yet`);
+  const date = addDays(today, which);
+  const wx = r.wx ?? [];
+  const day = wx.find((d) => d.date === date);
+  const before = wx.find((d) => d.date === addDays(date, -1));
+  const f = r.forecast;
+  const fresh = which === 0 ? (r.report?.new24 ?? f?.past24 ?? 0) : (f?.days?.[0]?.snow ?? 0);
+
+  // Untouched terrain.
+  const opened = r.dates?.open && r.status.state === 'open' ? Math.round((Date.parse(date) - Date.parse(r.dates.open)) / 864e5) : null;
+  const log = r.terrainLog ?? [];
+  const runsOn = (d) => log.find((e) => e.date === d)?.runs ?? null;
+  // (Runs open now against the day or two before: for tomorrow, today's new runs are still barely skied.)
+  const nowRuns = runsOn(today) ?? r.report?.trails?.open ?? null;
+  const earlier = [1, 2].map((n) => runsOn(addDays(today, -n))).filter((v) => v != null);
+  const newRuns = nowRuns != null && earlier.length ? nowRuns - Math.min(...earlier) : 0;
+  let untouched = false;
+  if (opened != null && opened >= 0 && opened <= 6) {
+    untouched = opened <= 3;
+    add(opened <= 1 ? 14 : opened <= 3 ? 9 : 4, opened <= 1 ? 'just opened: untouched runs' : `opened ${opened} days ago: little traffic yet`);
+  } else if (newRuns >= 2 || (nowRuns && newRuns / nowRuns >= 0.15 && newRuns > 0)) {
+    untouched = true;
+    add(newRuns >= 6 ? 10 : 6, `${newRuns} run${newRuns === 1 ? '' : 's'} newly opened: untouched`);
   }
+
+  // Melt-freeze, or cold and dry.
+  if (before?.hi != null && day?.lo != null && before.hi >= 34 && day.lo <= 28) {
+    const bake = (SUN_EXPOSURE[r.aspect] ?? 1) * (before.sun == null ? 1 : before.sun > 400 ? 1.3 : before.sun < 150 ? 0.7 : 1);
+    add(-Math.round(6 * bake), `melt-freeze: ${deg(before.hi)} the day before, ${deg(day.lo)} overnight, so firm and icy early${bake > 1.2 ? ' (sun-baked)' : ''}`);
+    if (day.hi != null && day.hi >= 34 && (day.sun ?? 0) > 300) add(3, 'softening by early afternoon in the sun');
+  } else if (fresh < 1 && day?.hi != null && day.hi < 30 && (before?.hi ?? 99) < 32) {
+    add(2, 'staying cold: dry, grippy snow');
+  }
+
+  // Wind.
+  const gustBefore = before?.gust ?? 0;
+  const gust = Math.max(gustBefore, day?.gust ?? 0);
+  if (fresh >= 2 && gust >= 35) add(-4, `gusts to ${windNum(gust)} ${windUnit()}: drifts and wind-scoured spots`);
+  else if (fresh < 1 && gustBefore >= 45) add(-6, `gusts to ${windNum(gustBefore)} ${windUnit()} the day before: wind-scoured, hard snow`);
+
+  // Traffic since the last refresh (fresh snow or new terrain).
+  if (r.status.state === 'open' && fresh < 3 && !untouched) {
+    const past = (f?.pastDays ?? []).map((d) => d.snow ?? 0).reverse(); // yesterday first
+    let since = past.findIndex((v) => v >= 3);
+    since = since < 0 ? 6 : since + 1 + which;
+    if (opened != null && opened >= 0) since = Math.min(since, opened);
+    const trails = r.report?.trails;
+    const share = trails?.total ? trails.open / trails.total : 0.3;
+    const dow = new Date(`${date}T12:00:00Z`).getUTCDay();
+    const load = (share < 0.15 ? 1.5 : share < 0.4 ? 1 : 0.6) * (dow === 0 || dow === 6 ? 1.4 : 1) * (NEAR_DENVER.has(r.region) ? 1.2 : 1);
+    const pen = Math.min(10, Math.round(since * load * 0.8));
+    if (pen >= 3) add(-pen, `${since}${since >= 6 ? '+' : ''} days of traffic since fresh snow${share < 0.15 ? ', on few runs' : ''}`);
+  }
+
+  // The resort's surface report, and machine-made snow.
   const surface = String(r.report?.surface ?? '').trim();
   const code = surface.toUpperCase();
-  const word = SURFACE[code] ?? surface;
-  if (/^(P|PDR|P\/PP)$/.test(code) || /powder/i.test(surface) && !/packed/i.test(surface)) { score += 10; reasons.push(word.toLowerCase()); }
-  else if (code === 'PP' || /packed powder/i.test(surface)) { score += 6; reasons.push('packed powder'); }
-  else if (/^(HP|FG|ICY)$/.test(code) || /hard|icy|frozen/i.test(surface)) { score -= 10; reasons.push(word.toLowerCase()); }
-  else if (/^(WP|WG|SC|SPR)$/.test(code) || /wet|spring/i.test(surface)) { score -= 2; }
-  const week = r.report?.new7d ?? (r.forecast?.pastDays ?? []).reduce((a, d) => a + (d.snow ?? 0), 0) + (r.report?.new24 ?? 0);
-  const longOpen = openedDaysAgo != null && openedDaysAgo > 6;
-  if (week >= 6) { score += 6; reasons.push(`${inches(week)} this week`); }
-  else if (week >= 2) score += 2;
-  else if (longOpen) { score -= 6; reasons.push('no new snow in a week: skied-off, firm'); }
-  const temps = station(r)?.temps ?? [];
-  const warmDays = temps.slice(-3).filter(([, t]) => t >= 32).length;
-  if (warmDays >= 2) { score -= 6; reasons.push('melt-freeze: firm, icy mornings'); }
+  const word = (SURFACE[code] ?? surface).toLowerCase();
+  if (/^(P|PDR|P\/PP)$/.test(code) || (/powder/i.test(surface) && !/packed/i.test(surface))) add(8, `reported: ${word}`);
+  else if (code === 'PP' || /packed powder/i.test(surface)) add(5, 'reported: packed powder');
+  else if (/^(HP|FG|ICY)$/.test(code) || /hard|icy|frozen/i.test(surface)) add(-8, `reported: ${word}`);
   const base = r.report?.depth;
   const natural = r.noaa?.depth;
-  if (longOpen && base >= 12 && natural != null && natural < base * 0.35) { score -= 4; reasons.push('mostly machine-made snow'); }
-  const trails = r.report?.trails;
-  if (longOpen && trails?.total && trails.open / trails.total < 0.15) { score -= 5; reasons.push('few runs open: crowded'); }
-  return { score, reasons };
+  if (!untouched && base >= 12 && natural != null && natural < base * 0.35) add(-3, 'mostly machine-made snow');
+  return out;
+}
+
+// "Snow today": the surface estimate's reasons, for a resort that's open (or about to be).
+function surfaceLine(r) {
+  if (!['open', 'likely'].includes(r.status.state)) return '';
+  const { score, notes } = snowSurface(r, 0);
+  if (!notes.length) return '';
+  const feel = score >= 8 ? 'good' : score <= -8 ? 'poor' : 'fair';
+  return `<p class="surface-line surface-${feel}"><b>Snow today</b> ${esc(notes.slice(0, 3).join(' · '))}</p>`;
 }
 
 function dayScore(r, which) {
@@ -1041,7 +1093,7 @@ function dayScore(r, which) {
   score += /sunny|clear/.test(sky) ? 8 : /snow/.test(sky) ? 4 : /cloud/.test(sky) ? 3 : 0;
   score -= wind >= 25 ? 12 : wind >= 15 ? 5 : 0;
   if (hi != null) score += hi >= 18 && hi <= 38 ? 7 : hi > 45 || hi < 5 ? -6 : 0;
-  const q = snowQuality(r, which);
+  const q = snowSurface(r, which);
   score += q.score;
   const reasons = [];
   if (fresh >= 1) reasons.push(`${inches(fresh)} fresh`);
@@ -1052,7 +1104,7 @@ function dayScore(r, which) {
   if (wind) reasons.push(wind >= 25 ? `windy (${windNum(wind)} ${windUnit()})` : wind >= 15 ? `breezy (${windNum(wind)} ${windUnit()})` : 'light wind');
   if (base) reasons.push(`${inches(base)} base`);
   // What the snow will be like leads (after any fresh snow, which is first).
-  reasons.splice(fresh >= 1 ? 1 : 0, 0, ...q.reasons.slice(0, 2));
+  reasons.splice(fresh >= 1 ? 1 : 0, 0, ...q.notes.slice(0, 2));
   if (which === 0 && r.night) reasons.unshift(`lifts to ${hourText(r.night.until)}`);
   return { r, score, reasons };
 }

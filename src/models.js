@@ -42,7 +42,9 @@ export function modelUrl(model, resorts, days) {
     latitude: resorts.map((r) => r.at[0]).join(','),
     longitude: resorts.map((r) => r.at[1]).join(','),
     elevation: resorts.map((r) => Math.round(r.elev * FT_TO_M)).join(','),
-    hourly: 'temperature_2m,precipitation',
+    // (Sunshine, cloud and gusts too: for how the snow surface bakes, refreezes and blows around.)
+    hourly: 'temperature_2m,precipitation,shortwave_radiation,cloud_cover,wind_gusts_10m',
+    wind_speed_unit: 'mph',
     models: model,
     forecast_days: String(days),
     past_days: '6', // the last few days too: "last 24 hours" where resorts don't report, and the past-5-days bars
