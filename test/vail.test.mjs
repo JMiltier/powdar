@@ -36,3 +36,18 @@ test('Crested Butte uses its own page names', () => {
   assert.match(snowPage('https://www.skicb.com'), /weather-report\.aspx$/);
   assert.match(liftPage('https://www.vail.com'), /terrain-and-lift-status\.aspx$/);
 });
+
+test('Wolf Creek report page parses (snowfall, depth, open %, lifts, update date)', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { parseWolfCreek } = await import('../src/wolfcreek.js');
+  const r = parseWolfCreek(await readFile(new URL('./fixtures/wolfcreek-report.html', import.meta.url), 'utf8'));
+  assert.equal(r.new24, 5);
+  assert.equal(r.new48, 12);
+  assert.equal(r.new7d, 12);
+  assert.equal(r.seasonTotal, 51);
+  assert.equal(r.depth, 30);
+  assert.equal(r.openPct, 54.5);
+  assert.equal(r.lifts, 6);
+  assert.equal(r.updated, '2026-11-15');
+  assert.equal(r.surface, 'Powder/Packed Powder');
+});

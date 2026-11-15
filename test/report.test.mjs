@@ -205,3 +205,14 @@ test('snowLog: the 24-hour report is the day before, 48-hour fills the day befor
   log = snowLog(log, '2026-12-11', { new24: 0, new48: 5 });
   assert.deepEqual(log.map((e) => e.snow), [3, 5, 0]);
 });
+
+test('modelCorrection: learns how far off the models run at a resort, cautiously', async () => {
+  const { modelCorrection } = await import('../src/report.js');
+  assert.equal(modelCorrection([]).factor, 1);
+  assert.equal(modelCorrection([{ date: 'a', snow: 0, model: 0.2 }, { date: 'b', snow: 0, model: 0 }]).factor, 1); // dry: nothing to judge
+  // Wolf Creek, Nov 13–14: 7″ and 5″ reported where the models had 0.1″ and 4.3″.
+  const wc = modelCorrection([{ date: 'a', snow: 7, model: 0.1 }, { date: 'b', snow: 5, model: 4.3 }]);
+  assert.ok(wc.factor > 1.4 && wc.factor < 1.8, String(wc.factor)); // one storm: a cautious nudge
+  // Lots of evidence, models running double: about ½.
+  assert.equal(modelCorrection([{ date: 'a', snow: 10, model: 20 }, { date: 'b', snow: 10, model: 20 }]).factor, 0.5); // (60″ of evidence: full weight)
+});

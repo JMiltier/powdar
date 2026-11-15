@@ -8,6 +8,7 @@ import { LIFT_SOURCES, summarizeLifts } from './lifts.js';
 import { liftsDue } from './lift-hours.js';
 import { VAIL_SITES, snowPage, liftPage, parseVailSnow, parseVailTerrain } from './vail.js';
 import { fetchInsights } from './insights.js';
+import { WOLF_CREEK_REPORT, parseWolfCreek } from './wolfcreek.js';
 import CAMS from './cams.json' with { type: 'json' };
 
 import { nohrscUrl, parseNohrsc } from './noaa.js';
@@ -367,14 +368,38 @@ export async function pool(items, limit, fn) {
 // Snow the resort reported, day by day (the last 14 days): each morning's 24-hour figure is the day
 // before's snowfall; the 48-hour figure fills in the day before that when it's missing. A day keeps
 // the most reported for it (a later report that day can only add to the overnight number).
-export function snowLog(prev, today, report) {
-  const log = new Map((prev ?? []).filter((e) => e.date >= addDays(today, -14)).map((e) => [e.date, e.snow]));
-  const put = (date, v) => { if (v != null && v >= 0) log.set(date, Math.max(v, log.get(date) ?? 0)); };
+// Each entry also keeps the weather models' (uncorrected) estimate for that day, when known, so the
+// two can be compared (see modelCorrection).
+export function snowLog(prev, today, report, modelPast = {}) {
+  const log = new Map((prev ?? []).filter((e) => e.date >= addDays(today, -14)).map((e) => [e.date, { ...e }]));
+  const put = (date, v) => {
+    if (v == null || v < 0) return;
+    const e = log.get(date) ?? { date, snow: 0 };
+    e.snow = Math.max(v, e.snow);
+    if (modelPast[date] != null) e.model = modelPast[date];
+    log.set(date, e);
+  };
   if (report?.new24 != null) {
     put(addDays(today, -1), report.new24);
     if (report.new48 != null && !log.has(addDays(today, -2))) put(addDays(today, -2), Math.max(0, report.new48 - report.new24));
   }
-  return [...log.entries()].map(([date, snow]) => ({ date, snow })).sort((a, b) => a.date.localeCompare(b.date));
+  // (Days already logged get the models' estimate too, once there is one.)
+  for (const e of log.values()) if (e.model == null && modelPast[e.date] != null) e.model = modelPast[e.date];
+  return [...log.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// How far off the weather models have been at a resort, from its own snow reports over the last two
+// weeks: reported ÷ modeled (each +1″, so a dry spell doesn't make wild ratios), capped at ½–3×, and
+// only partly trusted until there's plenty of snow to judge by (full weight from about 40″ reported
+// plus modeled: one storm is a hint, a few make a pattern). → { factor, reported, modeled, days } (factor 1 = no change).
+export function modelCorrection(log) {
+  const both = (log ?? []).filter((e) => e.snow != null && e.model != null);
+  const reported = both.reduce((a, e) => a + e.snow, 0);
+  const modeled = both.reduce((a, e) => a + e.model, 0);
+  if (both.length < 2 || reported + modeled < 2) return { factor: 1, reported, modeled, days: both.length };
+  const ratio = Math.min(3, Math.max(0.5, (reported + 1) / (modeled + 1)));
+  const weight = Math.min(1, (reported + modeled) / 40);
+  return { factor: round1(1 + weight * (ratio - 1)), reported: round1(reported), modeled: round1(modeled), days: both.length };
 }
 
 // The terrain log: one entry per day ({ date, runs, lifts } open), today's replaced as it updates.
@@ -509,6 +534,13 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     return [id, { snow, terrain }];
   }).then((rows) => rows));
   for (const [id, v] of Object.entries(vail)) if (v.terrain) liftsById[id] = v.terrain;
+  // Wolf Creek's own snow report (no feed covers it).
+  let wolf = null;
+  try {
+    wolf = parseWolfCreek(await getText(fetchFn, WOLF_CREEK_REPORT, { backoff }));
+  } catch (err) {
+    log(`Wolf Creek's snow report failed: ${err.message}`);
+  }
   const snowpack = Object.fromEntries(stations.map((t) => {
     const name = stationName(t);
     const s = snowNow && stationSeason({ current: snowNow.get(t), normals: snowNormal?.get(t), today });
@@ -536,15 +568,35 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       ensemble = prevEnsemble?.today === today ? prevEnsemble : null; // (older is still better than none, same day)
     }
   }
-  const forecasts = RESORTS.map((r, i) => blendForecast({
-    ens: ensemble?.byId?.[r.id] ?? null,
-    nws: nwsData[i],
-    periods: nwsText[i],
-    sources: [
-      { id: 'nws', hours: nwsSnowHours(nwsData[i]) },
-      ...MODELS.map((m, k) => ({ id: m.id, hours: snowHours(modelData[k]?.[i]) })),
-    ],
-  }, now));
+  // Each resort's model correction, learned from its own reports (see modelCorrection): applied to the
+  // weather models and ensembles, not the Weather Service's forecast (its forecasters already adjust).
+  const corrections = RESORTS.map((r) => modelCorrection(prevResorts[r.id]?.snowLog));
+  const scaleHours = (hours, f) => (hours && f !== 1 ? hours.map((h) => ({ ...h, v: h.v * f, w: h.w == null ? h.w : h.w * f })) : hours);
+  const scaleEns = (e, f) => {
+    if (!e || f === 1) return e;
+    const sc = (x) => x && { mid: round1(x.mid * f), lo: round1(x.lo * f), hi: round1(x.hi * f) };
+    return { ...e, days: e.days.map((d) => ({ date: d.date, ...sc(d) })), next7: sc(e.next7), week2: sc(e.week2) };
+  };
+  const forecasts = RESORTS.map((r, i) => {
+    const f = corrections[i].factor;
+    const out = blendForecast({
+      ens: scaleEns(ensemble?.byId?.[r.id] ?? null, f),
+      nws: nwsData[i],
+      periods: nwsText[i],
+      sources: [
+        { id: 'nws', hours: nwsSnowHours(nwsData[i]) },
+        ...MODELS.map((m, k) => ({ id: m.id, hours: scaleHours(snowHours(modelData[k]?.[i]), f) })),
+      ],
+    }, now);
+    if (out) out.correction = corrections[i];
+    return out;
+  });
+  // The models' own (uncorrected) estimate of each past day, for the snow log's comparison.
+  const rawPast = RESORTS.map((r, i) => {
+    const days = forecasts[i]?.pastDays ?? [];
+    const f = corrections[i].factor || 1;
+    return Object.fromEntries(days.filter((d) => d.snow != null).map((d) => [d.date, round1(d.snow / f)]));
+  });
 
   // UV index for each forecast day (with the model forecasts: reused between their hourly runs).
   if (!skipModels) {
@@ -594,16 +646,24 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       const report = { ...(v.snow ?? {}), lifts: t ? { open: t.open, total: t.total } : undefined, trails: t?.runs, source: snowPage(VAIL_SITES[r.id]) };
       c = { isOpen: Boolean(t && (t.runs?.open > 0 || t.open > 0)), report, vail: true };
     }
+    // Wolf Creek: open when today's patrol report has terrain open (it runs weekends only early on,
+    // so an older report says nothing about today).
+    if (!c && r.id === 'wolf-creek' && wolf) {
+      const fresh = wolf.updated && wolf.updated >= addDays(today, -1);
+      // (Its report gives the lifts running, not the total, so no "of N".)
+      const report = { ...wolf, lifts: wolf.lifts != null ? { open: fresh && wolf.openPct > 0 ? wolf.lifts : 0, total: null } : undefined };
+      c = { isOpen: Boolean(fresh && wolf.updated === today && wolf.openPct > 0), report, own: true };
+    }
     const live = Boolean(c);
     const p = planned[r.id] ?? {};
     const facts = live
       ? { live, isOpen: c.isOpen, open: c.open, close: c.close, note: c.note, report: withLiveLifts(c.report, liftsById[r.id]) }
       : { live, isOpen: false, open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when, opened: p.opened, note: p.note };
     // Vail's pages say what's open but not their season dates: keep the announced ones.
-    if (c?.vail) Object.assign(facts, { open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when });
+    if (c?.vail || c?.own) Object.assign(facts, { open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when });
     // A report from a closed resort is usually last season's leftovers.
     // (Vail Resorts' own reports are current even before opening day: keep those.)
-    const report = live && (c.isOpen || c.vail) ? withLiveLifts(c.report, liftsById[r.id]) : null;
+    const report = live && (c.isOpen || c.vail || c.own) ? withLiveLifts(c.report, liftsById[r.id]) : null;
     return {
       id: r.id,
       name: r.name,
@@ -613,7 +673,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       live,
       status: statusFor(facts, today),
       // Opening and closing days for this season; null when unknown.
-      dates: { open: facts.open ?? null, close: facts.close ?? null, when: facts.when ?? null, planned: !live || Boolean(c?.vail) },
+      dates: { open: facts.open ?? null, close: facts.close ?? null, when: facts.when ?? null, planned: !live || Boolean(c?.vail || c?.own) },
       report,
       forecast: forecasts[i],
       lifts: liftsById[r.id] ?? null,
@@ -624,7 +684,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
       // Runs and lifts open each day (the last 8 days), to see new terrain opening.
       terrainLog: terrainLog(prevResorts[r.id]?.terrainLog, today, report?.trails?.open ?? null, (liftsById[r.id] ?? report?.lifts)?.open ?? null),
       // What the resort reported falling, day by day (see snowLog).
-      snowLog: snowLog(prevResorts[r.id]?.snowLog, today, report),
+      snowLog: snowLog(prevResorts[r.id]?.snowLog, today, report, rawPast[i]),
       aspect: r.aspect ?? null,
       noaa: noaaSnow[i] ?? null,
       avgSnow: r.avgSnow ?? null,

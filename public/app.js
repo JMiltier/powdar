@@ -713,13 +713,13 @@ function renderList() {
       </span>`;
     // Three numbers on every row, the first following the map's view (highlighted), then base, then
     // lifts open (open resorts) or snowpack vs normal (the rest, which have no lifts to count).
-    const lifts = r.report?.lifts?.total ? r.report.lifts : r.lifts?.total ? r.lifts : null;
+    const lifts = r.report?.lifts?.total || r.report?.lifts?.open ? r.report.lifts : r.lifts?.total ? r.lifts : null;
     const lead = ['dates', 'base'].includes(state.metric) ? 'new24' : state.metric;
     const v = valueFor(r, lead);
     const LABEL = { new24: '24 hr', next72: 'Next 3d', next7: 'Next 7d', next14: 'Next 14d', season: 'Pack' };
     const base = valueFor(r, 'base');
     const third = open
-      ? { text: lifts ? `${lifts.open}/${lifts.total}` : '–', label: 'Lifts', on: false }
+      ? { text: lifts ? (lifts.total ? `${lifts.open}/${lifts.total}` : `${lifts.open}`) : '–', label: 'Lifts', on: false }
       : lead === 'season'
         ? { text: valueFor(r, 'next7').text, label: 'Next 7d', on: false }
         : { text: valueFor(r, 'season').text, label: 'Pack', on: state.metric === 'season' };
@@ -795,6 +795,7 @@ function renderDetail(r) {
     </div>
     ${dayMore(f.days.find((d) => d.date === state.openDay))}
     ${f.week2 ? `<p class="week2"><b>Days 8–14</b> about ${inches(f.week2.mid)} more${rangeText(f.week2.range) ? ` <span class="muted">(${rangeText(f.week2.range)})</span>` : ''}</p>` : ''}
+    ${f.correction?.factor && f.correction.factor !== 1 ? `<p class="fine">Model forecasts ${f.correction.factor > 1 ? 'raised' : 'lowered'} ×${f.correction.factor}: over the last ${f.correction.days} days ${esc(r.name)} reported ${inches(f.correction.reported)} where they estimated ${inches(f.correction.modeled)}</p>` : ''}
     <p class="fine">${unitLabel()} · wind ${windUnit()}${f.days.some((d) => d.uv != null) ? ' · UV at the day’s peak' : ''} · Tap a day for more</p>` : '<p class="muted">Forecast unavailable right now.</p>';
 
   // Where every number comes from, gathered at the very bottom for anyone curious.
@@ -862,6 +863,7 @@ function renderDetail(r) {
     ${pastStrip(r)}
   `;
   if (f) notes.push(`Snow forecast: the middle of ${sources.length > 1 ? `${sources.length} forecasts (${esc(sources.join(', '))})` : 'the National Weather Service forecast'}${sources.length > 1 ? `, via ${sourceLink('https://www.weather.gov', 'NWS')} and ${sourceLink('https://open-meteo.com', 'Open-Meteo')}` : ''}. Small numbers are the likely range.${state.data.sources.modelsReused ? ` Model forecast from ${esc(timeAgo(state.data.sources.modelsAt))}.` : ''}`);
+  if (f?.correction?.factor && f.correction.factor !== 1) notes.push(`Model correction: the weather models (not the Weather Service forecast) are scaled ×${f.correction.factor} here, from ${esc(r.name)}’s own snow reports against the models’ estimates over the last ${f.correction.days} days (${inches(f.correction.reported)} reported, ${inches(f.correction.modeled)} modeled); trusted more as more snow falls, and kept between ½ and 3×.`);
   if (f?.week2?.runs) notes.push(`Days 4–14 also draw on ${f.week2.runs} ensemble runs (European, American and Canadian models, each run many times from slightly different starts; ${sourceLink('https://open-meteo.com/en/docs/ensemble-api', 'Open-Meteo')}): days 4–7 average their middle with the forecasts above, days 8–14 are their middle alone, the range the middle half of the runs.`);
   if (f?.days.some((d) => d.uv != null)) notes.push(`UV index: each day’s peak, from ${sourceLink('https://open-meteo.com', 'Open-Meteo')}. At ski-area elevations, with snow reflecting it back, sunburn comes fast even on cold days.`);
   if (f) notes.push(`Weather: ${sourceLink(`https://forecast.weather.gov/MapClick.php?lat=${r.at[0]}&lon=${r.at[1]}`, 'National Weather Service forecast')}.`);
