@@ -1348,6 +1348,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // items: [{ r, text, label, level, open, selected }]
   function update(items) {
     selectedPin = null;
+    closeChooser();
     order = items.map((item, i) => {
       const pin = pinFor(item.r);
       pin.val.textContent = item.text;
@@ -1404,6 +1405,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   }
   map.on('click', (e) => pickNear(e.originalEvent.clientX, e.originalEvent.clientY));
   map.on('movestart zoomstart', closeChooser);
+  // Any touch outside the list closes it (a label, the panel, the buttons…), as does a new view.
+  document.addEventListener('pointerdown', (e) => { if (chooser && !chooser.contains(e.target)) closeChooser(); }, true);
 
   return {
     update,
