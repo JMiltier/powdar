@@ -107,7 +107,6 @@ const state = {
   // The map overlay: 'snow' (on the ground; the default), 'radar', 'outlook' or 'none'.
   layer: read(STORE.layer, null) ?? (read(STORE.snowDepth, true) ? 'snow' : 'none'),
   outlookSeason: null, // e.g. "NDJ 2026-2027", once the outlook has loaded
-  usWide: false, // snow on the ground or the outlook shown for the whole lower 48
   radar: { time: null, playing: false, count: 0 }, // the radar loop's current frame
   cast: { day: 1, amount: 1, areas: null }, // the snow forecast's period and amount
   tempView: read('cs:tempView', 'season'), // the temperature chart: 'season' (the default) or 'close' (4 weeks)
@@ -238,10 +237,6 @@ async function latestSatDay() {
 }
 async function applyLayer() {
   if (!state.map) return;
-  if (state.usWide && !['snow', 'outlook'].includes(state.layer)) {
-    state.usWide = false;
-    state.map.setWide(false);
-  }
   if (SAT_VIEWS.includes(state.layer)) {
     state.map.setLayer('none');
     if (!state.satLatest) {
@@ -1753,18 +1748,6 @@ function render() {
   syncFilters();
   $('#snow-btn').setAttribute('aria-pressed', String(state.layer !== 'none'));
   for (const b of document.querySelectorAll('[data-layer]')) b.setAttribute('aria-checked', String(b.dataset.layer === state.layer));
-  for (const b of document.querySelectorAll('[data-area]')) b.setAttribute('aria-pressed', String((b.dataset.area === 'us') === state.usWide));
-  $('[data-area="state"]').textContent = state.data.stateName ?? 'Colorado';
-  // The whole-US view offers only the layers that cover the whole country (and headings with nothing
-  // left under them go too).
-  for (const b of document.querySelectorAll('#layers [data-layer]')) b.hidden = state.usWide && !['snow', 'outlook'].includes(b.dataset.layer);
-  for (const h of document.querySelectorAll('#layers .layers-head')) {
-    let n = h.nextElementSibling;
-    let any = false;
-    for (; n && !n.classList.contains('layers-head'); n = n.nextElementSibling) any ||= !n.hidden;
-    h.hidden = !any;
-  }
-  $('.layers-area-note').hidden = state.usWide;
   // Hidden but still taking its space, so changing the overlay never shifts the map.
   $('#legend').classList.toggle('off', state.layer === 'none');
   $('#map').dataset.layer = state.layer; // (the light map dims a little under white snow)
@@ -2155,7 +2138,6 @@ function joinMaps(main, inset, ids) {
     get(t, k) {
       if (typeof t[k] !== 'function') return t[k];
       if (k === 'update') return (items) => { t.update(items.filter((i) => !ids.has(i.r.id))); inset.update(items.filter((i) => ids.has(i.r.id))); };
-      if (k === 'setWide') return (on) => t.setWide(on); // (the whole-US view hides the inset)
       if (k === 'refit') return () => { placeInset(); t.refit(); inset.refit(); };
       if (k === 'destroy') return () => { t.destroy(); inset.destroy(); insetEl?.remove(); insetEl = null; };
       return (...a) => { const r = t[k](...a); inset[k]?.(...a); return r; };
@@ -2165,7 +2147,6 @@ function joinMaps(main, inset, ids) {
 
 function startMap() {
   if (state.map || !state.data) return;
-  state.usWide = false;
   const inset = INSETS[state.code];
   const insetIds = new Set(inset?.ids ?? []);
   const insetResorts = state.data.resorts.filter((r) => insetIds.has(r.id));
@@ -2176,7 +2157,7 @@ function startMap() {
     // corridor's eastern labels stack up.
     extend: state.code === 'CO' ? [39.75, -105.3] : null,
     // (With an inset in the corner, the main map keeps clear of it.)
-    getPadding: useInset ? () => { const p = coveredPadding(); return state.usWide ? p : { ...p, left: p.left + INSET_W + 10 }; } : coveredPadding,
+    getPadding: useInset ? () => { const p = coveredPadding(); return { ...p, left: p.left + INSET_W + 10 }; } : coveredPadding,
     onSelect: (id) => select(id),
     onOutlook: (season) => { state.outlookSeason = season; render(); },
     // Each radar frame: just update the key's button and time (no full re-render while playing).
@@ -2414,20 +2395,6 @@ document.addEventListener('click', (e) => {
     state.map?.setCast(c.day, c.amount);
     $('#legend').innerHTML = legendFor('snowcast');
     return;
-  }
-  // The map's area, in the layers menu: this state, or the whole US (snow on the ground or the
-  // outlook; another layer switches to snow on the ground).
-  const area = t.closest('[data-area]');
-  if (area) {
-    state.usWide = area.dataset.area === 'us';
-    if (state.usWide && !['snow', 'outlook'].includes(state.layer)) {
-      state.layer = 'snow';
-      write(STORE.layer, state.layer);
-      applyLayer();
-    }
-    state.map?.setWide(state.usWide);
-    openLayers(false);
-    return render();
   }
   if (t.closest('[data-snow-cycle]')) {
     state.snowStyle = SNOW_STYLES[(SNOW_STYLES.indexOf(state.snowStyle) + 1) % SNOW_STYLES.length];

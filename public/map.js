@@ -477,6 +477,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     if (!outlookData) {
       const q = new URLSearchParams({
         where: '1=1', outFields: 'cat,prob,valid_seas', f: 'geojson', outSR: '4326', maxAllowableOffset: '0.02',
+        geometry: '-112,34,-99,44', geometryType: 'esriGeometryEnvelope', inSR: '4326',
       });
       outlookData = await (await fetch(`${OUTLOOK}?${q}`)).json();
       onOutlook?.(outlookData.features?.[0]?.properties?.valid_seas ?? null);
@@ -721,36 +722,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     }
   }
 
-  // The whole lower 48, fixed like the state view (snow on the ground and the season outlook are
-  // national; NOAA's snow analysis doesn't cover Alaska or Hawaii): resorts, towns and roads hide, the
-  // overlay is redrawn for the wider view.
-  const US = L.latLngBounds([[24.4, -124.8], [49.4, -66.9]]);
-  let wide = false;
-  // In the whole-US view: state lines, and everything outside the country greyed out (US Census
-  // boundaries via us-atlas, simplified: geo/us-outline.json, loaded the first time it's needed).
-  map.createPane('outline').style.zIndex = 270; // over the snow and outlook, under the labels
-  let outline = null;
-  async function showOutline(on) {
-    if (on && !outline) {
-      try {
-        const { borders, nation } = await (await fetch('geo/us-outline.json')).json();
-        const ll = (ring) => ring.map(([lon, lat]) => [lat, lon]);
-        const world = [[-89, -540], [89, -540], [89, 540], [-89, 540]];
-        outline = L.layerGroup([
-          L.polygon([world, ...nation.map((p) => ll(p[0]))], { pane: 'outline', className: 'us-mask', stroke: false, interactive: false }),
-          L.polyline(borders.map(ll), { pane: 'outline', className: 'us-borders', weight: 1, interactive: false }),
-          L.polyline(nation.map((p) => ll(p[0])), { pane: 'outline', className: 'us-coast', weight: 1.2, interactive: false }),
-        ]);
-      } catch { return; }
-    }
-    if (!outline) return;
-    if (on && wide) outline.addTo(map);
-    else outline.remove();
-  }
-
   const fit = () => {
     const p = getPadding();
-    map.fitBounds(wide ? US : bounds, { paddingTopLeft: [p.left + EDGE_X, p.top + EDGE_Y], paddingBottomRight: [p.right + EDGE_X, p.bottom + EDGE_Y], animate: false });
+    map.fitBounds(bounds, { paddingTopLeft: [p.left + EDGE_X, p.top + EDGE_Y], paddingBottomRight: [p.right + EDGE_X, p.bottom + EDGE_Y], animate: false });
   };
   fit();
 
@@ -1518,18 +1492,6 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     setCast(day, amount) {
       cast = { day, amount };
       if (layerName === 'snowcast') drawLayer();
-    },
-    setWide(on) {
-      if (on === wide) return;
-      wide = on;
-      el.classList.toggle('us-wide', on);
-      showOutline(on);
-      map.invalidateSize({ animate: false, pan: false });
-      fit();
-      if (!on) layout();
-      frameCache.clear();
-      cloudCache.clear();
-      if (layerName !== 'none') drawLayer();
     },
     setLayer(name) {
       if (name === layerName && (overlay || name === 'none')) return;

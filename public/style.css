@@ -1168,23 +1168,9 @@ body.reordering .rrow.dragging { transform-origin: center; }
 .temp-chart:not(.close) .now { stroke-width: 2; }
 .temp-chart:not(.close) .median { stroke-width: 1.4; }
 
-/* The whole-US view: just the overlay on the relief. */
-#map.us-wide .pin, #map.us-wide .leaflet-dots-pane, #map.us-wide .leaflet-places-pane, #map.us-wide .leaflet-roads-pane { display: none; }
 
 /* A map inset: far-off resorts in their own small boxed map, clearly set apart from the main map. */
 .map-inset { position: absolute; z-index: 700; border-radius: 12px; overflow: hidden; border: 1.5px solid var(--line, rgba(127, 140, 160, 0.6)); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25); background: var(--bg); }
 .map-inset-map { position: absolute; inset: 0; }
 .map-inset-name { position: absolute; z-index: 800; top: 0; left: 0; right: 0; padding: 2px 8px; font-size: 11px; font-weight: 600; color: var(--muted); background: color-mix(in srgb, var(--bg) 82%, transparent); pointer-events: none; }
-#map.us-wide .map-inset { display: none; }
 
-/* The whole-US view: state lines, and the world outside the US greyed out. */
-/* (Solid: outside the country is just background, so nothing beyond the border competes.) */
-.us-mask { fill: var(--bg); fill-opacity: 1; }
-.us-borders { stroke: #4a5361; stroke-opacity: 0.7; fill: none; }
-:root[data-theme="dark"] .us-borders { stroke: #c4ccd8; stroke-opacity: 0.5; }
-.us-coast { stroke: #4a5361; stroke-opacity: 0.6; fill: none; }
-:root[data-theme="dark"] .us-coast { stroke: #c4ccd8; stroke-opacity: 0.45; }
-.layers-area { display: flex; gap: 4px; margin: 2px 0 6px; padding: 3px; border-radius: 999px; background: var(--chip, rgba(127, 140, 160, 0.15)); }
-.layers-area button { flex: 1; border: 0; border-radius: 999px; padding: 6px 10px; font: inherit; font-weight: 600; color: var(--muted); background: none; }
-.layers-area button[aria-pressed="true"] { background: var(--accent, #4f8fe6); color: #fff; }
-.layers-area-note { margin: -2px 4px 6px; font-size: 11px; color: var(--muted); }
