@@ -832,30 +832,46 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       if (best.misses === 0) break; // (every name fits at this size: smaller text can't do better)
     }
     el.style.setProperty('--label-scale', best.scale);
-    best = { ...computeLayout(size, pad, performance.now() + BUDGET_MS, true), scale: best.scale };
+    // The finished layout from a few different random starts (the search can settle differently
+    // from each); the best one wins.
+    const scale = best.scale;
+    best = null;
+    for (const seed of [7, 101, 2027]) {
+      const attempt = computeLayout(size, pad, performance.now() + BUDGET_MS / 3, true, seed);
+      if (!best || attempt.score < best.score) best = { ...attempt, scale };
+    }
     if (layoutCache.size > 40) layoutCache.clear();
     layoutCache.set(key, best);
     apply(best.result);
   }
 
   // One layout at the current label size → { result, misses } (misses: labels shown number-only or hidden).
-  function computeLayout(size, pad, deadline, finish = true) {
+  function computeLayout(size, pad, deadline, finish = true, startSeed = 7) {
     const late = () => performance.now() > deadline;
     const area = [pad.left + 2, pad.top + 2, size.x - pad.right - 2, size.y - pad.bottom - 2];
     const maxLead = Math.max(28, Math.min(90, 0.1 * Math.min(area[2] - area[0], area[3] - area[1])));
     // Un-hide everything first: a label hidden by the last layout would measure as zero size.
     for (const o of order) o.pin.root.classList.remove('hidden');
     for (const o of order) o.pin.bubble.classList.remove('compact');
-    // Sized for each resort's widest number across every view (o.widest) and placed in a fixed order,
-    // so every view gets the same layout: switching views changes the numbers, never where labels sit.
-    // (The number chip keeps that width in every view, so the name beside it never moves either.)
+    // Sized for the widest number across the views that share this layout (o.widest) and placed in a
+    // fixed order, so those views get the same layout: switching views changes the numbers, never
+    // where labels sit. Every label's number chip is the same width, as short as the longest number
+    // needs (so they look alike, and the name beside each never moves).
+    const widthOf = (o, text) => {
+      const shown = o.pin.val.textContent;
+      o.pin.val.textContent = text;
+      const w = o.pin.val.offsetWidth;
+      o.pin.val.textContent = shown;
+      return w;
+    };
+    for (const o of order) o.pin.val.style.minWidth = '';
+    const chipW = Math.max(0, ...order.map((o) => widthOf(o, o.widest ?? o.pin.val.textContent)));
     const measure = (o) => {
       const shown = o.pin.val.textContent;
-      o.pin.val.style.minWidth = '';
+      o.pin.val.style.minWidth = `${chipW}px`;
       o.pin.val.textContent = o.widest ?? shown;
-      const size = { w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight, valW: o.pin.val.offsetWidth };
+      const size = { w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight, valW: chipW };
       o.pin.val.textContent = shown;
-      o.pin.val.style.minWidth = `${size.valW}px`;
       return size;
     };
     const items = [...order].sort((a, b) => a.r.id.localeCompare(b.r.id))
@@ -964,7 +980,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     // 1) A layout where everything fits: crowded resorts first, each taking its cheapest free spot.
     //    Several orderings are tried; the one that hides the fewest labels (then is shortest) wins.
     const crowd = (it) => labels.filter((o) => Math.hypot(o.p.x - it.p.x, o.p.y - it.p.y) < 90).length;
-    let seed = 7;
+    let seed = startSeed;
     const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     let bestStart = null;
     for (let t = 0; t < 8 && !(t > 0 && late()); t++) {
@@ -1374,7 +1390,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         tail: c?.tail ? c.tail.seg.map((v, k) => (v - (k % 2 ? it.p.y : it.p.x)).toFixed(1)) : null,
       };
     });
-    return { result, misses };
+    // (How good: labels squeezed to their number, then the lines' length, squared.)
+    const sq = labels.reduce((t, it) => t + (pick.get(it)?.len ?? 0) ** 2, 0);
+    return { result, misses, score: misses * 1e5 + sq };
   }
 
   // The selected resort always shows its full label: if the layout had no room for it, it sits at its

@@ -1720,8 +1720,9 @@ function renderMap() {
     const open = r.status.state === 'open';
     return {
       r, text: v.text, label: v.text, level: v.level, selected, match: matches(r),
-      // The widest this resort's number gets in any view: labels are laid out for it, so they stay put.
-      widest: availableMetrics().map((m) => valueFor(r, m).text).reduce((a, t) => (t.length > a.length ? t : a), ''),
+      // The widest this resort's number gets across the snow views (or, on Dates, its date): labels are
+      // laid out for it, so they stay put from one snow view to the next.
+      widest: (state.metric === 'dates' ? ['dates'] : availableMetrics().filter((m) => m !== 'dates')).map((m) => valueFor(r, m).text).reduce((a, t) => (t.length > a.length ? t : a), ''),
       open: open && !['dates', 'season'].includes(METRICS[state.metric].kind),
       important: selected || fav || open,
       // Who keeps a full label when space runs out: filter matches, then favorites, then open resorts.
