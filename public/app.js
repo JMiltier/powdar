@@ -546,7 +546,7 @@ function availableMetrics() {
   const rs = state.data?.resorts ?? [];
   const hasDates = rs.some((r) => r.dates?.open || r.dates?.close);
   // (Snowpack vs normal isn't a map view any more: it's on every resort row and page, and the overview.)
-  return ['new24', 'past72', 'next72', 'next7', 'next14', 'base', ...(hasDates ? ['dates'] : [])];
+  return ['past72', 'new24', 'next72', 'next7', 'next14', 'base', ...(hasDates ? ['dates'] : [])];
 }
 function syncRibbon() {
   const avail = availableMetrics();
@@ -623,7 +623,7 @@ function shortStatus(r) {
   if (s.state === 'done') return 'Closed';
   return 'Opens TBA';
 }
-const METRIC_LABEL = { new24: 'Most −24h', past72: 'Most −3d', next72: 'Most +3d', next7: 'Most +7d', next14: 'Most +14d', base: 'Deepest', season: 'Snowpack', dates: 'Opening' };
+const METRIC_LABEL = { new24: 'Most −1d', past72: 'Most −3d', next72: 'Most +3d', next7: 'Most +7d', next14: 'Most +14d', base: 'Deepest', season: 'Snowpack', dates: 'Opening' };
 
 function rowSub(r) {
   const s = r.status;
@@ -700,7 +700,7 @@ function miniDays(r) {
 
 // Each resort as a card: status, then the numbers that matter side by side (the map's current view
 // highlighted).
-const CARD_STATS = [['new24', '−24h'], ['next72', '+3d'], ['next7', '+7d'], ['base', 'Base'], ['season', 'Pack\u202f%']];
+const CARD_STATS = [['past72', '−3d'], ['new24', '−1d'], ['next72', '+3d'], ['next7', '+7d'], ['base', 'Base'], ['season', 'Pack\u202f%']];
 function cardSub(r) {
   const s = r.status;
   const lifts = r.report?.lifts ?? (r.lifts?.total ? { open: r.lifts.open, total: r.lifts.total } : null);
