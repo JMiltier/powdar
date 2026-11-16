@@ -469,7 +469,8 @@ function valueFor(r, metricKey = state.metric) {
     // Short on the map; the list and details say how much is open.
     if (s === 'open') return { text: 'Open', sub: r.status.pct != null ? `${r.status.pct}% of runs` : '', level: 'open', sort: 1e5 + (r.status.pct ?? 0) };
     if (s === 'likely') return { text: 'Open?', level: 'likely', sort: 9e4 };
-    if (s === 'soon') return { text: daysOut <= 0 ? 'Today' : r.dates?.when ?? monthDay(date), level: 'soon', sort: 8e4 - daysOut };
+    // (Shaded by how soon: deepest this week, palest a month or more out, so the order reads at a glance.)
+    if (s === 'soon') return { text: daysOut <= 0 ? 'Today' : r.dates?.when ?? monthDay(date), level: `soon soon-${daysOut <= 7 ? 1 : daysOut <= 14 ? 2 : daysOut <= 28 ? 3 : 4}`, sort: 8e4 - daysOut };
     if (s === 'late') return { text: 'Late', level: 'late', sort: 7e4 };
     return { text: s === 'done' ? 'Closed' : 'TBA', level: 'tba', sort: 0 };
   }
@@ -2121,15 +2122,49 @@ const UT_TOWNS = [
   ['Beaver', 38.2769, -112.641], ['Panguitch', 37.8228, -112.4358], ['Tooele', 40.5308, -112.2983], ['Brigham City', 41.5102, -112.0155],
 ];
 
+// Resorts far from the rest, in a small boxed map of their own in the corner (a map inset), so the
+// main map can be drawn larger instead of spending most of the screen on the empty miles between.
+// Utah: Brian Head and Eagle Point sit ~150 miles south of the Wasatch.
+const INSETS = {
+  UT: { name: 'Southern Utah', ids: ['brian-head', 'eagle-point'] },
+};
+const INSET_W = 150;
+const INSET_H = 150;
+let insetEl = null;
+function placeInset() {
+  if (!insetEl) return;
+  const p = coveredPadding();
+  insetEl.style.left = `${p.left + 10}px`;
+  insetEl.style.bottom = `${p.bottom + 4}px`;
+}
+// Both maps behind one face: every call goes to both, each gets its own resorts.
+function joinMaps(main, inset, ids) {
+  return new Proxy(main, {
+    get(t, k) {
+      if (typeof t[k] !== 'function') return t[k];
+      if (k === 'update') return (items) => { t.update(items.filter((i) => !ids.has(i.r.id))); inset.update(items.filter((i) => ids.has(i.r.id))); };
+      if (k === 'setWide') return (on) => t.setWide(on); // (the whole-US view hides the inset)
+      if (k === 'refit') return () => { placeInset(); t.refit(); inset.refit(); };
+      if (k === 'destroy') return () => { t.destroy(); inset.destroy(); insetEl?.remove(); insetEl = null; };
+      return (...a) => { const r = t[k](...a); inset[k]?.(...a); return r; };
+    },
+  });
+}
+
 function startMap() {
   if (state.map || !state.data) return;
   state.usWide = false;
+  const inset = INSETS[state.code];
+  const insetIds = new Set(inset?.ids ?? []);
+  const insetResorts = state.data.resorts.filter((r) => insetIds.has(r.id));
+  const useInset = insetResorts.length > 0;
   state.map = createSnowMap($('#map'), {
-    resorts: state.data.resorts,
+    resorts: useInset ? state.data.resorts.filter((r) => !insetIds.has(r.id)) : state.data.resorts,
     // Colorado: a little room east of the Front Range resorts (toward Denver), where the I-70
     // corridor's eastern labels stack up.
     extend: state.code === 'CO' ? [39.75, -105.3] : null,
-    getPadding: coveredPadding,
+    // (With an inset in the corner, the main map keeps clear of it.)
+    getPadding: useInset ? () => { const p = coveredPadding(); return { ...p, left: p.left + INSET_W + 10 }; } : coveredPadding,
     onSelect: (id) => select(id),
     onOutlook: (season) => { state.outlookSeason = season; render(); },
     // Each radar frame: just update the key's button and time (no full re-render while playing).
@@ -2138,6 +2173,28 @@ function startMap() {
     places: state.code === 'CO' ? CO_TOWNS : state.code === 'UT' ? UT_TOWNS : [],
     labelHints: LABEL_HINTS,
   });
+  if (useInset) {
+    insetEl = document.createElement('div');
+    insetEl.className = 'map-inset';
+    insetEl.style.width = `${INSET_W}px`;
+    insetEl.style.height = `${INSET_H}px`;
+    insetEl.innerHTML = `<span class="map-inset-name">${esc(inset.name)}</span>`;
+    $('#map').append(insetEl);
+    placeInset();
+    const box = document.createElement('div');
+    box.className = 'map-inset-map';
+    insetEl.append(box);
+    const small = createSnowMap(box, {
+      resorts: insetResorts,
+      getPadding: () => ({ top: 18, left: 0, right: 0, bottom: 0 }),
+      onSelect: (id) => select(id),
+      places: (state.code === 'UT' ? UT_TOWNS : []),
+      labelHints: LABEL_HINTS,
+    });
+    // (Taps in the box are the box's, not the big map's underneath.)
+    L.DomEvent.disableClickPropagation(insetEl);
+    state.map = joinMaps(state.map, small, insetIds);
+  }
   state.map.setMarks(state.marks);
   applyLayer();
   // Major highways (I-70, I-25, US-285…), Colorado only for now.

@@ -245,7 +245,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // A state with a single resort still needs some area around it.
   if (bounds.getNorthEast().distanceTo(bounds.getSouthWest()) < 40000) bounds.extend(bounds.getCenter().toBounds(80000));
   const map = L.map(el, {
-    zoomControl: false, attributionControl: false, zoomSnap: 0, inertia: false,
+    zoomControl: false, attributionControl: false, zoomSnap: 0, inertia: false, maxBoundsViscosity: 1, bounceAtZoomLimits: false,
     dragging: false, touchZoom: false, doubleClickZoom: false, scrollWheelZoom: false, boxZoom: false, keyboard: false,
   });
   // detectRetina: sharp relief on high-resolution phone screens (one zoom level more detail).
@@ -732,7 +732,11 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   };
   const fit = () => {
     const p = getPadding();
+    // (The whole-US view zooms in freely but never out past the country, nor drags far from it.)
+    map.setMinZoom(0);
+    map.setMaxBounds(wide ? US.pad(0.15) : null);
     map.fitBounds(wide ? US : bounds, { paddingTopLeft: [p.left + EDGE_X, p.top + EDGE_Y], paddingBottomRight: [p.right + EDGE_X, p.bottom + EDGE_Y], animate: false });
+    if (wide) map.setMinZoom(map.getZoom());
   };
   fit();
 
