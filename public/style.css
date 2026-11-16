@@ -1174,3 +1174,9 @@ body.reordering .rrow.dragging { transform-origin: center; }
 .map-inset-map { position: absolute; inset: 0; }
 .map-inset-name { position: absolute; z-index: 800; top: 0; left: 0; right: 0; padding: 2px 8px; font-size: 11px; font-weight: 600; color: var(--muted); background: color-mix(in srgb, var(--bg) 82%, transparent); pointer-events: none; }
 
+
+/* The snow forecast on the dark map: a lighter violet, a little stronger, with a brighter edge, so the
+   chance areas stand out from the dark relief (the light map's darker violet reads fine there). */
+:root[data-theme="dark"] .snowcast { fill: #b69cff; fill-opacity: 0.3; stroke: #d9ccff; stroke-opacity: 0.75; stroke-width: 1; }
+:root[data-theme="dark"] .cast-key i { background: #b69cff; }
+:root[data-theme="dark"] .cast-key .c1 { opacity: 0.4; } :root[data-theme="dark"] .cast-key .c2 { opacity: 0.65; } :root[data-theme="dark"] .cast-key .c3 { opacity: 0.95; }
