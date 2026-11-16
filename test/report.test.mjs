@@ -216,3 +216,20 @@ test('modelCorrection: learns how far off the models run at a resort, cautiously
   // Lots of evidence, models running double: about ½.
   assert.equal(modelCorrection([{ date: 'a', snow: 10, model: 20 }, { date: 'b', snow: 10, model: 20 }]).factor, 0.5); // (60″ of evidence: full weight)
 });
+
+test('reportDay: a morning report covers the day before; old reports cover nothing', async () => {
+  const { reportDay } = await import('../src/report.js');
+  assert.equal(reportDay('2026-12-10T06:00:00-07:00', '2026-12-10'), '2026-12-09');
+  assert.equal(reportDay('2026-12-10T16:30:00-07:00', '2026-12-10'), '2026-12-10'); // afternoon update
+  assert.equal(reportDay('2026-12-09T06:00:00-07:00', '2026-12-10'), '2026-12-08'); // not updated today
+  assert.equal(reportDay('2026-12-06T06:00:00-07:00', '2026-12-10'), null);
+  assert.equal(reportDay('2026-12-10', '2026-12-10'), '2026-12-09'); // date only (Wolf Creek)
+});
+
+test('freshSnow drops 24h/48h/7-day snow from a report over two days old', async () => {
+  const { freshSnow } = await import('../src/report.js');
+  const now = new Date('2026-12-10T20:00:00Z');
+  assert.equal(freshSnow({ new24: 4, updated: '2026-12-10T13:00:00Z' }, now).new24, 4);
+  const old = freshSnow({ new24: 4, depth: 30, updated: '2026-12-07T13:00:00Z' }, now);
+  assert.equal(old.new24, null); assert.equal(old.depth, 30); assert.equal(old.staleSince, '2026-12-07T13:00:00Z');
+});

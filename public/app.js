@@ -633,8 +633,8 @@ function rowSub(r) {
 // morning's 24-hour figure for yesterday), otherwise the weather models' estimate (est: true).
 function pastSnow(r, n) {
   const today = state.data.today;
+  // (The build puts each report on the day it covers; see reportDay in src/report.js.)
   const logged = new Map((r.snowLog ?? []).map((e) => [e.date, e.snow]));
-  if (r.report?.new24 != null) logged.set(addDays(today, -1), r.report.new24);
   const model = new Map((r.forecast?.pastDays ?? []).map((d) => [d.date, d.snow]));
   return Array.from({ length: n }, (_, i) => {
     const date = addDays(today, i - n);
@@ -816,7 +816,7 @@ function renderDetail(r) {
     ${meter('Runs', rep.trails?.open ?? 0, rep.trails?.total)}
     <ul class="report">
       ${rep.depth != null ? `<li><span>Base depth</span><b>${depth(rep.depth)}</b></li>` : ''}
-      <li><span>Reported new snow</span><b>${inches(rep.new24)} 24 hr · ${inches(rep.new48)} 48 hr</b></li>
+      <li><span>Reported new snow</span><b>${rep.staleSince ? `no report since ${esc(monthDay(String(rep.staleSince).slice(0, 10)))}` : `${inches(rep.new24)} 24 hr · ${inches(rep.new48)} 48 hr`}</b></li>
       ${rep.seasonTotal != null ? `<li><span>Season snowfall so far</span><b>${inches(rep.seasonTotal)}</b></li>` : ''}
       ${rep.surface ? `<li><span>Surface</span><b>${esc(SURFACE[rep.surface] ?? rep.surface)}</b></li>` : ''}
 

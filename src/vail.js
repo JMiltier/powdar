@@ -43,9 +43,15 @@ export function embedded(html, name, from = 0) {
   return null;
 }
 
+// Both units are given, each rounded to whole numbers ("0 in" / "1 cm" for a dusting): the
+// centimeters, to the nearest tenth of an inch, when they agree with the inches (within the inches'
+// rounding), so light snow isn't lost to rounding; otherwise the inches as given.
 const inches = (v) => {
   const n = Number(v?.Inches);
-  return Number.isFinite(n) ? n : null;
+  const cm = Number(v?.Centimeters);
+  if (!Number.isFinite(n)) return Number.isFinite(cm) ? Math.round((cm / 2.54) * 10) / 10 : null;
+  if (Number.isFinite(cm) && Math.abs(cm / 2.54 - n) <= 0.5) return Math.round((cm / 2.54) * 10) / 10;
+  return n;
 };
 
 // Snow report → the same shape as a Colorado Ski Country report.

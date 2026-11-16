@@ -345,6 +345,15 @@ export async function getText(fetchFn, url, { tries = 3, backoff = 2000 } = {}) 
 }
 
 // The resort's live lift feed beats the once-a-morning snow report for lift counts.
+// A report not updated in over two days: its 24-hour / 48-hour / 7-day snow is old news, not today's
+// (the depth, surface and season total still stand). Marked so the app can say how old it is.
+export function freshSnow(report, now) {
+  if (!report?.updated) return report;
+  const t = /^\d{4}-\d{2}-\d{2}$/.test(report.updated) ? Date.parse(`${report.updated}T14:00:00Z`) : Date.parse(report.updated);
+  if (!Number.isFinite(t) || now - t <= 48 * 3_600_000) return report;
+  return { ...report, new24: null, new48: null, new7d: null, staleSince: report.updated };
+}
+
 function withLiveLifts(report, live) {
   if (!report || !live?.total) return report;
   return { ...report, lifts: { open: live.open, total: live.total } };
@@ -365,11 +374,23 @@ export async function pool(items, limit, fn) {
   return out;
 }
 
-// Snow the resort reported, day by day (the last 14 days): each morning's 24-hour figure is the day
-// before's snowfall; the 48-hour figure fills in the day before that when it's missing. A day keeps
+// Snow the resort reported, day by day (the last 14 days): each report's 24-hour figure goes on the
+// day it covers (see reportDay); the 48-hour figure fills in the day before that when it's missing. A day keeps
 // the most reported for it (a later report that day can only add to the overnight number).
 // Each entry also keeps the weather models' (uncorrected) estimate for that day, when known, so the
 // two can be compared (see modelCorrection).
+// Which day a report's "24 hours" means: reports go out in the morning, covering the day before and
+// the night (so the day before the update); one updated mid-afternoon or later mostly covers that
+// day itself. Nothing for a report more than two days old.
+export function reportDay(updated, today) {
+  if (!updated) return addDays(today, -1);
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(updated) ? null : new Date(updated);
+  const day = d ? localDate(d) : updated;
+  if (day < addDays(today, -2)) return null;
+  const hour = d ? Number(new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', hourCycle: 'h23' }).format(d)) : 7;
+  return hour >= 15 ? day : addDays(day, -1);
+}
+
 export function snowLog(prev, today, report, modelPast = {}) {
   const log = new Map((prev ?? []).filter((e) => e.date >= addDays(today, -14)).map((e) => [e.date, { ...e }]));
   const put = (date, v) => {
@@ -379,9 +400,10 @@ export function snowLog(prev, today, report, modelPast = {}) {
     if (modelPast[date] != null) e.model = modelPast[date];
     log.set(date, e);
   };
-  if (report?.new24 != null) {
-    put(addDays(today, -1), report.new24);
-    if (report.new48 != null && !log.has(addDays(today, -2))) put(addDays(today, -2), Math.max(0, report.new48 - report.new24));
+  const day = report?.new24 != null ? reportDay(report.updated, today) : null;
+  if (day) {
+    put(day, report.new24);
+    if (report.new48 != null && !log.has(addDays(day, -1))) put(addDays(day, -1), Math.max(0, report.new48 - report.new24));
   }
   // (Days already logged get the models' estimate too, once there is one.)
   for (const e of log.values()) if (e.model == null && modelPast[e.date] != null) e.model = modelPast[e.date];
@@ -663,7 +685,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     if (c?.vail || c?.own) Object.assign(facts, { open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when });
     // A report from a closed resort is usually last season's leftovers.
     // (Vail Resorts' own reports are current even before opening day: keep those.)
-    const report = live && (c.isOpen || c.vail || c.own) ? withLiveLifts(c.report, liftsById[r.id]) : null;
+    const report = live && (c.isOpen || c.vail || c.own) ? freshSnow(withLiveLifts(c.report, liftsById[r.id]), now) : null;
     return {
       id: r.id,
       name: r.name,
