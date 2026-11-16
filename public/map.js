@@ -172,6 +172,11 @@ function spotsFor(w, h) {
   const gy = h / 2 + DOT_R + 1;
   const out = [
     [gx, 0, 0], [-gx, 0, 15], [0, -gy, 25], [0, gy, 30],
+    // (Above and below, a few pixels further out but still touching: room past a neighbor's dot in a
+    // tight cluster like Aspen's.)
+    [0, -gy - 3, 27], [0, gy + 3, 32],
+    // (And slid a quarter-width either way, still over or under the dot: past a neighbor's dot to the side.)
+    [w / 4, -gy - 3, 28], [-w / 4, -gy - 3, 28], [w / 4, gy + 3, 33], [-w / 4, gy + 3, 33],
     [gx - 6, -gy + 2, 35], [gx - 6, gy - 2, 40], [-gx + 6, -gy + 2, 45], [-gx + 6, gy - 2, 50],
   ];
   for (let dx = -Math.round(1.5 * w); dx <= 1.5 * w; dx += 8) {
@@ -897,7 +902,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         // A hint for this resort (labelHints): its spot, touching the dot, wins wherever it fits.
         const hint = labelHints[it.r.id];
         const side = Math.abs(s[1]) > Math.abs(s[0]) * 0.6 ? (s[1] < 0 ? 'N' : 'S') : s[0] > 0 ? 'E' : 'W';
-        const hinted = !hint ? 0 : hint === 'touch' ? (tail ? 2500 : 0) : tail ? 0 : side === hint ? -2200 : 0;
+        const hinted = !hint ? 0 : hint === 'touch' ? (tail ? 2500 : 0) : tail ? 0 : side === hint ? -3400 : 0;
         it.cands.push({ s, box, tail, cost: lead.len * lead.len + (s[2] ?? 60) + (tail ? LINE_COST : 0) + out * OUTWARD + hinted });
       }
       it.cands.sort((a, b) => a.cost - b.cost);
@@ -1340,6 +1345,11 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         const toCluster = linesAfter === linesBefore && gained.length && gained.every((o) => crowdOf(o) > crowdOf(it));
         // (And no label moved aside ends up on a long line: freeing one spot mustn't cost a sprawl.)
         const noSprawl = blockers.every((o) => lineLen(o) <= maxLead * 1.3);
+        // (Or a resort's hinted spot (labelHints), touching its dot, for no more lines and a little more
+        // line length at most.)
+        const hint = labelHints[it.r.id];
+        const hinted = hint && hint !== 'touch' && (Math.abs(c.s[1]) > Math.abs(c.s[0]) * 0.6 ? (c.s[1] < 0 ? 'N' : 'S') : c.s[0] > 0 ? 'E' : 'W') === hint;
+        if (ok && noSprawl && hinted && linesAfter <= linesBefore && lenAfter <= lenBefore + 40) break;
         if (ok && noSprawl && (linesAfter < linesBefore || toCluster) && lenAfter <= lenBefore + 60) break;
         for (const [o, v] of saved) pick.set(o, v);
       }

@@ -2105,7 +2105,9 @@ const CO_TOWNS = [
 // Where some labels read best, when there's room (map.js labelHints): above / below / right / left of
 // the dot and touching it, or just touching it on any side.
 const LABEL_HINTS = {
-  'copper-mountain': 'N', powderhorn: 'S', eldora: 'touch', 'aspen-highlands': 'touch',
+  'copper-mountain': 'N', powderhorn: 'S', eldora: 'touch',
+  // Aspen's four, compass-style (each on its own side of the cluster, as the mountains lie).
+  snowmass: 'W', buttermilk: 'N', 'aspen-highlands': 'S',
 };
 
 // Utah's towns, as Colorado's: the cities, then the ski towns and the ones on the way.
