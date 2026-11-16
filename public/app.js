@@ -316,14 +316,15 @@ function legendFor(layer) {
       <span class="legend-keys">${layer === 'satsnow' ? '<i class="sw-mini sw-cyan"></i><span>Snow</span><i class="sw-mini sw-white"></i><span>Cloud</span>' : '<span>NASA satellite photo</span>'}</span>`;
   }
   if (layer === 'snowcast') {
-    const { day, amount, areas, shown = amount } = state.cast;
+    const { day, amount, areas, any = true } = state.cast;
     const amt = (v) => (metric() ? `${Math.round(v * 2.54)} cm` : `${v}″`);
     const period = ['Next 24h', '24–48h', '48–72h'][day - 1];
     return `<button type="button" class="day-step" data-cast-day="-1" aria-label="Earlier" ${day <= 1 ? 'disabled' : ''}>‹</button>
       <span class="radar-time">${period}</span>
       <button type="button" class="day-step" data-cast-day="1" aria-label="Later" ${day >= 3 ? 'disabled' : ''}>›</button>
-      <button type="button" class="snow-style" data-cast-amount title="${shown < amount ? `None at ${amt(amount)}+: showing ${amt(shown)}+` : ''}" aria-label="Chance of at least ${shown} inches${shown < amount ? ` (none at ${amount})` : ''}; tap for another amount">${amt(shown)}+<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 0 1 8.6-3.5M13 8a5 5 0 0 1-8.6 3.5M11.5 2v2.7H8.8M4.5 14v-2.7h2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-      <span class="legend-keys cast-key">${areas === 0 ? `<span class="muted">None likely</span>`
+      ${any ? '' : '<span class="muted">None expected</span>'}
+      <button type="button" class="snow-style" data-cast-amount ${any ? '' : 'hidden'} aria-label="Chance of at least ${amount} inches; tap for another amount">${amt(amount)}+<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 0 1 8.6-3.5M13 8a5 5 0 0 1-8.6 3.5M11.5 2v2.7H8.8M4.5 14v-2.7h2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <span class="legend-keys cast-key" ${any ? '' : 'hidden'}>${areas === 0 ? `<span class="muted">None at ${amt(amount)}+</span>`
         : '<i class="c1"></i><i class="c2"></i><i class="c3"></i><span>10–70%+</span>'}</span>`;
   }
   if (layer === 'radar') {
@@ -2074,16 +2075,7 @@ function startMap() {
     onOutlook: (season) => { state.outlookSeason = season; render(); },
     // Each radar frame: just update the key's button and time (no full re-render while playing).
     onRadar: (r) => { state.radar = r; syncRadarKey(); },
-    onCast: (c) => {
-      const cycling = state.cast.cycling;
-      state.cast = { ...state.cast, ...c, cycling: false };
-      // Stepped up to an amount with nothing on the map: on round to the smallest.
-      if (cycling && c.shown < c.amount) {
-        state.cast.amount = CAST_AMOUNTS[0];
-        return state.map.setCast(state.cast.day, state.cast.amount);
-      }
-      if (state.layer === 'snowcast') $('#legend').innerHTML = legendFor('snowcast');
-    },
+    onCast: (c) => { state.cast = { ...state.cast, ...c }; if (state.layer === 'snowcast') $('#legend').innerHTML = legendFor('snowcast'); },
     places: state.code === 'CO' ? CO_TOWNS : [],
   });
   state.map.setMarks(state.marks);
@@ -2279,12 +2271,7 @@ document.addEventListener('click', (e) => {
   if (castDay || t.closest('[data-cast-amount]')) {
     const c = state.cast;
     if (castDay) c.day = Math.min(3, Math.max(1, c.day + Number(castDay.dataset.castDay)));
-    else {
-      // From the amount showing (which may be below the one asked for); an amount with nothing on the
-      // map is skipped (see onCast), so each tap visibly changes it.
-      c.amount = CAST_AMOUNTS[(CAST_AMOUNTS.indexOf(c.shown ?? c.amount) + 1) % CAST_AMOUNTS.length];
-      c.cycling = true;
-    }
+    else c.amount = CAST_AMOUNTS[(CAST_AMOUNTS.indexOf(c.amount) + 1) % CAST_AMOUNTS.length];
     state.map?.setCast(c.day, c.amount);
     $('#legend').innerHTML = legendFor('snowcast');
     return;

@@ -569,19 +569,14 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     return castCache.get(layer);
   };
   async function snowcastLayer() {
-    // Nothing at the chosen amount: the next smaller amount that has areas, rather than an empty map.
     // (Only areas on the visible map count: the query covers the neighboring states too.)
     const view = map.getBounds();
     const onMap = (d) => (d.features ?? []).filter((f) => L.geoJSON(f).getBounds().intersects(view)).length;
-    let shown = cast.amount;
-    let data = await castData(cast.day, shown);
-    for (const a of CAST_AMOUNTS.filter((x) => x < cast.amount).reverse()) {
-      if (onMap(data)) break;
-      data = await castData(cast.day, a);
-      shown = a;
-    }
-    if (!onMap(data)) shown = cast.amount;
-    onCast?.({ ...cast, shown, areas: onMap(data), start: data.features?.[0]?.properties?.start_time ?? null });
+    const data = await castData(cast.day, cast.amount);
+    const areas = onMap(data);
+    // (Whether any amount has areas: with none at the smallest, there's nothing to choose between.)
+    const any = cast.amount === CAST_AMOUNTS[0] ? areas > 0 : onMap(await castData(cast.day, CAST_AMOUNTS[0])) > 0;
+    onCast?.({ ...cast, areas, any, start: data.features?.[0]?.properties?.start_time ?? null });
     return L.geoJSON(data, {
       pane: 'snow', interactive: false,
       style: (f) => ({ className: 'snowcast', stroke: true, weight: 0.8, color: '#7c3aed', opacity: 0.6, fillColor: '#8b5cf6', fillOpacity: CAST_SHADES[f.properties.dn] ?? 0.25 }),
@@ -1256,7 +1251,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
           if (!n) { ok = false; break; }
           pick.set(o, n);
         }
-        if (ok) return c;
+        // (Moving others aside mustn't leave one of them on a long line.)
+        if (ok && blockers.every((o) => !pick.get(o).tail || Math.hypot(pick.get(o).tail.seg[2] - pick.get(o).tail.seg[0], pick.get(o).tail.seg[3] - pick.get(o).tail.seg[1]) <= maxLead * 1.5)) return c;
         pick.set(it, null);
         for (const [o, v] of saved) pick.set(o, v);
       }
@@ -1332,7 +1328,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         const crowdOf = (o) => labels.filter((x) => x !== o && Math.hypot(x.p.x - o.p.x, x.p.y - o.p.y) < 60).length;
         const gained = blockers.filter((o) => pick.get(o)?.tail && !saved.find(([x]) => x === o)[1]?.tail);
         const toCluster = linesAfter === linesBefore && gained.length && gained.every((o) => crowdOf(o) > crowdOf(it));
-        if (ok && (linesAfter < linesBefore || toCluster) && lenAfter <= lenBefore + 60) break;
+        // (And no label moved aside ends up on a long line: freeing one spot mustn't cost a sprawl.)
+        const noSprawl = blockers.every((o) => lineLen(o) <= maxLead * 1.3);
+        if (ok && noSprawl && (linesAfter < linesBefore || toCluster) && lenAfter <= lenBefore + 60) break;
         for (const [o, v] of saved) pick.set(o, v);
       }
     }
