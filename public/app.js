@@ -2088,6 +2088,12 @@ const CO_TOWNS = [
   ['Cañon City', 38.441, -105.2425], ['Lake City', 38.03, -107.3156], ['Georgetown', 39.7061, -105.6975], ['Basalt', 39.3689, -107.0328],
 ];
 
+// Where some labels read best, when there's room (map.js labelHints): above / below / right / left of
+// the dot and touching it, or just touching it on any side.
+const LABEL_HINTS = {
+  'copper-mountain': 'N', powderhorn: 'S', eldora: 'touch', 'aspen-highlands': 'touch',
+};
+
 // Utah's towns, as Colorado's: the cities, then the ski towns and the ones on the way.
 const UT_TOWNS = [
   ['Salt Lake City', 40.7608, -111.891, true], ['Ogden', 41.223, -111.9738, true], ['Provo', 40.2338, -111.6585, true],
@@ -2111,6 +2117,7 @@ function startMap() {
     onRadar: (r) => { state.radar = r; syncRadarKey(); },
     onCast: (c) => { state.cast = { ...state.cast, ...c }; if (state.layer === 'snowcast') $('#legend').innerHTML = legendFor('snowcast'); },
     places: state.code === 'CO' ? CO_TOWNS : state.code === 'UT' ? UT_TOWNS : [],
+    labelHints: LABEL_HINTS,
   });
   state.map.setMarks(state.marks);
   applyLayer();

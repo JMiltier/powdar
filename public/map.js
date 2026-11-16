@@ -237,7 +237,9 @@ export const SNOW_COLOR = [
   [146, 74, 204, 232], [200, 64, 176, 238], [236, 80, 140, 244], [236, 80, 140, 244], [236, 80, 140, 244], [236, 80, 140, 244],
 ];
 
-export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [], onOutlook, onRadar, onCast }) {
+// labelHints: { resortId: 'N' | 'S' | 'E' | 'W' | 'touch' }: where a label should sit when there's room
+// (above, below, right or left of its dot, touching it; or just touching it, any side).
+export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [], onOutlook, onRadar, onCast, labelHints = {} }) {
   const bounds = L.latLngBounds(resorts.map((r) => r.at));
   if (extend) bounds.extend(extend);
   // A state with a single resort still needs some area around it.
@@ -889,7 +891,11 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         // Outward: in a cluster, a label pointing back across its neighbors costs extra (the
         // cartographer's rule: Keystone, on the cluster's east side, labels east; Copper, west).
         const out = it.away ? Math.max(0, -(s[0] * it.away[0] + s[1] * it.away[1]) / (Math.hypot(s[0], s[1]) || 1)) : 0;
-        it.cands.push({ s, box, tail, cost: lead.len * lead.len + (s[2] ?? 60) + (tail ? LINE_COST : 0) + out * OUTWARD });
+        // A hint for this resort (labelHints): its spot, touching the dot, wins wherever it fits.
+        const hint = labelHints[it.r.id];
+        const side = Math.abs(s[1]) > Math.abs(s[0]) * 0.6 ? (s[1] < 0 ? 'N' : 'S') : s[0] > 0 ? 'E' : 'W';
+        const hinted = !hint ? 0 : hint === 'touch' ? (tail ? 2500 : 0) : tail ? 0 : side === hint ? -2200 : 0;
+        it.cands.push({ s, box, tail, cost: lead.len * lead.len + (s[2] ?? 60) + (tail ? LINE_COST : 0) + out * OUTWARD + hinted });
       }
       it.cands.sort((a, b) => a.cost - b.cost);
     };
