@@ -847,7 +847,9 @@ function renderDetail(r) {
   const closedLifts = L ? L.lifts.filter((l) => l.status === 'closed') : [];
   const recent = (iso) => iso && Date.now() - Date.parse(iso) < 2 * 864e5;
   const liftSection = L ? `
-    <h3 class="section">Lifts <span class="section-count">${L.open} of ${L.total} open${L.hold ? ` · ${L.hold} on hold` : ''}${L.scheduled ? ` · ${L.scheduled} scheduled` : ''}</span></h3>
+    <h3 class="section">Lifts <span class="section-count">${!L.open && !L.hold && !L.scheduled && L.ranToday
+      ? `closed for the night · ${L.ranToday} ran today`
+      : `${L.open} of ${L.total} open${L.hold ? ` · ${L.hold} on hold` : ''}${L.scheduled ? ` · ${L.scheduled} scheduled` : ''}`}</span></h3>
     ${activeLifts.length ? `<ul class="lifts">${activeLifts.map(liftRow).join('')}</ul>` : ''}
     ${closedLifts.length ? `<details class="more-lifts"><summary>${activeLifts.length ? `${closedLifts.length} closed` : `All ${closedLifts.length} lifts closed`}</summary>
       <ul class="lifts">${closedLifts.map(liftRow).join('')}</ul></details>` : ''}
@@ -1325,7 +1327,7 @@ function overviewCard() {
       ${headlineInsight() ? `<span class="row-sub overview-line">${headlineInsight()}</span>` : ''}
       <span class="card-stats">
         <span class="cs"><b>${t.open.length}/${state.data.resorts.length}</b><small>Open</small></span>
-        <span class="cs"><b>${t.lifts[1] ? `${t.lifts[0]}` : '–'}</b><small>Lifts spinning</small></span>
+        <span class="cs"><b>${t.lifts[1] ? `${t.lifts[0]}` : '–'}</b><small>Lifts today</small></span>
         <span class="cs"><b class="lvl-${seasonLevel(pct)}">${pct != null ? `${pct}%` : '–'}</b><small>Snowpack</small></span>
         <span class="cs"><b>${inches(t.week.v)}</b><small>Most +7d</small></span>
       </span>
@@ -1410,7 +1412,7 @@ function renderOverview() {
   $('#detail').innerHTML = `
     <div class="stats stats-6">
       ${tile(`${t.open.length}`, 'resorts open', `of ${d.resorts.length}`)}
-      ${tile(t.lifts[1] ? `${t.lifts[0]}` : '–', 'lifts spinning', t.lifts[1] ? `of ${t.lifts[1]} at open resorts` : '')}
+      ${tile(t.lifts[1] ? `${t.lifts[0]}` : '–', 'lifts running today', t.lifts[1] ? `of ${t.lifts[1]} at open resorts` : '')}
       ${tile(t.runs[1] ? `${t.runs[0]}` : '–', 'runs open', t.runs[1] ? `of ${t.runs[1]}` : '')}
       ${tile(pct != null ? `${pct}%` : '–', 'of normal snowpack', 'ski country')}
       ${tile(inches(t.fresh.v), 'most new snow', t.fresh.v >= 0.5 ? esc(t.fresh.r.name) : 'last 24 hrs')}

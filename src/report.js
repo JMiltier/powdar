@@ -354,9 +354,18 @@ export function freshSnow(report, now) {
   return { ...report, new24: null, new48: null, new7d: null, staleSince: report.updated };
 }
 
+// The lifts number, meaning "lifts running today" the way the resorts' own reports do: those turning
+// now while any are; before they start, those scheduled; once they've stopped for the night, the most
+// that ran today.
+export function liftsToday(live) {
+  const now = (live.open ?? 0) + (live.hold ?? 0);
+  if (now > 0) return now;
+  if (live.ranToday > 0) return live.ranToday;
+  return live.scheduled ?? 0;
+}
 function withLiveLifts(report, live) {
   if (!report || !live?.total) return report;
-  return { ...report, lifts: { open: live.open, total: live.total } };
+  return { ...report, lifts: { open: liftsToday(live), total: live.total } };
 }
 
 // Run tasks a few at a time so we're polite to api.weather.gov.
@@ -559,6 +568,14 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     return [id, { snow, terrain }];
   }).then((rows) => rows));
   for (const [id, v] of Object.entries(vail)) if (v.terrain) liftsById[id] = v.terrain;
+  // The most lifts seen running today (live feeds read 0 once lifts close for the night, while
+  // Colorado Ski Country's reports keep the day's count): kept per day across updates.
+  for (const [id, l] of Object.entries(liftsById)) {
+    if (!l?.total) continue;
+    const prev = prevLifts[id];
+    const before = prev?.day === today ? prev.ranToday ?? 0 : 0;
+    liftsById[id] = { ...l, day: today, ranToday: Math.max(before, (l.open ?? 0) + (l.hold ?? 0)) };
+  }
   // Wolf Creek's own snow report (no feed covers it).
   let wolf = null;
   try {

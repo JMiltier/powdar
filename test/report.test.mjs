@@ -240,3 +240,10 @@ test('nightFor: a village gondola running to 5 pm, or a closed lift, is not nigh
   assert.equal(nightFor({}, { lifts: [{ name: 'Riverfront', status: 'closed', closes: '20:00' }] }, '2026-12-18'), null);
   assert.equal(nightFor({}, { lifts: [{ name: 'River Run Gondola', status: 'open', closes: '20:00' }] }, '2026-12-18', false), null); // resort not open
 });
+
+test('liftsToday: running now, else the day’s peak after close, else scheduled', async () => {
+  const { liftsToday } = await import('../src/report.js');
+  assert.equal(liftsToday({ open: 4, hold: 1, scheduled: 0, ranToday: 6 }), 5);
+  assert.equal(liftsToday({ open: 0, hold: 0, scheduled: 0, ranToday: 6 }), 6); // after hours
+  assert.equal(liftsToday({ open: 0, hold: 0, scheduled: 5, ranToday: 0 }), 5); // before opening
+});
