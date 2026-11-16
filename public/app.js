@@ -7,8 +7,10 @@ const STATES_URL = 'states.json';
 // Colorado only for now. Set to true (and build with US_STATES=1) to bring back the state picker and
 // every other state's map.
 const ALL_STATES = false;
+// Utah is built and ready but off for now; set to true (and build with UTAH=1) to bring it back.
+const WITH_UTAH = false;
 // Every state with resorts. Anything else in the address or storage is ignored (e.g. an old bad "#half").
-const STATE_CODES = !ALL_STATES ? new Set(['CO', 'UT']) : new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
+const STATE_CODES = !ALL_STATES ? new Set(WITH_UTAH ? ['CO', 'UT'] : ['CO']) : new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
 const validCode = (c) => (c && STATE_CODES.has(String(c).toUpperCase()) ? String(c).toUpperCase() : null);
 const STORE = {
   data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', sort: 'cs:sort', order: 'cs:order', unit: 'cs:unit', dist: 'cs:dist', labels: 'cs:labels', snowStyle: 'cs:snowStyle2', panel: 'cs:panel',

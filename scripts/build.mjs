@@ -106,34 +106,37 @@ await writeFile(new URL('../public/data/co.json', import.meta.url), JSON.stringi
 console.log('Wrote Colorado');
 
 // ---------- Utah: the same pipeline as Colorado (src/report.js REGIONS.UT) ----------
-// Its weather models every 2 hours (Colorado's hourly), to stay inside the free forecast allowance;
-// everything else (status, reports, lifts, NWS) every update. Without models this time, the last
-// published forecasts carry over.
-try {
-  const prevUt = await published('data/ut.json');
-  const utModelsAge = Date.now() - Date.parse(prevUt?.sources?.modelsAt ?? 0);
-  const utSkip = Boolean(prevUt && utModelsAge < 2 * 3_600_000);
-  const ut = await buildReport({
-    region: STATE_REGIONS.UT, log: (msg) => console.warn(`Utah: ${msg}`), skipModels: utSkip,
-    prevLifts: Object.fromEntries((prevUt?.resorts ?? []).filter((r) => r.lifts).map((r) => [r.id, r.lifts])),
-    prevEnsemble: prevUt?.ensemble ?? null,
-    prevResorts: Object.fromEntries((prevUt?.resorts ?? []).map((r) => [r.id, r])),
-  });
-  if (utSkip || !Object.values(ut.sources.models ?? {}).some(Boolean)) {
-    // (Models skipped or unreachable: the last full forecasts, up to 12 hours old.)
-    if (prevUt && utModelsAge < 12 * 3_600_000) {
-      const old = new Map(prevUt.resorts.map((r) => [r.id, r.forecast]));
-      for (const r of ut.resorts) if (old.get(r.id)?.sources?.length > 1) r.forecast = old.get(r.id);
-      ut.sources.modelsAt = prevUt.sources.modelsAt;
-      ut.sources.modelsReused = true;
+// Off for now (Powdar is Colorado-only); UTAH=1 or US_STATES=1 builds it.
+if (process.env.UTAH === '1' || process.env.US_STATES === '1') {
+  // Its weather models every 2 hours (Colorado's hourly), to stay inside the free forecast allowance;
+  // everything else (status, reports, lifts, NWS) every update. Without models this time, the last
+  // published forecasts carry over.
+  try {
+    const prevUt = await published('data/ut.json');
+    const utModelsAge = Date.now() - Date.parse(prevUt?.sources?.modelsAt ?? 0);
+    const utSkip = Boolean(prevUt && utModelsAge < 2 * 3_600_000);
+    const ut = await buildReport({
+      region: STATE_REGIONS.UT, log: (msg) => console.warn(`Utah: ${msg}`), skipModels: utSkip,
+      prevLifts: Object.fromEntries((prevUt?.resorts ?? []).filter((r) => r.lifts).map((r) => [r.id, r.lifts])),
+      prevEnsemble: prevUt?.ensemble ?? null,
+      prevResorts: Object.fromEntries((prevUt?.resorts ?? []).map((r) => [r.id, r])),
+    });
+    if (utSkip || !Object.values(ut.sources.models ?? {}).some(Boolean)) {
+      // (Models skipped or unreachable: the last full forecasts, up to 12 hours old.)
+      if (prevUt && utModelsAge < 12 * 3_600_000) {
+        const old = new Map(prevUt.resorts.map((r) => [r.id, r.forecast]));
+        for (const r of ut.resorts) if (old.get(r.id)?.sources?.length > 1) r.forecast = old.get(r.id);
+        ut.sources.modelsAt = prevUt.sources.modelsAt;
+        ut.sources.modelsReused = true;
+      }
     }
+    await writeFile(new URL('../public/data/ut.json', import.meta.url), JSON.stringify(ut));
+    console.log('Wrote Utah');
+  } catch (err) {
+    console.warn(`Utah failed (${err.message}); keeping the last one.`);
+    const last = await published('data/ut.json');
+    if (last) await writeFile(new URL('../public/data/ut.json', import.meta.url), JSON.stringify(last));
   }
-  await writeFile(new URL('../public/data/ut.json', import.meta.url), JSON.stringify(ut));
-  console.log('Wrote Utah');
-} catch (err) {
-  console.warn(`Utah failed (${err.message}); keeping the last one.`);
-  const last = await published('data/ut.json');
-  if (last) await writeFile(new URL('../public/data/ut.json', import.meta.url), JSON.stringify(last));
 }
 
 // The snow forecast's chance areas (src/snowcast.js); the last published copy if WPC is unreachable.
