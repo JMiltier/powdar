@@ -2101,22 +2101,6 @@ const CO_TOWNS = [
   ['Delta', 38.7422, -108.069], ['Cortez', 37.3489, -108.5859], ['Walden', 40.7317, -106.2836], ['Trinidad', 37.1695, -104.5005],
   ['Cañon City', 38.441, -105.2425], ['Lake City', 38.03, -107.3156], ['Georgetown', 39.7061, -105.6975], ['Basalt', 39.3689, -107.0328],
 ];
-
-// Where some labels read best (map.js labelHints): 'N' / 'S' / 'E' / 'W' (that side, touching the dot)
-// or 'touch'; or an exact spot, [dx, dy, width]: from the dot to the label's middle, for a label that
-// wide. The exact spots are Colorado laid out by hand for a 412-wide phone (the automatic layout only
-// fills in around them, and takes over where one doesn't fit): Copper, Vail and Loveland right at
-// their dots, Echo east of Loveland.
-const LABEL_HINTS = {
-  eldora: [16, -17.5, 86], 'echo-mountain': [24.5, -15.5, 59], loveland: [-6, -16.5, 90], vail: [-28, -18.5, 64],
-  'winter-park': [-59.5, -3.5, 103], 'granby-ranch': [-53, 0.5, 90], 'beaver-creek': [-59.5, 1.5, 103],
-  'copper-mountain': [-48.5, 6.5, 81], 'arapahoe-basin': [49.5, 9.5, 85], keystone: [52.5, 22.5, 91],
-  breckenridge: [35, 26.5, 74], 'howelsen-hill': [-49.5, 0.5, 84], steamboat: [62, 0.5, 108], sunlight: [-55.5, 0.5, 95],
-  // Aspen: Highlands' dot has Buttermilk's right above it and Snowmass' and Aspen Mountain's either
-  // side, so its label goes below; the others on their own sides.
-  snowmass: [-62, 2, 108], 'aspen-highlands': 'S', buttermilk: 'N', 'aspen-mountain': 'E', powderhorn: 'S',
-};
-
 // Utah's towns, as Colorado's: the cities, then the ski towns and the ones on the way.
 const UT_TOWNS = [
   ['Salt Lake City', 40.7608, -111.891, true], ['Ogden', 41.223, -111.9738, true], ['Provo', 40.2338, -111.6585, true],
@@ -2173,7 +2157,6 @@ function startMap() {
     onRadar: (r) => { state.radar = r; syncRadarKey(); },
     onCast: (c) => { state.cast = { ...state.cast, ...c }; if (state.layer === 'snowcast') $('#legend').innerHTML = legendFor('snowcast'); },
     places: state.code === 'CO' ? CO_TOWNS : state.code === 'UT' ? UT_TOWNS : [],
-    labelHints: LABEL_HINTS,
   });
   if (useInset) {
     insetEl = document.createElement('div');
@@ -2191,7 +2174,6 @@ function startMap() {
       getPadding: () => ({ top: 18, left: 0, right: 0, bottom: 0 }),
       onSelect: (id) => select(id),
       places: (state.code === 'UT' ? UT_TOWNS : []),
-      labelHints: LABEL_HINTS,
     });
     // (Taps in the box are the box's, not the big map's underneath.)
     L.DomEvent.disableClickPropagation(insetEl);

@@ -1,7 +1,7 @@
 // The map: one fixed view of every Colorado resort (no panning or zooming). Each resort has a dot at
 // its real spot and a light label beside it: a small colored chip with the number, then the name as
-// plain outlined text. Labels sit right next to their dot when there's room (right side first); in
-// crowded spots (I-70) they step out a little with a thin hairline back to the dot.
+// plain outlined text. Every label has a short line to its dot, as short as the room allows (right
+// side first).
 const L = window.L;
 
 // Esri's hillshade: just the mountains, no town names or roads to compete with the resorts, with a
@@ -150,12 +150,11 @@ const OUTLOOK_SHADES = {
 };
 
 const GAP = 1; // (each side: labels sit 2 px apart)
-// The screen width the exact label spots (labelHints [dx, dy, width]) were laid out for: a 412-px phone.
-const PIN_WIDTH = 412;
 const DOT_R = 4;
-// What any hairline costs on top of its length: labels right by their dots are worth a lot (a label
-// with a line, even a short one, is harder to read than one touching its dot).
-const LINE_COST = 2600;
+// Every label has a line to its dot, one look for all of them (so it's always clear which dot a label
+// belongs to), and the lines are as short as the room allows: at least STUB px between the dot's rim
+// and the label.
+const STUB = 6;
 // Margin around the resorts when fitting them (labels stick out sideways more than up and down).
 const EDGE_X = 30;
 const EDGE_Y = 14;
@@ -166,33 +165,30 @@ const SHORT = {
   'aspen-highlands': 'Highlands', 'crested-butte': 'Crested Butte', cooper: 'Cooper', 'winter-park': 'Winter Park',
 };
 
-// Where a label may sit, as its center relative to the dot. First the eight classic spots touching
-// the dot (right, left, above, below, corners), then a fine grid further out for crowded clusters.
-// Spots where the label would cover its own point are left out.
+// Where a label may sit, as its center relative to the dot. First the spots nearest the dot, the
+// shortest line away (right, left, above, below, slid along each side, corners), then a fine grid
+// further out for crowded clusters. Nothing nearer the dot than the short line.
 function spotsFor(w, h) {
-  const gx = w / 2 + DOT_R + 3;
-  const gy = h / 2 + DOT_R + 1;
+  const gx = w / 2 + DOT_R + 1 + STUB;
+  const gy = h / 2 + DOT_R + 1 + STUB;
   const out = [
     [gx, 0, 0], [-gx, 0, 15], [0, -gy, 25], [0, gy, 30],
-    // (Above and below, a few pixels further out but still touching: room past a neighbor's dot in a
-    // tight cluster like Aspen's.)
-    [0, -gy - 3, 27], [0, gy + 3, 32],
-    // (And slid a quarter-width either way, still over or under the dot: past a neighbor's dot to the side.)
-    [w / 4, -gy - 3, 28], [-w / 4, -gy - 3, 28], [w / 4, gy + 3, 33], [-w / 4, gy + 3, 33],
+    // (Slid along each side, the dot still facing the label: past a neighbor's dot or label.)
+    ...[-0.4, -0.2, 0.2, 0.4].flatMap((f) => [[f * w, -gy, 28], [f * w, gy, 33]]),
+    ...[-0.3, 0.3].flatMap((f) => [[gx, f * h, 5], [-gx, f * h, 20]]),
     [gx - 6, -gy + 2, 35], [gx - 6, gy - 2, 40], [-gx + 6, -gy + 2, 45], [-gx + 6, gy - 2, 50],
   ];
   for (let dx = -Math.round(1.5 * w); dx <= 1.5 * w; dx += 8) {
     for (let j = -12; j <= 12; j++) {
       const dy = j * (h / 2 + 1);
-      if (Math.abs(dx) < w / 2 + DOT_R + 2 && Math.abs(dy) < h / 2 + DOT_R + 1) continue; // would cover its own dot
+      if (Math.abs(dx) < gx && Math.abs(dy) < gy) continue; // nearer than the short line
       out.push([dx, dy, 60]);
     }
   }
   return out;
 }
 
-// A label at offset s, and the hairline from its nearest edge to the rim of its dot (null when the
-// label already touches the dot).
+// A label at offset s, and the line from its nearest edge (just under it) to the rim of its dot.
 function leader(it, [dx, dy]) {
   const l = it.p.x + dx - it.w / 2;
   const t = it.p.y + dy - it.h / 2;
@@ -201,7 +197,6 @@ function leader(it, [dx, dy]) {
   const vx = nx - it.p.x;
   const vy = ny - it.p.y;
   const len = Math.hypot(vx, vy);
-  if (len <= DOT_R + 7) return { len: 0, seg: null };
   const sx = it.p.x + (vx / len) * (DOT_R + 1);
   const sy = it.p.y + (vy / len) * (DOT_R + 1);
   return { len, seg: [nx, ny, sx, sy] };
@@ -244,9 +239,7 @@ export const SNOW_COLOR = [
   [146, 74, 204, 232], [200, 64, 176, 238], [236, 80, 140, 244], [236, 80, 140, 244], [236, 80, 140, 244], [236, 80, 140, 244],
 ];
 
-// labelHints: { resortId: 'N' | 'S' | 'E' | 'W' | 'touch' }: where a label should sit when there's room
-// (above, below, right or left of its dot, touching it; or just touching it, any side).
-export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [], onOutlook, onRadar, onCast, labelHints = {} }) {
+export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [], onOutlook, onRadar, onCast }) {
   const bounds = L.latLngBounds(resorts.map((r) => r.at));
   if (extend) bounds.extend(extend);
   // A state with a single resort still needs some area around it.
@@ -808,8 +801,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // The label font (style.css) arriving after a first layout would change every label's width: lay
   // out again once it's in.
   document.fonts?.load("700 12px 'Powdar Labels'").then(() => { layoutCache.clear(); if (order.length) layout(); }).catch(() => {});
-  const BUDGET_MS = 90; // the finished layout
-  const TRIAL_MS = 45; // each label size's trial (only to see how many fit)
+  const BUDGET_MS = 160; // the finished layout
+  const TRIAL_MS = 70; // each label size's trial (only to see how many fit)
   const layoutCache = new Map();
   let laidOutHidden = false;
   function layout() {
@@ -836,6 +829,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       el.style.setProperty('--label-scale', scale);
       const attempt = computeLayout(size, pad, start + TRIAL_MS * (i + 1), false);
       if (!best || score(attempt, scale) < score(best, best.scale)) best = { ...attempt, scale, i };
+      if (best.misses === 0) break; // (every name fits at this size: smaller text can't do better)
     }
     el.style.setProperty('--label-scale', best.scale);
     best = { ...computeLayout(size, pad, performance.now() + BUDGET_MS, true), scale: best.scale };
@@ -883,11 +877,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
 
     // Candidate spots for a label at its current width (recomputed if it falls back to chip-only).
     const buildCands = (it, relaxed = false, far = false) => {
-      // (A hint may be an exact spot, [dx, dy, width] from the dot to the label's middle for a label that
-      // wide: tried first, scaled with the label.)
-      const pin = Array.isArray(labelHints[it.r.id]) ? labelHints[it.r.id] : null;
-      const k = pin ? it.w / pin[2] : 1;
-      const spots = it.empty ? [] : [...(pin ? [[pin[0] * k, pin[1] * k, 0, true]] : []), ...spotsFor(it.w, it.h)]; // "no data" resorts show just a grey dot
+      const spots = it.empty ? [] : spotsFor(it.w, it.h); // "no data" resorts show just a grey dot
       it.cands = [];
       for (const s of spots) {
         const box = boxOf(it, s);
@@ -899,25 +889,24 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         const tail = lead.seg ? { seg: lead.seg } : null;
         if (tail && reserved.some((r) => segRect(tail.seg, r))) continue;
         // (Relaxed, for the number-only fallback: a hairline may pass beside other points, and reach further.)
-        if (!relaxed && tail && dots.some((d) => d !== it.p && segPointDist(tail.seg, d) < DOT_R + 3)) continue;
+        // (A dot right against this one, like Buttermilk's and Highlands': the line may graze its edge,
+        // as any line out of the pair must.)
+        if (!relaxed && tail && dots.some((d) => d !== it.p && segPointDist(tail.seg, d) < (Math.hypot(d.x - it.p.x, d.y - it.p.y) < 14 ? DOT_R - 1 : DOT_R + 3))) continue;
         // Labels that matter (open, favorite, filter match) may reach further when they must.
         // (Far: the last try for a full name before number-only.)
-        if (!s[3] && lead.len > (far ? maxLead * 3.2 : (it.prio ?? 0) > 0 ? maxLead * 2.3 : relaxed ? maxLead * 1.5 : maxLead)) continue;
-        // Distance from the dot (squared), a small preference for the classic spots, and a big one for
-        // touching the dot: a hairline is only worth it when there's no room right beside it.
-        // Outward: in a cluster, a label pointing back across its neighbors costs extra (the
-        // cartographer's rule: Keystone, on the cluster's east side, labels east; Copper, west).
+        if (lead.len > (far ? maxLead * 3.2 : (it.prio ?? 0) > 0 ? maxLead * 2.3 : relaxed ? maxLead * 1.5 : maxLead)) continue;
+        // The line's length (squared, and steeper past a short line: one long line is worse than several
+        // a little longer), and a small
+        // preference for the classic spots. Outward: in a cluster, a label pointing back across its
+        // neighbors costs extra (the cartographer's rule: Keystone, on the cluster's east side, labels
+        // east; Copper, west).
         const out = it.away ? Math.max(0, -(s[0] * it.away[0] + s[1] * it.away[1]) / (Math.hypot(s[0], s[1]) || 1)) : 0;
-        // A hint for this resort (labelHints): its spot, touching the dot, wins wherever it fits.
-        const hint = labelHints[it.r.id];
-        const side = Math.abs(s[1]) > Math.abs(s[0]) * 0.6 ? (s[1] < 0 ? 'N' : 'S') : s[0] > 0 ? 'E' : 'W';
-        const hinted = !hint ? 0 : s[3] ? -9000 : Array.isArray(hint) ? 0 : hint === 'touch' ? (tail ? 2500 : 0) : tail ? 0 : side === hint ? -3400 : 0;
-        it.cands.push({ s, box, tail, cost: lead.len * lead.len + (s[2] ?? 60) + (tail ? LINE_COST : 0) + out * OUTWARD + hinted });
+        const long = Math.max(0, lead.len - 25); // (past ~20 px of visible line, length costs much more)
+        // (The area the label and its line cover: a quick first check for clashes.)
+        const ext = tail ? [Math.min(box[0], tail.seg[2]), Math.min(box[1], tail.seg[3]), Math.max(box[2], tail.seg[2]), Math.max(box[3], tail.seg[3])] : box;
+        it.cands.push({ s, box, tail, ext, len: lead.len, cost: lead.len * lead.len + 6 * long * long + (s[2] ?? 60) + out * OUTWARD });
       }
       it.cands.sort((a, b) => a.cost - b.cost);
-      // (On the screen size they were laid out for, an exact spot that fits is the only spot: the other
-      // labels arrange themselves around it. Elsewhere it's just the favorite.)
-      if (it.cands[0]?.s[3] && Math.abs(size.x - PIN_WIDTH) <= 12) it.cands = [it.cands[0]];
     };
     // Far-out spots for a full label (computed once per label, then reused).
     const useFar = (it) => {
@@ -934,10 +923,10 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     const hit = (a, b) => a.box[0] < b.box[2] && a.box[2] > b.box[0] && a.box[1] < b.box[3] && a.box[3] > b.box[1];
     // Hard: labels overlapping, or a pointer running under another label.
     // Hard: labels overlapping, a hairline running under another label, or two hairlines crossing.
-    const clash = (a, b) => hit(a, b)
+    const clash = (a, b) => a.ext[0] < b.ext[2] && a.ext[2] > b.ext[0] && a.ext[1] < b.ext[3] && a.ext[3] > b.ext[1] && (hit(a, b)
       || (a.tail && segRect(a.tail.seg, b.box))
       || (b.tail && segRect(b.tail.seg, a.box))
-      || (a.tail && b.tail && segSeg(a.tail.seg, b.tail.seg));
+      || (a.tail && b.tail && segSeg(a.tail.seg, b.tail.seg)));
     const mid = (it, c) => [it.p.x + c.s[0], it.p.y + c.s[1]];
     // A pair reads as swapped when each label is nearer the other's dot than its own (the two labels'
     // distances to their dots, added up, beaten by a margin with the dots traded), or when close
@@ -1000,6 +989,19 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     pick.clear();
     for (const [k, v] of bestStart.picks) pick.set(k, v);
 
+    // A label's cheapest free spot (used by the moves below).
+    const reseatBest = (it) => {
+      // (Cheapest free spot counting map order too; the sorted base cost is a lower bound.)
+      let c = null;
+      let best = Infinity;
+      for (const x of it.cands) {
+        if (x.cost >= best) break;
+        if (!free(it, x)) continue;
+        const v = costOf(it, x);
+        if (v < best) { best = v; c = x; }
+      }
+      return c;
+    };
     // 2) Improve it: move one label at a time to another valid spot when that shortens things
     //    (sometimes accepting a worse move early on, to escape dead ends). Clashes are never allowed.
     //    The best layout seen is kept: stopping early (slow phone, time's up) never leaves a worse one.
@@ -1012,12 +1014,29 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         if (now < bestSeen.cost) bestSeen = { cost: now, picks: new Map(pick) };
       }
       const it = labels[Math.floor(rand() * labels.length)];
-      const next = it.cands[Math.floor(rand() * it.cands.length)];
+      // (Mostly the nearer spots: they're where the short lines are.)
+      const next = it.cands[Math.floor(rand() ** 3 * it.cands.length)];
       const cur = pick.get(it);
-      if (next === cur || !free(it, next)) continue;
-      const delta = costOf(it, next) - costOf(it, cur); // placing a hidden label is a huge win
-      if (delta < 0 || rand() < Math.exp(-delta / temp)) pick.set(it, next);
+      if (next === cur) continue;
       temp *= 0.9993;
+      if (free(it, next)) {
+        const delta = costOf(it, next) - costOf(it, cur); // placing a hidden label is a huge win
+        if (delta < 0 || rand() < Math.exp(-delta / temp)) pick.set(it, next);
+        continue;
+      }
+      // Or a kick: the one label in the way moves to its own best free spot, if that's better overall
+      // (a chain one-at-a-time moves can't make: Vail nearer its dot, Loveland's label stepping aside).
+      const inWay = labels.filter((o) => o !== it && pick.get(o) && clash(next, pick.get(o)));
+      if (inWay.length !== 1) continue;
+      const o = inWay[0];
+      const oWas = pick.get(o);
+      const before = costOf(it, cur) + costOf(o, oWas);
+      pick.set(it, next);
+      pick.set(o, null);
+      const oNow = reseatBest(o);
+      pick.set(o, oNow);
+      const delta = costOf(it, next) + costOf(o, oNow) - before;
+      if (!oNow || !(delta < 0 || rand() < Math.exp(-delta / temp))) { pick.set(it, cur); pick.set(o, oWas); }
     }
     if (total() > bestSeen.cost) { pick.clear(); for (const [k, v] of bestSeen.picks) pick.set(k, v); }
     // Then settle: each label moves to its cheapest free spot (closest, line-free if there's room),
@@ -1037,18 +1056,6 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     settle();
     // Neighbors trade places: lift two nearby labels, re-seat them both (each order), and keep the
     // cheaper result. Catches "Copper above, Cooper below" swaps one-at-a-time moves can't make.
-    const reseatBest = (it) => {
-      // (Cheapest free spot counting map order too; the sorted base cost is a lower bound.)
-      let c = null;
-      let best = Infinity;
-      for (const x of it.cands) {
-        if (x.cost >= best) break;
-        if (!free(it, x)) continue;
-        const v = costOf(it, x);
-        if (v < best) { best = v; c = x; }
-      }
-      return c;
-    };
     // (Its own small time allowance past the deadline: a slow phone gets the swaps it has time for.)
     const swapPass = () => {
       for (let i = 0; i < labels.length && performance.now() < deadline + 40; i++) {
@@ -1057,8 +1064,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
           const b = labels[j];
           if (Math.hypot(a.p.x - b.p.x, a.p.y - b.p.y) > 160) continue;
           const was = [pick.get(a), pick.get(b)];
-          // Only worth it when one of them has a hairline or no spot at all, or they read swapped.
-          if (was[0] && !was[0].tail && was[1] && !was[1].tail && !inverted(a, was[0], b, was[1])) continue;
+          // Only worth it when one of them is off its nearest spot (or has none), or they read swapped.
+          if (was[0] === a.cands[0] && was[1] === b.cands[0] && !inverted(a, was[0], b, was[1])) continue;
           const before = costOf(a, was[0]) + costOf(b, was[1]);
           let best = null;
           for (const [x, y] of [[a, b], [b, a]]) {
@@ -1324,45 +1331,30 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     settle();
     keepOrder(120);
 
-    // 6) Lines last: for a label with a hairline, try a spot touching its dot, moving the (up to 2)
-    //    labels in the way elsewhere; kept when that means one line fewer, or the line moving onto a
-    //    resort in a cluster, without much more length overall (a lone resort like Powderhorn shouldn't
-    //    hang off a line because Aspen's labels spread into its room).
-    const lineLen = (o) => { const c = pick.get(o); return c?.tail ? Math.hypot(c.tail.seg[2] - c.tail.seg[0], c.tail.seg[3] - c.tail.seg[1]) : 0; };
+    // 6) Shortest lines last: for the longest lines first, try a spot nearer the dot, moving the (up
+    //    to 2) labels in the way elsewhere; kept when the lines involved get shorter overall (squared,
+    //    so evening out one long line counts) and none of the moved ones ends up on a long line.
+    const lineLen = (o) => pick.get(o)?.len ?? 0;
     const linesUntil = performance.now() + 60; // (its own small time allowance)
-    for (const it of labels.filter((o) => pick.get(o)?.tail).sort((a, b) => lineLen(b) - lineLen(a))) {
+    for (const it of labels.filter((o) => pick.get(o)).sort((a, b) => lineLen(b) - lineLen(a))) {
       if (performance.now() > linesUntil) break;
       const was = pick.get(it);
-      if (!was?.tail) continue;
-      for (const c of it.cands.filter((x) => !x.tail).slice(0, 12)) {
+      if (!was) continue;
+      for (const c of it.cands.filter((x) => x.len < was.len - 2).slice(0, 12)) {
         const blockers = labels.filter((o) => o !== it && pick.get(o) && clash(c, pick.get(o)));
         if (blockers.length > 2) continue;
         const saved = [[it, was], ...blockers.map((o) => [o, pick.get(o)])];
-        const linesBefore = saved.filter(([, v]) => v?.tail).length;
-        const lenBefore = saved.reduce((t, [o]) => t + lineLen(o), 0);
+        const sq = () => saved.reduce((t, [o]) => t + lineLen(o) ** 2, 0);
+        const before = sq();
         for (const o of blockers) pick.set(o, null);
         pick.set(it, c);
         let ok = true;
         for (const o of blockers) {
-          let n = bestFree(o);
-          if (!n && !o.compact) { const keep = o.cands; useFar(o); n = bestFree(o); if (!n) o.cands = keep; }
+          const n = bestFree(o);
           if (!n) { ok = false; break; }
           pick.set(o, n);
         }
-        const linesAfter = saved.filter(([o]) => pick.get(o)?.tail).length;
-        const lenAfter = saved.reduce((t, [o]) => t + lineLen(o), 0);
-        // (Or as many lines, but moved from a lone resort onto ones in a cluster, where lines are expected.)
-        const crowdOf = (o) => labels.filter((x) => x !== o && Math.hypot(x.p.x - o.p.x, x.p.y - o.p.y) < 60).length;
-        const gained = blockers.filter((o) => pick.get(o)?.tail && !saved.find(([x]) => x === o)[1]?.tail);
-        const toCluster = linesAfter === linesBefore && gained.length && gained.every((o) => crowdOf(o) > crowdOf(it));
-        // (And no label moved aside ends up on a long line: freeing one spot mustn't cost a sprawl.)
-        const noSprawl = blockers.every((o) => lineLen(o) <= maxLead * 1.3);
-        // (Or a resort's hinted spot (labelHints), touching its dot, for no more lines and a little more
-        // line length at most.)
-        const hint = labelHints[it.r.id];
-        const hinted = hint && (Array.isArray(hint) ? c.s[3] : hint !== 'touch' && (Math.abs(c.s[1]) > Math.abs(c.s[0]) * 0.6 ? (c.s[1] < 0 ? 'N' : 'S') : c.s[0] > 0 ? 'E' : 'W') === hint);
-        if (ok && noSprawl && hinted && linesAfter <= linesBefore && lenAfter <= lenBefore + 40) break;
-        if (ok && noSprawl && (linesAfter < linesBefore || toCluster) && lenAfter <= lenBefore + 60) break;
+        if (ok && sq() < before && blockers.every((o) => lineLen(o) <= maxLead * 1.3) && misordered(it, c) <= misordered(it, was)) break;
         for (const [o, v] of saved) pick.set(o, v);
       }
     }
