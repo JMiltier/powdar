@@ -1154,3 +1154,6 @@ body.reordering .rrow.dragging { transform-origin: center; }
 .place::before { width: 6px; height: 6px; border-radius: 1.5px; opacity: 1; background: #3d4756; box-shadow: 0 0 0 1.5px #fff; }
 :root[data-theme="dark"] .place::before { background: #e6ebf2; box-shadow: 0 0 0 1.5px #0e141c; }
 .place { color: color-mix(in srgb, var(--text) 72%, var(--muted)); text-shadow: 0 0 2px var(--bg), 0 0 2px var(--bg), 0 0 4px var(--bg), 0 0 6px var(--bg); }
+/* Season view: a little bolder (it's the default), so the line and labels read at a glance. */
+.temp-chart:not(.close) .now { stroke-width: 2; }
+.temp-chart:not(.close) .median { stroke-width: 1.4; }
