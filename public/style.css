@@ -1143,7 +1143,12 @@ body.reordering .rrow.dragging { transform-origin: center; }
 :root[data-theme="dark"] .temp-key .k-now { background: #ffa94d; border-top-color: #ffa94d; }
 :root[data-theme="dark"] .temp-key .k-proj { border-top-color: #ffa94d; }
 .temp-key .k-median { border-top-color: var(--muted); }
-.temp-key .k-proj { background: none !important; border-top-style: dashed !important; }
+.temp-key .k-proj { border-top: 0 !important; height: 2.5px !important; background: repeating-linear-gradient(90deg, #e8590c 0 5px, transparent 5px 8px) !important; }
+:root[data-theme="dark"] .temp-key .k-proj { background: repeating-linear-gradient(90deg, #ffa94d 0 5px, transparent 5px 8px) !important; }
+.temp-chart .proj { stroke-width: 2.2; stroke-dasharray: 5 3; opacity: 1; }
+.temp-chart .proj-dot { fill: var(--series); stroke: none; }
+.temp-chart .future { fill: var(--text); opacity: 0.06; }
+.temp-chart .future-label { font-weight: 600; }
 
 /* Map labels in one font on every device (Roboto, bold, subset to the letters labels use; SIL Open
    Font License), so they measure the same everywhere and the layout is the same on every phone. */
@@ -1157,3 +1162,6 @@ body.reordering .rrow.dragging { transform-origin: center; }
 /* Season view: a little bolder (it's the default), so the line and labels read at a glance. */
 .temp-chart:not(.close) .now { stroke-width: 2; }
 .temp-chart:not(.close) .median { stroke-width: 1.4; }
+
+/* The whole-US view: just the overlay on the relief. */
+#map.us-wide .pin, #map.us-wide .leaflet-dots-pane, #map.us-wide .leaflet-places-pane, #map.us-wide .leaflet-roads-pane { display: none; }

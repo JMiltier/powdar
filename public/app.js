@@ -105,6 +105,7 @@ const state = {
   // The map overlay: 'snow' (on the ground; the default), 'radar', 'outlook' or 'none'.
   layer: read(STORE.layer, null) ?? (read(STORE.snowDepth, true) ? 'snow' : 'none'),
   outlookSeason: null, // e.g. "NDJ 2026-2027", once the outlook has loaded
+  usWide: false, // snow on the ground or the outlook shown for the whole lower 48
   radar: { time: null, playing: false, count: 0 }, // the radar loop's current frame
   cast: { day: 1, amount: 1, areas: null }, // the snow forecast's period and amount
   tempView: read('cs:tempView', 'season'), // the temperature chart: 'season' (the default) or 'close' (4 weeks)
@@ -235,6 +236,10 @@ async function latestSatDay() {
 }
 async function applyLayer() {
   if (!state.map) return;
+  if (state.usWide && !['snow', 'outlook'].includes(state.layer)) {
+    state.usWide = false;
+    state.map.setWide(false);
+  }
   if (SAT_VIEWS.includes(state.layer)) {
     state.map.setLayer('none');
     if (!state.satLatest) {
@@ -309,6 +314,8 @@ const SNOW_STYLES = ['color', 'shaded', 'volume', 'contours'];
 const SNOW_STYLE_NAMES = { color: 'Colors', shaded: 'Shaded', volume: 'Volume', contours: 'Contours' };
 
 // The key along the bottom of the map, for whichever overlay is showing.
+// The whole-US toggle, on the two national overlays.
+const wideBtn = () => `<button type="button" class="snow-style us-toggle" data-us-wide aria-pressed="${state.usWide}">${state.usWide ? `‹ ${esc(state.data?.stateName ?? 'Colorado')}` : 'Whole US'}</button>`;
 function legendFor(layer) {
   if (SAT_VIEWS.includes(layer)) {
     const newest = state.satDate && state.satDate >= state.satLatest;
@@ -335,7 +342,7 @@ function legendFor(layer) {
       <span class="legend-keys"><span>Light</span><i class="ramp ramp-radar" aria-hidden="true"></i><span>Heavy</span><i class="sw-mini sw-cloud" aria-hidden="true"></i><span>Clouds</span></span>`;
   }
   if (layer === 'outlook') {
-    return `<span class="legend-title">${esc(seasonSpan(state.outlookSeason))} outlook</span><span class="legend-keys"><span>Drier</span><i class="ramp ramp-outlook" aria-hidden="true"></i><span>Wetter</span><span class="muted">· ${esc(seasonSpan(state.outlookSeason))}</span></span>`;
+    return `${wideBtn()}<span class="legend-title">${esc(seasonSpan(state.outlookSeason))} outlook</span><span class="legend-keys"><span>Drier</span><i class="ramp ramp-outlook" aria-hidden="true"></i><span>Wetter</span><span class="muted">· ${esc(seasonSpan(state.outlookSeason))}</span></span>`;
   }
   // The style's name (tap to cycle), then labeled depth steps colored as the map draws them.
   const ramp = state.snowStyle === 'color' ? SNOW_COLOR : SNOW_RAMP;
@@ -344,7 +351,7 @@ function legendFor(layer) {
     return `<span class="depth-step"><i style="background:linear-gradient(rgba(${r},${g},${b},${(a / 255).toFixed(2)}),rgba(${r},${g},${b},${(a / 255).toFixed(2)})),#6f7886"></i>${label}</span>`;
   };
   const next = SNOW_STYLES[(SNOW_STYLES.indexOf(state.snowStyle) + 1) % SNOW_STYLES.length];
-  return `<button type="button" class="snow-style" data-snow-cycle aria-label="Snow drawn as: ${SNOW_STYLE_NAMES[state.snowStyle]}. Tap for ${SNOW_STYLE_NAMES[next]}.">${SNOW_STYLE_NAMES[state.snowStyle]}<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 0 1 8.6-3.5M13 8a5 5 0 0 1-8.6 3.5M11.5 2v2.7H8.8M4.5 14v-2.7h2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  return `${wideBtn()}<button type="button" class="snow-style" data-snow-cycle aria-label="Snow drawn as: ${SNOW_STYLE_NAMES[state.snowStyle]}. Tap for ${SNOW_STYLE_NAMES[next]}.">${SNOW_STYLE_NAMES[state.snowStyle]}<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 0 1 8.6-3.5M13 8a5 5 0 0 1-8.6 3.5M11.5 2v2.7H8.8M4.5 14v-2.7h2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <span class="legend-keys depth-steps">${(metric() ? ['3 cm', '10 cm', '30 cm', '60 cm', '1.5 m', '2.4 m+'] : ['1″', '4″', '1′', '2′', '5′', '8′+']).map((t, k) => step([0, 2, 3, 4, 6, 7][k], t)).join('')}</span>`;
 }
 
@@ -1531,25 +1538,36 @@ function tempChart(seasonF, aheadF, daysF) {
     ? Array.from({ length: 6 }, (_, i) => d0 + i * 7).filter((d) => d <= d1).map((d) => `<text x="${x(d).toFixed(1)}" y="${H - 4}" text-anchor="${x(d) > W - 24 ? 'end' : x(d) < pad.l + 12 ? 'start' : 'middle'}">${monthDay(new Date(seasonStart + d * 864e5).toISOString().slice(0, 10))}</text>`).join('')
     : MONTHS.map((m, i) => `<text x="${x(MONTH_STARTS[i] + 2).toFixed(1)}" y="${H - 4}">${m}</text>`).join('');
   const flip = last && x(last[0]) > W - 80;
+  // The "yesterday" label goes on whichever side of the dot the line isn't: above when the days before
+  // were colder, below when they were warmer (so it never sits on the line).
+  const before = shown.slice(-6, -1);
+  const below = last && before.length && before.reduce((t, p) => t + p[1], 0) / before.length > last[1];
+  // The coming week, shaded, so the forecast reads as its own part of the chart.
+  const fx = x(Math.max(d0, todayDay));
+  const future = close && projShown.length > 1 ? `<rect class="future" x="${fx.toFixed(1)}" y="${pad.t}" width="${(W - pad.r - fx).toFixed(1)}" height="${H - pad.t - pad.b}"/>
+      <text class="t-axis future-label" x="${((fx + W - pad.r) / 2).toFixed(1)}" y="${pad.t - 4}" text-anchor="middle">next 7 days</text>` : '';
+  // The freezing label at whichever end of the chart the line is farther from freezing.
+  const farLeft = shown.length && Math.abs((shown[0]?.[1] ?? freezing) - freezing) > Math.abs(((projShown.at(-1) ?? last)?.[1] ?? freezing) - freezing);
   return `
     <svg class="chart temp-chart${close ? ' close' : ''}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily temperature ${close ? 'the last four weeks and the coming week' : 'this season'} compared with normal">
       ${grid.map((t) => `<line class="grid" x1="${pad.l}" x2="${W - pad.r}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text class="t-axis" x="${pad.l - 4}" y="${(y(t) + 3).toFixed(1)}" text-anchor="end">${t}°</text>`).join('')}
       <text class="t-axis t-unit" x="${pad.l - 4}" y="${pad.t - 5}" text-anchor="end">${unitLabel()}</text>
-      ${freezeLine(y, pad, W, lo, hi, freezing)}
+      ${future}
+      ${freezeLine(y, pad, W, lo, hi, freezing, farLeft)}
       ${band(0, 4, 't-band-wide')}${band(1, 3, 't-band-mid')}
       <path class="median" d="${path(med)}"/>
       <line class="today-line" x1="${x(todayDay).toFixed(1)}" x2="${x(todayDay).toFixed(1)}" y1="${pad.t}" y2="${H - pad.b}"/>
-      ${projShown.length > 1 ? `<path class="halo" d="${path(projShown)}"/><path class="proj" d="${path(projShown)}"/>` : ''}
+      ${projShown.length > 1 ? `<path class="halo" d="${path(projShown)}"/><path class="proj" d="${path(projShown)}"/><circle class="proj-dot" cx="${x(projShown.at(-1)[0]).toFixed(1)}" cy="${y(projShown.at(-1)[1]).toFixed(1)}" r="2.5"/>` : ''}
       <path class="halo" d="${path(shown)}"/><path class="now" d="${path(shown)}"/>
       ${last ? `<circle class="now-dot" cx="${x(last[0])}" cy="${y(last[1])}" r="3"/>
-        <text class="now-label" text-anchor="${flip ? 'end' : 'start'}" x="${(x(last[0]) + (flip ? -7 : 7)).toFixed(1)}" y="${(y(last[1]) - 7).toFixed(1)}">${lastWord} ${Math.round(last[1])}${unitLabel()}</text>` : ''}
+        <text class="now-label" text-anchor="${flip ? 'end' : 'start'}" x="${(x(last[0]) + (flip ? -7 : 7)).toFixed(1)}" y="${(y(last[1]) + (below ? 14 : -7)).toFixed(1)}">${lastWord} ${Math.round(last[1])}${unitLabel()}</text>` : ''}
       ${ticks}
     </svg>`;
 }
 const tempViewPick = () => `<span class="temp-view" role="group" aria-label="Temperature chart range">
   <button type="button" data-temp-view="season" aria-pressed="${state.tempView !== 'close'}">Season</button><button type="button" data-temp-view="close" aria-pressed="${state.tempView === 'close'}">4 weeks</button></span>`;
 // The freezing line, faintly, when it's in range.
-const freezeLine = (y, pad, W, lo, hi, t) => (t > lo && t < hi ? `<line class="freeze" x1="${pad.l}" x2="${W - pad.r}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text class="t-axis freeze-label" x="${W - pad.r - 2}" y="${(y(t) - 3).toFixed(1)}" text-anchor="end">${Math.round(t)}°${state.unit} freezing</text>` : '');
+const freezeLine = (y, pad, W, lo, hi, t, left = false) => (t > lo && t < hi ? `<line class="freeze" x1="${pad.l}" x2="${W - pad.r}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text class="t-axis freeze-label" x="${left ? pad.l + 2 : W - pad.r - 2}" y="${(y(t) - 3).toFixed(1)}" text-anchor="${left ? 'start' : 'end'}">${Math.round(t)}°${state.unit} freezing</text>` : '');
 
 // Past seasons, one small file per snow station, loaded the first time someone picks one.
 const seasonHistory = new Map();
@@ -2105,6 +2123,7 @@ const UT_TOWNS = [
 
 function startMap() {
   if (state.map || !state.data) return;
+  state.usWide = false;
   state.map = createSnowMap($('#map'), {
     resorts: state.data.resorts,
     // Colorado: a little room east of the Front Range resorts (toward Denver), where the I-70
@@ -2326,6 +2345,11 @@ document.addEventListener('click', (e) => {
     state.map?.setCast(c.day, c.amount);
     $('#legend').innerHTML = legendFor('snowcast');
     return;
+  }
+  if (t.closest('[data-us-wide]')) {
+    state.usWide = !state.usWide;
+    state.map?.setWide(state.usWide);
+    return render();
   }
   if (t.closest('[data-snow-cycle]')) {
     state.snowStyle = SNOW_STYLES[(SNOW_STYLES.indexOf(state.snowStyle) + 1) % SNOW_STYLES.length];

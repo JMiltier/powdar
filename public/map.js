@@ -309,15 +309,18 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // squares over a blurred depth grid).
   // smooth: a ramp ([r, g, b, a] per depth class) to draw the depth as smooth-edged bands at 3× the
   // grid's resolution, instead of NOAA's ~1 km squares.
-  async function picture(src, recolor, { shadow = null, depth = null, relief = false, contours = null, smooth = null } = {}) {
+  async function picture(src, recolor, { shadow = null, depth = null, relief = false, contours = null, smooth = null, maxCell = Infinity } = {}) {
     const size = map.getSize();
     const b = map.getPixelBounds();
     const sw = map.options.crs.project(map.unproject(L.point(b.min.x, b.max.y)));
     const ne = map.options.crs.project(map.unproject(L.point(b.max.x, b.min.y)));
     // About NOAA's own 1 km grid at this zoom (finer just shows its squares as stair-steps); smooth
     // upscaling below turns the squares into clean rounded edges.
-    const w = Math.max(1, Math.round(size.x / 2.5));
-    const h = Math.max(1, Math.round(size.y / 2.5));
+    // (maxCell: the coarsest picture, in meters per pixel, a service will draw; NOAA's snow comes back
+    // blank past about 10 km, which a phone-sized picture of the whole US would be.)
+    const k = Math.max(1, (ne.x - sw.x) / (size.x / 2.5) / maxCell);
+    const w = Math.max(1, Math.round((size.x / 2.5) * k));
+    const h = Math.max(1, Math.round((size.y / 2.5) * k));
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.src = src(w, h, sw, ne);
@@ -474,7 +477,6 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     if (!outlookData) {
       const q = new URLSearchParams({
         where: '1=1', outFields: 'cat,prob,valid_seas', f: 'geojson', outSR: '4326', maxAllowableOffset: '0.02',
-        geometry: '-112,34,-99,44', geometryType: 'esriGeometryEnvelope', inSR: '4326',
       });
       outlookData = await (await fetch(`${OUTLOOK}?${q}`)).json();
       onOutlook?.(outlookData.features?.[0]?.properties?.valid_seas ?? null);
@@ -595,13 +597,13 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         // surface), contours (shaded + depth lines), color (a blue depth scale).
         const shadow = isDark() ? 'rgba(0, 0, 0, 0.6)' : 'rgba(20, 32, 55, 0.85)';
         const depth = { classify: classOf };
-        if (snowStyle === 'color') next = await picture(snowExport, (r, g, b) => SNOW_COLOR[classOf(r, g, b)], { shadow: isDark() ? 'rgba(0, 0, 0, 0.5)' : 'rgba(20, 32, 55, 0.6)', depth, smooth: SNOW_COLOR.slice(0, 8) });
-        else if (snowStyle === 'volume') next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], { shadow, depth, relief: true });
+        if (snowStyle === 'color') next = await picture(snowExport, (r, g, b) => SNOW_COLOR[classOf(r, g, b)], { shadow: isDark() ? 'rgba(0, 0, 0, 0.5)' : 'rgba(20, 32, 55, 0.6)', depth, maxCell: 8000, smooth: SNOW_COLOR.slice(0, 8) });
+        else if (snowStyle === 'volume') next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], { shadow, depth, maxCell: 8000, relief: true });
         else if (snowStyle === 'contours') {
           next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], {
-            shadow, depth, smooth: SNOW_RAMP.slice(0, 8), contours: { levels: [3, 4, 6], color: isDark() ? 'rgba(70, 90, 120, 0.8)' : 'rgba(60, 80, 110, 0.75)' },
+            shadow, depth, maxCell: 8000, smooth: SNOW_RAMP.slice(0, 8), contours: { levels: [3, 4, 6], color: isDark() ? 'rgba(70, 90, 120, 0.8)' : 'rgba(60, 80, 110, 0.75)' },
           });
-        } else next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], { shadow, depth, smooth: SNOW_RAMP.slice(0, 8) });
+        } else next = await picture(snowExport, (r, g, b) => SNOW_RAMP[classOf(r, g, b)], { shadow, depth, maxCell: 8000, smooth: SNOW_RAMP.slice(0, 8) });
       }
       else if (layerName === 'radar') {
         try {
@@ -719,9 +721,18 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     }
   }
 
+  // The whole lower 48 (snow on the ground and the season outlook are national): resorts, towns and
+  // roads hide, the overlay is redrawn for the wider view.
+  const US = L.latLngBounds([[24.4, -124.8], [49.4, -66.9]]);
+  let wide = false;
+  let wideTimer = null;
+  const wideMoved = () => {
+    clearTimeout(wideTimer);
+    wideTimer = setTimeout(() => { if (wide && layerName !== 'none') drawLayer(); }, 250);
+  };
   const fit = () => {
     const p = getPadding();
-    map.fitBounds(bounds, { paddingTopLeft: [p.left + EDGE_X, p.top + EDGE_Y], paddingBottomRight: [p.right + EDGE_X, p.bottom + EDGE_Y], animate: false });
+    map.fitBounds(wide ? US : bounds, { paddingTopLeft: [p.left + EDGE_X, p.top + EDGE_Y], paddingBottomRight: [p.right + EDGE_X, p.bottom + EDGE_Y], animate: false });
   };
   fit();
 
@@ -1489,6 +1500,20 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     setCast(day, amount) {
       cast = { day, amount };
       if (layerName === 'snowcast') drawLayer();
+    },
+    setWide(on) {
+      if (on === wide) return;
+      wide = on;
+      el.classList.toggle('us-wide', on);
+      // (Pinch and drag to look closer at any part of the country; the overlay is redrawn for the new view.)
+      for (const h of [map.dragging, map.touchZoom, map.doubleClickZoom, map.scrollWheelZoom]) h[on ? 'enable' : 'disable']();
+      map[on ? 'on' : 'off']('moveend', wideMoved);
+      map.invalidateSize({ animate: false, pan: false });
+      fit();
+      if (!on) layout();
+      frameCache.clear();
+      cloudCache.clear();
+      if (layerName !== 'none') drawLayer();
     },
     setLayer(name) {
       if (name === layerName && (overlay || name === 'none')) return;
