@@ -2072,7 +2072,16 @@ function startMap() {
     onOutlook: (season) => { state.outlookSeason = season; render(); },
     // Each radar frame: just update the key's button and time (no full re-render while playing).
     onRadar: (r) => { state.radar = r; syncRadarKey(); },
-    onCast: (c) => { state.cast = { ...state.cast, ...c }; if (state.layer === 'snowcast') $('#legend').innerHTML = legendFor('snowcast'); },
+    onCast: (c) => {
+      const cycling = state.cast.cycling;
+      state.cast = { ...state.cast, ...c, cycling: false };
+      // Stepped up to an amount with nothing on the map: on round to the smallest.
+      if (cycling && c.shown < c.amount) {
+        state.cast.amount = CAST_AMOUNTS[0];
+        return state.map.setCast(state.cast.day, state.cast.amount);
+      }
+      if (state.layer === 'snowcast') $('#legend').innerHTML = legendFor('snowcast');
+    },
     places: state.code === 'CO' ? CO_TOWNS : [],
   });
   state.map.setMarks(state.marks);
@@ -2268,7 +2277,12 @@ document.addEventListener('click', (e) => {
   if (castDay || t.closest('[data-cast-amount]')) {
     const c = state.cast;
     if (castDay) c.day = Math.min(3, Math.max(1, c.day + Number(castDay.dataset.castDay)));
-    else c.amount = CAST_AMOUNTS[(CAST_AMOUNTS.indexOf(c.amount) + 1) % CAST_AMOUNTS.length];
+    else {
+      // From the amount showing (which may be below the one asked for); an amount with nothing on the
+      // map is skipped (see onCast), so each tap visibly changes it.
+      c.amount = CAST_AMOUNTS[(CAST_AMOUNTS.indexOf(c.shown ?? c.amount) + 1) % CAST_AMOUNTS.length];
+      c.cycling = true;
+    }
     state.map?.setCast(c.day, c.amount);
     $('#legend').innerHTML = legendFor('snowcast');
     return;
