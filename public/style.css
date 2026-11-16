@@ -1180,3 +1180,7 @@ body.reordering .rrow.dragging { transform-origin: center; }
 :root[data-theme="dark"] .snowcast { fill: #b69cff; fill-opacity: 0.3; stroke: #d9ccff; stroke-opacity: 0.75; stroke-width: 1; }
 :root[data-theme="dark"] .cast-key i { background: #b69cff; }
 :root[data-theme="dark"] .cast-key .c1 { opacity: 0.4; } :root[data-theme="dark"] .cast-key .c2 { opacity: 0.65; } :root[data-theme="dark"] .cast-key .c3 { opacity: 0.95; }
+
+/* Install as an app (in the ⓘ card, when the browser offers it). */
+.install-btn { display: block; width: 100%; margin: 0 0 8px; padding: 8px 10px; border: 0; border-radius: 10px; background: var(--accent); color: var(--card); font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
+.install-btn small { display: block; font-weight: 500; opacity: 0.85; }

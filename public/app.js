@@ -1713,6 +1713,16 @@ function seasonSection(r, notes) {
     ${facts.length ? `<ul class="report">${facts.join('')}</ul>` : ''}`;
 }
 
+// Installing Powdar as an app (it then opens full screen, without the browser's address bar): the
+// browser says when it's possible, and the ⓘ card offers it (instead of the browser's own banner).
+let installPrompt = null;
+addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  $('#install-btn').hidden = false;
+});
+addEventListener('appinstalled', () => { installPrompt = null; $('#install-btn').hidden = true; });
+
 function renderMap() {
   if (!state.map) return;
   // Every resort, always: "Open now" filters the list and only dims closed resorts on the map.
@@ -2422,6 +2432,12 @@ document.addEventListener('click', (e) => {
     syncMarksBtn();
     state.map?.setMarks(state.marks);
     return toast({ all: 'Resort labels on', dots: 'Labels off: tap a dot for its resort', none: 'Just the map (tap again for labels)' }[state.marks]);
+  }
+  if (t.closest('#install-btn')) {
+    installPrompt?.prompt();
+    installPrompt = null;
+    $('#install-btn').hidden = true;
+    return;
   }
   if (t.closest('#info-btn')) {
     const c = $('#credits');
