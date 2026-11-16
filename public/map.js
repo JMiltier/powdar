@@ -137,9 +137,9 @@ const radarColor = (r, g, b) => {
 // NWS Weather Prediction Center: chance of at least 4″, 8″ or 12″ of snow in each of the next three
 // 24-hour periods (layers: day 1 → 1, 2, 3; day 2 → 6, 7, 8; day 3 → 11, 12, 13), as areas rated
 // slight (10–39%), moderate (40–69%) or high (70%+).
-const SNOWCAST = 'https://mapservices.weather.noaa.gov/vector/rest/services/precip/wpc_prob_winter_precip/MapServer';
-export const CAST_AMOUNTS = [4, 8, 12];
-const CAST_SHADES = { 1: 0.28, 2: 0.48, 3: 0.7 };
+// The snow forecast's amounts (inches in 24 hours) and its contours: 10 %, 40 % and 70 % chance,
+// nested, each a light wash so overlaps darken with the chance.
+export const CAST_AMOUNTS = [1, 2, 6, 12];
 
 // NOAA Climate Prediction Center: odds of a wetter or drier than normal next 3 months (lead 1).
 const OUTLOOK = 'https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/cpc_sea_precip_outlk/MapServer/0/query';
@@ -555,18 +555,16 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   }
 
   // Snow forecast areas for a day (1–3) and amount (4, 8, 12), cached per pair.
-  let cast = { day: 1, amount: 4 };
-  const castCache = new Map();
+  let cast = { day: 1, amount: 1 };
+  // (The build's copy of the Weather Prediction Center's contours: data/snowcast.json, see
+  // src/snowcast.js. Fetched once, then again after an hour.)
+  let castFile = null;
   const castData = async (day, amount) => {
-    const layer = (day - 1) * 5 + 1 + CAST_AMOUNTS.indexOf(amount);
-    if (!castCache.has(layer)) {
-      const q = new URLSearchParams({
-        where: '1=1', outFields: 'dn,start_time,end_time,issue_time', f: 'geojson', outSR: '4326', maxAllowableOffset: '0.01',
-        geometry: '-112,34,-99,44', geometryType: 'esriGeometryEnvelope', inSR: '4326',
-      });
-      castCache.set(layer, await (await fetch(`${SNOWCAST}/${layer}/query?${q}`)).json());
+    if (!castFile || Date.now() - castFile.at > 3_600_000) {
+      castFile = { at: Date.now(), data: await (await fetch(`data/snowcast.json?t=${Math.floor(Date.now() / 600000)}`)).json() };
     }
-    return castCache.get(layer);
+    const d = castFile.data.days?.find((x) => x.day === day);
+    return { features: d?.amounts?.[amount] ?? [], start: d?.start ?? null };
   };
   async function snowcastLayer() {
     // (Only areas on the visible map count: the query covers the neighboring states too.)
@@ -576,10 +574,10 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     const areas = onMap(data);
     // (Whether any amount has areas: with none at the smallest, there's nothing to choose between.)
     const any = cast.amount === CAST_AMOUNTS[0] ? areas > 0 : onMap(await castData(cast.day, CAST_AMOUNTS[0])) > 0;
-    onCast?.({ ...cast, areas, any, start: data.features?.[0]?.properties?.start_time ?? null });
-    return L.geoJSON(data, {
+    onCast?.({ ...cast, areas, any, start: data.start });
+    return L.geoJSON({ type: 'FeatureCollection', features: data.features }, {
       pane: 'snow', interactive: false,
-      style: (f) => ({ className: 'snowcast', stroke: true, weight: 0.8, color: '#7c3aed', opacity: 0.6, fillColor: '#8b5cf6', fillOpacity: CAST_SHADES[f.properties.dn] ?? 0.25 }),
+      style: () => ({ className: 'snowcast', stroke: true, weight: 0.8, color: '#7c3aed', opacity: 0.5, fillColor: '#8b5cf6', fillOpacity: 0.24 }),
     });
   }
 

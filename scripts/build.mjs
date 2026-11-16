@@ -1,5 +1,6 @@
 // Fetches fresh data and writes public/data.json. Run by the GitHub Action every 30 minutes.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { fetchSnowcast } from '../src/snowcast.js';
 import { buildReport } from '../src/report.js';
 import { buildStateReport } from '../src/state-report.js';
 
@@ -103,6 +104,16 @@ await mkdir(new URL('../public/data/', import.meta.url), { recursive: true });
 await writeFile(new URL('../public/data.json', import.meta.url), JSON.stringify(report)); // older app versions
 await writeFile(new URL('../public/data/co.json', import.meta.url), JSON.stringify(report));
 console.log('Wrote Colorado');
+
+// The snow forecast's chance areas (src/snowcast.js); the last published copy if WPC is unreachable.
+try {
+  await writeFile(new URL('../public/data/snowcast.json', import.meta.url), JSON.stringify(await fetchSnowcast()));
+  console.log('Wrote the snow forecast');
+} catch (err) {
+  console.warn(`Snow forecast failed (${err.message}); keeping the last one.`);
+  const last = await published('data/snowcast.json');
+  if (last) await writeFile(new URL('../public/data/snowcast.json', import.meta.url), JSON.stringify(last));
+}
 
 // ---------- Every other state with ski resorts ----------
 // Forecasts, snowpack and NOAA snow depth refresh about every 4 hours, a few states per update (oldest

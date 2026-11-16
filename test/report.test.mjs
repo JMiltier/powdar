@@ -247,3 +247,13 @@ test('liftsToday: running now, else the day’s peak after close, else scheduled
   assert.equal(liftsToday({ open: 0, hold: 0, scheduled: 0, ranToday: 6 }), 6); // after hours
   assert.equal(liftsToday({ open: 0, hold: 0, scheduled: 5, ranToday: 0 }), 5); // before opening
 });
+
+test('snowcast: WPC probability KML → 10/40/70 % polygons near Colorado, with the valid window', async () => {
+  const { parseContours } = await import('../src/snowcast.js');
+  const pm = (p, coords) => `<Placemark><name>${p}</name><Polygon><outerBoundaryIs><LinearRing><coordinates>${coords}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>`;
+  const kml = `<snippet>Valid 00Z 11/16/2026 - 00Z 11/17/2026</snippet>${pm(10, '-106,39,0 -105,39,0 -105,40,0 -106,39,0')}${pm(5, '-106,39,0 -105,39,0 -105,40,0')}${pm(40, '-80,30,0 -79,30,0 -79,31,0')}`;
+  const c = parseContours(kml);
+  assert.equal(c.start, '2026-11-16T00:00:00Z');
+  assert.equal(c.features.length, 1); // the 5 % contour and the far-away one are left out
+  assert.equal(c.features[0].properties.prob, 10);
+});

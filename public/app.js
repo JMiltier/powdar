@@ -106,7 +106,7 @@ const state = {
   layer: read(STORE.layer, null) ?? (read(STORE.snowDepth, true) ? 'snow' : 'none'),
   outlookSeason: null, // e.g. "NDJ 2026-2027", once the outlook has loaded
   radar: { time: null, playing: false, count: 0 }, // the radar loop's current frame
-  cast: { day: 1, amount: 4, areas: null }, // the snow forecast's period and amount
+  cast: { day: 1, amount: 1, areas: null }, // the snow forecast's period and amount
   openDay: null, // the forecast day opened in a resort's page (YYYY-MM-DD)
   satDate: null, // the satellite views' day (YYYY-MM-DD), newest real one by default
   satLatest: null,
