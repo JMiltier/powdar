@@ -1144,3 +1144,8 @@ body.reordering .rrow.dragging { transform-origin: center; }
 :root[data-theme="dark"] .temp-key .k-proj { border-top-color: #ffa94d; }
 .temp-key .k-median { border-top-color: var(--muted); }
 .temp-key .k-proj { background: none !important; border-top-style: dashed !important; }
+
+/* Map labels in one font on every device (Roboto, bold, subset to the letters labels use; SIL Open
+   Font License), so they measure the same everywhere and the layout is the same on every phone. */
+@font-face { font-family: 'Powdar Labels'; src: url('fonts/roboto-labels.woff2') format('woff2'); font-weight: 600 900; font-display: block; }
+.pin-bubble, .pin-val, .pin-name { font-family: 'Powdar Labels', system-ui, sans-serif; }

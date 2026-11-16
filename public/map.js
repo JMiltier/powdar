@@ -793,6 +793,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // so tapping a resort, switching back to a view or re-rendering the same data is instant.
   // Never below ~9 px text: past that, a label shows just its number chip instead.
   const LABEL_SCALES = [1, 0.9, 0.82];
+  // The label font (style.css) arriving after a first layout would change every label's width: lay
+  // out again once it's in.
+  document.fonts?.load("700 12px 'Powdar Labels'").then(() => { layoutCache.clear(); if (order.length) layout(); }).catch(() => {});
   const BUDGET_MS = 90; // the finished layout
   const TRIAL_MS = 45; // each label size's trial (only to see how many fit)
   const layoutCache = new Map();
