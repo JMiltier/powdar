@@ -314,8 +314,6 @@ const SNOW_STYLES = ['color', 'shaded', 'volume', 'contours'];
 const SNOW_STYLE_NAMES = { color: 'Colors', shaded: 'Shaded', volume: 'Volume', contours: 'Contours' };
 
 // The key along the bottom of the map, for whichever overlay is showing.
-// The whole-US toggle, on the two national overlays.
-const wideBtn = () => `<button type="button" class="snow-style us-toggle" data-us-wide aria-pressed="${state.usWide}">${state.usWide ? `‹ ${esc(state.data?.stateName ?? 'Colorado')}` : 'Whole US'}</button>`;
 function legendFor(layer) {
   if (SAT_VIEWS.includes(layer)) {
     const newest = state.satDate && state.satDate >= state.satLatest;
@@ -342,7 +340,7 @@ function legendFor(layer) {
       <span class="legend-keys"><span>Light</span><i class="ramp ramp-radar" aria-hidden="true"></i><span>Heavy</span><i class="sw-mini sw-cloud" aria-hidden="true"></i><span>Clouds</span></span>`;
   }
   if (layer === 'outlook') {
-    return `${wideBtn()}<span class="legend-title">${esc(seasonSpan(state.outlookSeason))} outlook</span><span class="legend-keys"><span>Drier</span><i class="ramp ramp-outlook" aria-hidden="true"></i><span>Wetter</span><span class="muted">· ${esc(seasonSpan(state.outlookSeason))}</span></span>`;
+    return `<span class="legend-title">${esc(seasonSpan(state.outlookSeason))} outlook</span><span class="legend-keys"><span>Drier</span><i class="ramp ramp-outlook" aria-hidden="true"></i><span>Wetter</span><span class="muted">· ${esc(seasonSpan(state.outlookSeason))}</span></span>`;
   }
   // The style's name (tap to cycle), then labeled depth steps colored as the map draws them.
   const ramp = state.snowStyle === 'color' ? SNOW_COLOR : SNOW_RAMP;
@@ -351,7 +349,7 @@ function legendFor(layer) {
     return `<span class="depth-step"><i style="background:linear-gradient(rgba(${r},${g},${b},${(a / 255).toFixed(2)}),rgba(${r},${g},${b},${(a / 255).toFixed(2)})),#6f7886"></i>${label}</span>`;
   };
   const next = SNOW_STYLES[(SNOW_STYLES.indexOf(state.snowStyle) + 1) % SNOW_STYLES.length];
-  return `${wideBtn()}<button type="button" class="snow-style" data-snow-cycle aria-label="Snow drawn as: ${SNOW_STYLE_NAMES[state.snowStyle]}. Tap for ${SNOW_STYLE_NAMES[next]}.">${SNOW_STYLE_NAMES[state.snowStyle]}<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 0 1 8.6-3.5M13 8a5 5 0 0 1-8.6 3.5M11.5 2v2.7H8.8M4.5 14v-2.7h2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  return `<button type="button" class="snow-style" data-snow-cycle aria-label="Snow drawn as: ${SNOW_STYLE_NAMES[state.snowStyle]}. Tap for ${SNOW_STYLE_NAMES[next]}.">${SNOW_STYLE_NAMES[state.snowStyle]}<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 0 1 8.6-3.5M13 8a5 5 0 0 1-8.6 3.5M11.5 2v2.7H8.8M4.5 14v-2.7h2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <span class="legend-keys depth-steps">${(metric() ? ['3 cm', '10 cm', '30 cm', '60 cm', '1.5 m', '2.4 m+'] : ['1″', '4″', '1′', '2′', '5′', '8′+']).map((t, k) => step([0, 2, 3, 4, 6, 7][k], t)).join('')}</span>`;
 }
 
@@ -1753,6 +1751,8 @@ function render() {
   syncFilters();
   $('#snow-btn').setAttribute('aria-pressed', String(state.layer !== 'none'));
   for (const b of document.querySelectorAll('[data-layer]')) b.setAttribute('aria-checked', String(b.dataset.layer === state.layer));
+  for (const b of document.querySelectorAll('[data-area]')) b.setAttribute('aria-pressed', String((b.dataset.area === 'us') === state.usWide));
+  $('[data-area="state"]').textContent = state.data.stateName ?? 'Colorado';
   // Hidden but still taking its space, so changing the overlay never shifts the map.
   $('#legend').classList.toggle('off', state.layer === 'none');
   $('#map').dataset.layer = state.layer; // (the light map dims a little under white snow)
@@ -2164,7 +2164,7 @@ function startMap() {
     // corridor's eastern labels stack up.
     extend: state.code === 'CO' ? [39.75, -105.3] : null,
     // (With an inset in the corner, the main map keeps clear of it.)
-    getPadding: useInset ? () => { const p = coveredPadding(); return { ...p, left: p.left + INSET_W + 10 }; } : coveredPadding,
+    getPadding: useInset ? () => { const p = coveredPadding(); return state.usWide ? p : { ...p, left: p.left + INSET_W + 10 }; } : coveredPadding,
     onSelect: (id) => select(id),
     onOutlook: (season) => { state.outlookSeason = season; render(); },
     // Each radar frame: just update the key's button and time (no full re-render while playing).
@@ -2403,9 +2403,18 @@ document.addEventListener('click', (e) => {
     $('#legend').innerHTML = legendFor('snowcast');
     return;
   }
-  if (t.closest('[data-us-wide]')) {
-    state.usWide = !state.usWide;
+  // The map's area, in the layers menu: this state, or the whole US (snow on the ground or the
+  // outlook; another layer switches to snow on the ground).
+  const area = t.closest('[data-area]');
+  if (area) {
+    state.usWide = area.dataset.area === 'us';
+    if (state.usWide && !['snow', 'outlook'].includes(state.layer)) {
+      state.layer = 'snow';
+      write(STORE.layer, state.layer);
+      applyLayer();
+    }
     state.map?.setWide(state.usWide);
+    openLayers(false);
     return render();
   }
   if (t.closest('[data-snow-cycle]')) {

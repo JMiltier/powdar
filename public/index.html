@@ -44,6 +44,8 @@
     </div>
     <!-- Map layers: one at a time. -->
     <div id="layers" class="layers" role="menu" aria-label="Map layer" hidden>
+      <div class="layers-area" role="group" aria-label="Map area"><button type="button" data-area="state" aria-pressed="true">Colorado</button><button type="button" data-area="us" aria-pressed="false">Whole US</button></div>
+      <p class="layers-area-note">Whole US: snow on the ground and the outlook</p>
       <p class="layers-head">Snow</p>
       <button type="button" role="menuitemradio" data-layer="snow"><i class="sw sw-snow"></i><span><b>On the ground</b><small>Today's depth</small></span></button>
       <button type="button" role="menuitemradio" data-layer="snowcast"><i class="sw sw-snowcast"></i><span><b>Forecast</b><small>Chance of snow, next 3 days</small></span></button>

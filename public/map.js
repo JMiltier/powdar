@@ -725,6 +725,27 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // roads hide, the overlay is redrawn for the wider view.
   const US = L.latLngBounds([[24.4, -124.8], [49.4, -66.9]]);
   let wide = false;
+  // In the whole-US view: state lines, and everything outside the country greyed out (US Census
+  // boundaries via us-atlas, simplified: geo/us-outline.json, loaded the first time it's needed).
+  map.createPane('outline').style.zIndex = 270; // over the snow and outlook, under the labels
+  let outline = null;
+  async function showOutline(on) {
+    if (on && !outline) {
+      try {
+        const { borders, nation } = await (await fetch('geo/us-outline.json')).json();
+        const ll = (ring) => ring.map(([lon, lat]) => [lat, lon]);
+        const world = [[-89, -540], [89, -540], [89, 540], [-89, 540]];
+        outline = L.layerGroup([
+          L.polygon([world, ...nation.map((p) => ll(p[0]))], { pane: 'outline', className: 'us-mask', stroke: false, interactive: false }),
+          L.polyline(borders.map(ll), { pane: 'outline', className: 'us-borders', weight: 1, interactive: false }),
+          L.polyline(nation.map((p) => ll(p[0])), { pane: 'outline', className: 'us-coast', weight: 1.2, interactive: false }),
+        ]);
+      } catch { return; }
+    }
+    if (!outline) return;
+    if (on && wide) outline.addTo(map);
+    else outline.remove();
+  }
   let wideTimer = null;
   const wideMoved = () => {
     clearTimeout(wideTimer);
@@ -1509,6 +1530,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       if (on === wide) return;
       wide = on;
       el.classList.toggle('us-wide', on);
+      showOutline(on);
       // (Pinch and drag to look closer at any part of the country; the overlay is redrawn for the new view.)
       for (const h of [map.dragging, map.touchZoom, map.doubleClickZoom, map.scrollWheelZoom]) h[on ? 'enable' : 'disable']();
       map[on ? 'on' : 'off']('moveend', wideMoved);
