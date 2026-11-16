@@ -834,7 +834,7 @@ button, .row, summary { -webkit-tap-highlight-color: transparent; }
 .layers button { padding: 6px 10px; }
 .sw-snowcast { background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(139, 92, 246, 0.75)); }
 /* Snow forecast key: slight, moderate, high. */
-.cast-key { gap: 3px; }
+.cast-key { gap: 3px; white-space: nowrap; }
 .cast-key i { display: inline-block; width: 14px; height: 10px; border-radius: 3px; background: #8b5cf6; }
 .cast-key .c1 { opacity: 0.3; } .cast-key .c2 { opacity: 0.55; } .cast-key .c3 { opacity: 0.85; }
 .cast-key span { margin-left: 4px; }
@@ -1105,3 +1105,11 @@ body.reordering .rrow.dragging { transform-origin: center; }
 .pd em { font-style: normal; font-size: 0.72rem; font-weight: 800; color: var(--snow); min-height: 0.9rem; font-variant-numeric: tabular-nums; }
 .pd.est em { color: color-mix(in srgb, var(--snow) 60%, var(--muted)); font-weight: 650; }
 .pd small { font-size: 0.68rem; font-weight: 650; color: var(--muted); }
+/* Narrow phones: the snow forecast key stays on one line (tighter steps, gaps and swatches). */
+@media (max-width: 400px) {
+  .legend:has(.cast-key) { gap: 4px; padding-left: 6px; padding-right: 8px; }
+  .legend:has(.cast-key) .day-step { width: 22px; height: 22px; }
+  .legend:has(.cast-key) .snow-style { padding-left: 7px; padding-right: 7px; }
+  .cast-key i { width: 10px; }
+  .cast-key span { margin-left: 2px; }
+}

@@ -322,9 +322,9 @@ function legendFor(layer) {
     return `<button type="button" class="day-step" data-cast-day="-1" aria-label="Earlier" ${day <= 1 ? 'disabled' : ''}>‹</button>
       <span class="radar-time">${period}</span>
       <button type="button" class="day-step" data-cast-day="1" aria-label="Later" ${day >= 3 ? 'disabled' : ''}>›</button>
-      <button type="button" class="snow-style" data-cast-amount aria-label="Chance of at least ${amount} inches; tap for another amount">${metric() ? `${Math.round(amount * 2.54)} cm` : `${amount}″`}+<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 0 1 8.6-3.5M13 8a5 5 0 0 1-8.6 3.5M11.5 2v2.7H8.8M4.5 14v-2.7h2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-      <span class="legend-keys cast-key">${areas === 0 ? `<span class="muted">No ${amt(CAST_AMOUNTS[0])}+ snow likely</span>`
-        : `${shown < amount ? `<span class="muted">None at ${amt(amount)}+ · ${amt(shown)}+:</span>` : ''}<i class="c1"></i><i class="c2"></i><i class="c3"></i><span>10% → 70%+</span>`}</span>`;
+      <button type="button" class="snow-style" data-cast-amount title="${shown < amount ? `None at ${amt(amount)}+: showing ${amt(shown)}+` : ''}" aria-label="Chance of at least ${shown} inches${shown < amount ? ` (none at ${amount})` : ''}; tap for another amount">${amt(shown)}+<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 0 1 8.6-3.5M13 8a5 5 0 0 1-8.6 3.5M11.5 2v2.7H8.8M4.5 14v-2.7h2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <span class="legend-keys cast-key">${areas === 0 ? `<span class="muted">None likely</span>`
+        : '<i class="c1"></i><i class="c2"></i><i class="c3"></i><span>10–70%+</span>'}</span>`;
   }
   if (layer === 'radar') {
     return `<button type="button" class="radar-play" id="radar-play" aria-label="Play the last hour" ${state.radar.count > 1 ? '' : 'disabled'}>${state.radar.playing ? PAUSE_ICON : PLAY_ICON}</button>
