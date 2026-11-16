@@ -151,6 +151,9 @@ const OUTLOOK_SHADES = {
 
 const GAP = 2;
 const DOT_R = 4;
+// What any hairline costs on top of its length: labels right by their dots are worth a lot (a label
+// with a line, even a short one, is harder to read than one touching its dot).
+const LINE_COST = 2600;
 // Margin around the resorts when fitting them (labels stick out sideways more than up and down).
 const EDGE_X = 30;
 const EDGE_Y = 14;
@@ -890,7 +893,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         // Outward: in a cluster, a label pointing back across its neighbors costs extra (the
         // cartographer's rule: Keystone, on the cluster's east side, labels east; Copper, west).
         const out = it.away ? Math.max(0, -(s[0] * it.away[0] + s[1] * it.away[1]) / (Math.hypot(s[0], s[1]) || 1)) : 0;
-        it.cands.push({ s, box, tail, cost: lead.len * lead.len + (s[2] ?? 60) + (tail ? 1200 : 0) + out * OUTWARD });
+        it.cands.push({ s, box, tail, cost: lead.len * lead.len + (s[2] ?? 60) + (tail ? LINE_COST : 0) + out * OUTWARD });
       }
       it.cands.sort((a, b) => a.cost - b.cost);
     };
@@ -1297,6 +1300,42 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     swapPass();
     settle();
     keepOrder(120);
+
+    // 6) Lines last: for a label with a hairline, try a spot touching its dot, moving the (up to 2)
+    //    labels in the way elsewhere; kept when that means one line fewer, or the line moving onto a
+    //    resort in a cluster, without much more length overall (a lone resort like Powderhorn shouldn't
+    //    hang off a line because Aspen's labels spread into its room).
+    const lineLen = (o) => { const c = pick.get(o); return c?.tail ? Math.hypot(c.tail.seg[2] - c.tail.seg[0], c.tail.seg[3] - c.tail.seg[1]) : 0; };
+    const linesUntil = performance.now() + 60; // (its own small time allowance)
+    for (const it of labels.filter((o) => pick.get(o)?.tail).sort((a, b) => lineLen(b) - lineLen(a))) {
+      if (performance.now() > linesUntil) break;
+      const was = pick.get(it);
+      if (!was?.tail) continue;
+      for (const c of it.cands.filter((x) => !x.tail).slice(0, 12)) {
+        const blockers = labels.filter((o) => o !== it && pick.get(o) && clash(c, pick.get(o)));
+        if (blockers.length > 2) continue;
+        const saved = [[it, was], ...blockers.map((o) => [o, pick.get(o)])];
+        const linesBefore = saved.filter(([, v]) => v?.tail).length;
+        const lenBefore = saved.reduce((t, [o]) => t + lineLen(o), 0);
+        for (const o of blockers) pick.set(o, null);
+        pick.set(it, c);
+        let ok = true;
+        for (const o of blockers) {
+          let n = bestFree(o);
+          if (!n && !o.compact) { const keep = o.cands; useFar(o); n = bestFree(o); if (!n) o.cands = keep; }
+          if (!n) { ok = false; break; }
+          pick.set(o, n);
+        }
+        const linesAfter = saved.filter(([o]) => pick.get(o)?.tail).length;
+        const lenAfter = saved.reduce((t, [o]) => t + lineLen(o), 0);
+        // (Or as many lines, but moved from a lone resort onto ones in a cluster, where lines are expected.)
+        const crowdOf = (o) => labels.filter((x) => x !== o && Math.hypot(x.p.x - o.p.x, x.p.y - o.p.y) < 60).length;
+        const gained = blockers.filter((o) => pick.get(o)?.tail && !saved.find(([x]) => x === o)[1]?.tail);
+        const toCluster = linesAfter === linesBefore && gained.length && gained.every((o) => crowdOf(o) > crowdOf(it));
+        if (ok && (linesAfter < linesBefore || toCluster) && lenAfter <= lenBefore + 60) break;
+        for (const [o, v] of saved) pick.set(o, v);
+      }
+    }
 
     const misses = items.filter((it) => !it.empty && (it.compact || !pick.get(it))).length;
     const result = items.map((it) => {

@@ -431,15 +431,18 @@ export function terrainLog(prev, today, runs, lifts) {
   return log.sort((a, b) => a.date.localeCompare(b.date));
 }
 
-// Night skiing today: from the lift hours where the feed has them (a lift closing at 5 pm or later),
+// Night skiing today: from the lift hours where the feed has them (a lift running past 5:30 pm),
 // otherwise the resort's published schedule on its night days. → { until, lifts?, source } or null.
 export function nightFor(r, lifts, today, open = true) {
-  const late = (lifts?.lifts ?? []).filter((l) => l.closes && l.closes >= '17:00');
+  if (!open) return null;
+  // (Past 5:30 pm, on a lift running or scheduled today: village gondolas run to 5, which isn't night
+  // skiing; Keystone's night lifts run to about 8.)
+  const late = (lifts?.lifts ?? []).filter((l) => l.closes && l.closes > '17:30' && l.status !== 'closed');
   if (late.length) {
     return { until: late.map((l) => l.closes).sort().at(-1), lifts: late.map((l) => l.name), source: 'lifts' };
   }
   const n = r.night;
-  if (!n || !open || lifts?.lifts?.length) return null;
+  if (!n || lifts?.lifts?.length) return null;
   const dow = new Date(`${today}T12:00:00Z`).getUTCDay();
   return n.days.includes(dow) ? { from: n.from, until: n.to, source: n.source } : null;
 }

@@ -233,3 +233,10 @@ test('freshSnow drops 24h/48h/7-day snow from a report over two days old', async
   const old = freshSnow({ new24: 4, depth: 30, updated: '2026-12-07T13:00:00Z' }, now);
   assert.equal(old.new24, null); assert.equal(old.depth, 30); assert.equal(old.staleSince, '2026-12-07T13:00:00Z');
 });
+
+test('nightFor: a village gondola running to 5 pm, or a closed lift, is not night skiing', async () => {
+  const { nightFor } = await import('../src/report.js');
+  assert.equal(nightFor({}, { lifts: [{ name: 'BreckConnect Gondola', status: 'scheduled', closes: '17:00' }] }, '2026-12-18'), null);
+  assert.equal(nightFor({}, { lifts: [{ name: 'Riverfront', status: 'closed', closes: '20:00' }] }, '2026-12-18'), null);
+  assert.equal(nightFor({}, { lifts: [{ name: 'River Run Gondola', status: 'open', closes: '20:00' }] }, '2026-12-18', false), null); // resort not open
+});
