@@ -1178,8 +1178,8 @@ body.reordering .rrow.dragging { transform-origin: center; }
 #map.us-wide .map-inset { display: none; }
 
 /* The whole-US view: state lines, and the world outside the US greyed out. */
-.us-mask { fill: #8a9099; fill-opacity: 0.55; }
-:root[data-theme="dark"] .us-mask { fill: #0b0f16; fill-opacity: 0.6; }
+/* (Solid: outside the country is just background, so nothing beyond the border competes.) */
+.us-mask { fill: var(--bg); fill-opacity: 1; }
 .us-borders { stroke: #4a5361; stroke-opacity: 0.7; fill: none; }
 :root[data-theme="dark"] .us-borders { stroke: #c4ccd8; stroke-opacity: 0.5; }
 .us-coast { stroke: #4a5361; stroke-opacity: 0.6; fill: none; }

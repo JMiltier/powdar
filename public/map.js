@@ -245,7 +245,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // A state with a single resort still needs some area around it.
   if (bounds.getNorthEast().distanceTo(bounds.getSouthWest()) < 40000) bounds.extend(bounds.getCenter().toBounds(80000));
   const map = L.map(el, {
-    zoomControl: false, attributionControl: false, zoomSnap: 0, inertia: false, maxBoundsViscosity: 1, bounceAtZoomLimits: false,
+    zoomControl: false, attributionControl: false, zoomSnap: 0, inertia: false, 
     dragging: false, touchZoom: false, doubleClickZoom: false, scrollWheelZoom: false, boxZoom: false, keyboard: false,
   });
   // detectRetina: sharp relief on high-resolution phone screens (one zoom level more detail).
@@ -721,8 +721,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     }
   }
 
-  // The whole lower 48 (snow on the ground and the season outlook are national): resorts, towns and
-  // roads hide, the overlay is redrawn for the wider view.
+  // The whole lower 48, fixed like the state view (snow on the ground and the season outlook are
+  // national; NOAA's snow analysis doesn't cover Alaska or Hawaii): resorts, towns and roads hide, the
+  // overlay is redrawn for the wider view.
   const US = L.latLngBounds([[24.4, -124.8], [49.4, -66.9]]);
   let wide = false;
   // In the whole-US view: state lines, and everything outside the country greyed out (US Census
@@ -746,18 +747,10 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     if (on && wide) outline.addTo(map);
     else outline.remove();
   }
-  let wideTimer = null;
-  const wideMoved = () => {
-    clearTimeout(wideTimer);
-    wideTimer = setTimeout(() => { if (wide && layerName !== 'none') drawLayer(); }, 250);
-  };
+
   const fit = () => {
     const p = getPadding();
-    // (The whole-US view zooms in freely but never out past the country, nor drags far from it.)
-    map.setMinZoom(0);
-    map.setMaxBounds(wide ? US.pad(0.15) : null);
     map.fitBounds(wide ? US : bounds, { paddingTopLeft: [p.left + EDGE_X, p.top + EDGE_Y], paddingBottomRight: [p.right + EDGE_X, p.bottom + EDGE_Y], animate: false });
-    if (wide) map.setMinZoom(map.getZoom());
   };
   fit();
 
@@ -1531,9 +1524,6 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       wide = on;
       el.classList.toggle('us-wide', on);
       showOutline(on);
-      // (Pinch and drag to look closer at any part of the country; the overlay is redrawn for the new view.)
-      for (const h of [map.dragging, map.touchZoom, map.doubleClickZoom, map.scrollWheelZoom]) h[on ? 'enable' : 'disable']();
-      map[on ? 'on' : 'off']('moveend', wideMoved);
       map.invalidateSize({ animate: false, pan: false });
       fit();
       if (!on) layout();
