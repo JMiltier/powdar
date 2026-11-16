@@ -149,7 +149,9 @@ const OUTLOOK_SHADES = {
   Below: ['#f1dcb6', '#e3bd7f', '#cf9548', '#a96a24'],
 };
 
-const GAP = 2;
+const GAP = 1; // (each side: labels sit 2 px apart)
+// The screen width the exact label spots (labelHints [dx, dy, width]) were laid out for: a 412-px phone.
+const PIN_WIDTH = 412;
 const DOT_R = 4;
 // What any hairline costs on top of its length: labels right by their dots are worth a lot (a label
 // with a line, even a short one, is harder to read than one touching its dot).
@@ -199,7 +201,7 @@ function leader(it, [dx, dy]) {
   const vx = nx - it.p.x;
   const vy = ny - it.p.y;
   const len = Math.hypot(vx, vy);
-  if (len <= DOT_R + 6) return { len: 0, seg: null };
+  if (len <= DOT_R + 7) return { len: 0, seg: null };
   const sx = it.p.x + (vx / len) * (DOT_R + 1);
   const sy = it.p.y + (vy / len) * (DOT_R + 1);
   return { len, seg: [nx, ny, sx, sy] };
@@ -878,7 +880,11 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
 
     // Candidate spots for a label at its current width (recomputed if it falls back to chip-only).
     const buildCands = (it, relaxed = false, far = false) => {
-      const spots = it.empty ? [] : spotsFor(it.w, it.h); // "no data" resorts show just a grey dot
+      // (A hint may be an exact spot, [dx, dy, width] from the dot to the label's middle for a label that
+      // wide: tried first, scaled with the label.)
+      const pin = Array.isArray(labelHints[it.r.id]) ? labelHints[it.r.id] : null;
+      const k = pin ? it.w / pin[2] : 1;
+      const spots = it.empty ? [] : [...(pin ? [[pin[0] * k, pin[1] * k, 0, true]] : []), ...spotsFor(it.w, it.h)]; // "no data" resorts show just a grey dot
       it.cands = [];
       for (const s of spots) {
         const box = boxOf(it, s);
@@ -893,7 +899,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         if (!relaxed && tail && dots.some((d) => d !== it.p && segPointDist(tail.seg, d) < DOT_R + 3)) continue;
         // Labels that matter (open, favorite, filter match) may reach further when they must.
         // (Far: the last try for a full name before number-only.)
-        if (lead.len > (far ? maxLead * 3.2 : (it.prio ?? 0) > 0 ? maxLead * 2.3 : relaxed ? maxLead * 1.5 : maxLead)) continue;
+        if (!s[3] && lead.len > (far ? maxLead * 3.2 : (it.prio ?? 0) > 0 ? maxLead * 2.3 : relaxed ? maxLead * 1.5 : maxLead)) continue;
         // Distance from the dot (squared), a small preference for the classic spots, and a big one for
         // touching the dot: a hairline is only worth it when there's no room right beside it.
         // Outward: in a cluster, a label pointing back across its neighbors costs extra (the
@@ -902,10 +908,13 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         // A hint for this resort (labelHints): its spot, touching the dot, wins wherever it fits.
         const hint = labelHints[it.r.id];
         const side = Math.abs(s[1]) > Math.abs(s[0]) * 0.6 ? (s[1] < 0 ? 'N' : 'S') : s[0] > 0 ? 'E' : 'W';
-        const hinted = !hint ? 0 : hint === 'touch' ? (tail ? 2500 : 0) : tail ? 0 : side === hint ? -3400 : 0;
+        const hinted = !hint ? 0 : s[3] ? -9000 : Array.isArray(hint) ? 0 : hint === 'touch' ? (tail ? 2500 : 0) : tail ? 0 : side === hint ? -3400 : 0;
         it.cands.push({ s, box, tail, cost: lead.len * lead.len + (s[2] ?? 60) + (tail ? LINE_COST : 0) + out * OUTWARD + hinted });
       }
       it.cands.sort((a, b) => a.cost - b.cost);
+      // (On the screen size they were laid out for, an exact spot that fits is the only spot: the other
+      // labels arrange themselves around it. Elsewhere it's just the favorite.)
+      if (it.cands[0]?.s[3] && Math.abs(size.x - PIN_WIDTH) <= 12) it.cands = [it.cands[0]];
     };
     // Far-out spots for a full label (computed once per label, then reused).
     const useFar = (it) => {
@@ -1348,7 +1357,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         // (Or a resort's hinted spot (labelHints), touching its dot, for no more lines and a little more
         // line length at most.)
         const hint = labelHints[it.r.id];
-        const hinted = hint && hint !== 'touch' && (Math.abs(c.s[1]) > Math.abs(c.s[0]) * 0.6 ? (c.s[1] < 0 ? 'N' : 'S') : c.s[0] > 0 ? 'E' : 'W') === hint;
+        const hinted = hint && (Array.isArray(hint) ? c.s[3] : hint !== 'touch' && (Math.abs(c.s[1]) > Math.abs(c.s[0]) * 0.6 ? (c.s[1] < 0 ? 'N' : 'S') : c.s[0] > 0 ? 'E' : 'W') === hint);
         if (ok && noSprawl && hinted && linesAfter <= linesBefore && lenAfter <= lenBefore + 40) break;
         if (ok && noSprawl && (linesAfter < linesBefore || toCluster) && lenAfter <= lenBefore + 60) break;
         for (const [o, v] of saved) pick.set(o, v);

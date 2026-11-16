@@ -2102,12 +2102,19 @@ const CO_TOWNS = [
   ['Cañon City', 38.441, -105.2425], ['Lake City', 38.03, -107.3156], ['Georgetown', 39.7061, -105.6975], ['Basalt', 39.3689, -107.0328],
 ];
 
-// Where some labels read best, when there's room (map.js labelHints): above / below / right / left of
-// the dot and touching it, or just touching it on any side.
+// Where some labels read best (map.js labelHints): 'N' / 'S' / 'E' / 'W' (that side, touching the dot)
+// or 'touch'; or an exact spot, [dx, dy, width]: from the dot to the label's middle, for a label that
+// wide. The exact spots are Colorado laid out by hand for a 412-wide phone (the automatic layout only
+// fills in around them, and takes over where one doesn't fit): Copper, Vail and Loveland right at
+// their dots, Echo east of Loveland.
 const LABEL_HINTS = {
-  'copper-mountain': 'N', powderhorn: 'S', eldora: 'touch',
-  // Aspen's four, compass-style (each on its own side of the cluster, as the mountains lie).
-  snowmass: 'W', buttermilk: 'N', 'aspen-highlands': 'S',
+  eldora: [16, -17.5, 86], 'echo-mountain': [24.5, -15.5, 59], loveland: [-6, -16.5, 90], vail: [-28, -18.5, 64],
+  'winter-park': [-59.5, -3.5, 103], 'granby-ranch': [-53, 0.5, 90], 'beaver-creek': [-59.5, 1.5, 103],
+  'copper-mountain': [-48.5, 6.5, 81], 'arapahoe-basin': [49.5, 9.5, 85], keystone: [52.5, 22.5, 91],
+  breckenridge: [35, 26.5, 74], 'howelsen-hill': [-49.5, 0.5, 84], steamboat: [62, 0.5, 108], sunlight: [-55.5, 0.5, 95],
+  // Aspen: Highlands' dot has Buttermilk's right above it and Snowmass' and Aspen Mountain's either
+  // side, so its label goes below; the others on their own sides.
+  snowmass: [-62, 2, 108], 'aspen-highlands': 'S', buttermilk: 'N', 'aspen-mountain': 'E', powderhorn: 'S',
 };
 
 // Utah's towns, as Colorado's: the cities, then the ski towns and the ones on the way.
