@@ -2329,7 +2329,11 @@ document.addEventListener('click', (e) => {
   const satStep = t.closest('[data-sat-step]');
   if (satStep) return stepSatDay(Number(satStep.dataset.satStep));
   if (t.closest('#radar-play')) return state.map?.playRadar(!state.radar.playing);
-  if (t.closest('#snow-btn')) return openLayers($('#layers').hidden);
+  if (t.closest('#snow-btn')) {
+    // (The panel pulled up hides the map and the menu: down it goes, so both can be seen.)
+    if ($('#layers').hidden && !WIDE.matches && state.sheet !== 'peek') setSheet('peek');
+    return openLayers($('#layers').hidden);
+  }
   const layer = t.closest('[data-layer]');
   if (layer) {
     state.layer = layer.dataset.layer;
