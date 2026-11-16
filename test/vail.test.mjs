@@ -51,3 +51,14 @@ test('Wolf Creek report page parses (snowfall, depth, open %, lifts, update date
   assert.equal(r.updated, '2026-11-15');
   assert.equal(r.surface, 'Powder/Packed Powder');
 });
+
+test('Ski Utah list: opening dates, TBA, closed for the season, and open with numbers', async () => {
+  const { parseSkiUtah } = await import('../src/skiutah.js');
+  const row = (slug, inner) => `<li class="row"><div class="col title"><a href="https://www.skiutah.com/members/${slug}/snowreport">X</a></div>${inner}</li>`;
+  const html = `<div class="resort-totals">${row('alta', '<div class="col-4 override">Opening Nov 20</div>')}${row('beaver-mountain', '<div class="col-4 override">Opening Day TBA</div>')}${row('eagle-point', '<div class="col-4 override">Closed For 2026-27 Season</div>')}${row('brian-head', '<div class="col-4">3"</div><div class="col-4">24"</div>')}</div>`;
+  const m = parseSkiUtah(html, { startYear: 2026 });
+  assert.deepEqual(m.get('alta'), { open: false, date: '2026-11-20' });
+  assert.equal(m.get('beaver-mountain').tba, true);
+  assert.equal(m.get('eagle-point').closedSeason, true);
+  assert.deepEqual(m.get('brian-head'), { open: true, new24: 3, depth: 24 });
+});

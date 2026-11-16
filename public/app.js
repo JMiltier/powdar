@@ -8,7 +8,7 @@ const STATES_URL = 'states.json';
 // every other state's map.
 const ALL_STATES = false;
 // Every state with resorts. Anything else in the address or storage is ignored (e.g. an old bad "#half").
-const STATE_CODES = !ALL_STATES ? new Set(['CO']) : new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
+const STATE_CODES = !ALL_STATES ? new Set(['CO', 'UT']) : new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
 const validCode = (c) => (c && STATE_CODES.has(String(c).toUpperCase()) ? String(c).toUpperCase() : null);
 const STORE = {
   data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', sort: 'cs:sort', order: 'cs:order', unit: 'cs:unit', dist: 'cs:dist', labels: 'cs:labels', snowStyle: 'cs:snowStyle2', panel: 'cs:panel',
@@ -183,8 +183,9 @@ const EXT_ICON = '<svg class="ext-icon" viewBox="0 0 24 24" aria-hidden="true"><
 // Which multi-resort pass each Colorado resort is on, 2026–27 (the rest are "Other": their own passes).
 // Telluride is 7 days on Epic; Aspen Snowmass's four mountains share 7 days on Ikon.
 const PASSES = {
-  epic: ['vail', 'beaver-creek', 'breckenridge', 'keystone', 'crested-butte', 'telluride'],
-  ikon: ['arapahoe-basin', 'copper-mountain', 'winter-park', 'steamboat', 'eldora', 'aspen-mountain', 'aspen-highlands', 'buttermilk', 'snowmass'],
+  epic: ['vail', 'beaver-creek', 'breckenridge', 'keystone', 'crested-butte', 'telluride', 'park-city'],
+  ikon: ['arapahoe-basin', 'copper-mountain', 'winter-park', 'steamboat', 'eldora', 'aspen-mountain', 'aspen-highlands', 'buttermilk', 'snowmass',
+    'alta', 'snowbird', 'brighton', 'solitude', 'deer-valley', 'snowbasin'],
   indy: ['loveland', 'sunlight', 'powderhorn', 'granby-ranch', 'echo-mountain', 'howelsen-hill'],
 };
 const PASS_NAMES = { all: 'All', epic: 'Epic', ikon: 'Ikon', indy: 'Indy', other: 'Other' };
@@ -972,11 +973,15 @@ function dayOfSeason(ymd) {
 // The whole state's winter at a glance: what's open, fresh snow and the week ahead, statewide snowpack
 // and temperature against normal (public/history/colorado.json and public/temps/colorado.json, made by
 // scripts/statewide.mjs), and each region's snowpack.
-const OVERVIEW = 'colorado';
+const OVERVIEW = 'overview';
+// The state's own name, for its overview and headings ("Colorado", "Utah"), and its slug in links
+// (#co/colorado, #ut/utah: the overview).
+const stateName = () => state.data?.stateName ?? 'Colorado';
+const stateSlug = () => stateName().toLowerCase();
 let stateHistory = null; // colorado.json (snowpack normals), once loaded
 function loadStateHistory() {
   if (!stateHistory) {
-    stateHistory = fetch('history/colorado.json').then((res) => (res.ok ? res.json() : null)).catch(() => null)
+    stateHistory = fetch(`history/${stateSlug()}.json`).then((res) => (res.ok ? res.json() : null)).catch(() => null)
       .then((d) => { stateHistory = d ?? false; if (state.selected === OVERVIEW) render(); return d; });
   }
   return stateHistory;
@@ -1287,7 +1292,7 @@ function todaySection() {
   const items = highlights();
   const disc = ins?.discussions ?? [];
   return `
-    <h3 class="section">Today in Colorado</h3>
+    <h3 class="section">Today in ${esc(stateName())}</h3>
     <div class="best-bets">${bestBetCard(0)}${bestBetCard(1)}</div>
     ${scopedBets()}
     <p class="best-note">Picked from fresh snow, open terrain, sun, wind, temperature and base, among resorts open that day.</p>
@@ -1316,14 +1321,14 @@ function headlineInsight() {
   return [pick, alert].filter(Boolean).join('</span><span class="row-sub overview-line">');
 }
 function overviewCard() {
-  if (!state.data?.snowpack || state.code !== 'CO') return '';
+  if (!state.data?.snowpack || !['CO', 'UT'].includes(state.code)) return '';
   const t = todayStats();
   const pct = statewidePct();
   return `
     <button type="button" class="row card overview-card" data-open="${OVERVIEW}">
       <span class="card-top">
-        <span class="co-badge" aria-hidden="true">CO</span>
-        <span class="row-name">Colorado today</span>
+        <span class="co-badge" aria-hidden="true">${esc(state.code)}</span>
+        <span class="row-name">${esc(stateName())} today</span>
         <span class="card-more">Overview${UI.chevron}</span>
       </span>
       ${headlineInsight() ? `<span class="row-sub overview-line">${headlineInsight()}</span>` : ''}
@@ -1345,7 +1350,7 @@ function renderOverview() {
     <div class="detail-head">
       <button type="button" class="icon" data-back aria-label="Back to all resorts">${UI.back}</button>
       <div class="detail-title">
-        <h2>Colorado <span class="pill pill-open">${t.open.length} open</span></h2>
+        <h2>${esc(stateName())} <span class="pill pill-open">${t.open.length} open</span></h2>
         <p>Ski country · ${d.resorts.length} resorts · ${list.length} mountain snow stations</p>
       </div>
     </div>`;
@@ -1380,7 +1385,7 @@ function renderOverview() {
     snowChart = `${seasonChart(st, ahead, null, bands)}
       <p class="legend-line"><i class="k-now"></i>This season ${ahead ? '<i class="k-proj"></i>Next 2 weeks ' : ''}<i class="k-median"></i>Normal</p>
       <p class="band-key"><span class="b-high">Snowiest 10%</span><span class="b-above">Above</span><span class="b-normal">Typical</span><span class="b-below">Below</span><span class="b-low">Driest 10%</span></p>`;
-    notes.push(`Ski-country snowpack: the average of the ${list.length} high-elevation SNOTEL stations near Colorado's resorts (not all of Colorado) (USDA NRCS Snow Survey), against the same average over the ${hist.seasons} winters ${esc(hist.first)} to ${esc(hist.last)}; % of normal is their total snow water against their total 1991–2020 median.`);
+    notes.push(`Ski-country snowpack: the average of the ${list.length} high-elevation SNOTEL stations near ${esc(stateName())}'s resorts (not all of Colorado) (USDA NRCS Snow Survey), against the same average over the ${hist.seasons} winters ${esc(hist.first)} to ${esc(hist.last)}; % of normal is their total snow water against their total 1991–2020 median.`);
   }
 
   // Regions: their stations' snow water against normal.
@@ -1394,8 +1399,8 @@ function renderOverview() {
     </li>`).join('');
 
   // Statewide temperature.
-  const tn = tempNormals.get(OVERVIEW);
-  if (!tn) loadTemps(OVERVIEW).then(() => { if (state.selected === OVERVIEW) render(); });
+  const tn = tempNormals.get(stateSlug());
+  if (!tn) loadTemps(stateSlug()).then(() => { if (state.selected === OVERVIEW) render(); });
   let tempBlock = '<p class="muted small">Loading…</p>';
   if (tn && !(tn instanceof Promise)) {
     const temps = averageCurve(list.map((s) => s.temps ?? []));
@@ -1714,7 +1719,7 @@ function renderMap() {
 }
 
 let lastSelected = null;
-const routeFor = () => `#${state.code.toLowerCase()}${state.selected ? `/${state.selected}` : ''}`;
+const routeFor = () => `#${state.code.toLowerCase()}${state.selected ? `/${state.selected === OVERVIEW ? stateSlug() : state.selected}` : ''}`;
 function syncRoute() {
   if (location.hash !== routeFor()) history.replaceState(history.state, '', routeFor());
 }
@@ -2080,6 +2085,15 @@ const CO_TOWNS = [
   ['Cañon City', 38.441, -105.2425], ['Lake City', 38.03, -107.3156], ['Georgetown', 39.7061, -105.6975], ['Basalt', 39.3689, -107.0328],
 ];
 
+// Utah's towns, as Colorado's: the cities, then the ski towns and the ones on the way.
+const UT_TOWNS = [
+  ['Salt Lake City', 40.7608, -111.891, true], ['Ogden', 41.223, -111.9738, true], ['Provo', 40.2338, -111.6585, true],
+  ['Park City', 40.6461, -111.498], ['Logan', 41.737, -111.8338], ['Heber City', 40.507, -111.4132], ['Cedar City', 37.6775, -113.0619],
+  ['St. George', 37.0965, -113.5684], ['Huntsville', 41.2602, -111.7683], ['Eden', 41.3016, -111.8227], ['Kamas', 40.6431, -111.2807],
+  ['Moab', 38.5733, -109.5498], ['Vernal', 40.4555, -109.5287], ['Price', 39.5994, -110.8107], ['Richfield', 38.7725, -112.0841],
+  ['Beaver', 38.2769, -112.641], ['Panguitch', 37.8228, -112.4358], ['Tooele', 40.5308, -112.2983], ['Brigham City', 41.5102, -112.0155],
+];
+
 function startMap() {
   if (state.map || !state.data) return;
   state.map = createSnowMap($('#map'), {
@@ -2093,7 +2107,7 @@ function startMap() {
     // Each radar frame: just update the key's button and time (no full re-render while playing).
     onRadar: (r) => { state.radar = r; syncRadarKey(); },
     onCast: (c) => { state.cast = { ...state.cast, ...c }; if (state.layer === 'snowcast') $('#legend').innerHTML = legendFor('snowcast'); },
-    places: state.code === 'CO' ? CO_TOWNS : [],
+    places: state.code === 'CO' ? CO_TOWNS : state.code === 'UT' ? UT_TOWNS : [],
   });
   state.map.setMarks(state.marks);
   applyLayer();
@@ -2152,8 +2166,10 @@ async function loadStates() {
   renderPicker();
 }
 
+// Colorado and Utah (each with the full pipeline); every state when ALL_STATES is on.
+const PICKER = { regions: ['West'], states: [{ code: 'CO', name: 'Colorado', region: 'West', count: 26 }, { code: 'UT', name: 'Utah', region: 'West', count: 15 }] };
 function renderPicker() {
-  const list = state.states;
+  const list = ALL_STATES ? state.states : PICKER;
   if (!list) return;
   $('#picker-list').innerHTML = list.regions.map((region) => {
     const states = list.states.filter((x) => x.region === region);
@@ -2187,6 +2203,7 @@ function setState(code) {
   state.selected = null;
   history.replaceState(null, '', routeFor());
   state.pastSeason = null;
+  stateHistory = null; // (each state its own statewide history)
   state.map?.destroy();
   state.map = null;
   // Show the last saved copy of this state instantly (if any), then fetch fresh data.
@@ -2200,7 +2217,8 @@ function setState(code) {
 // Back/forward (and an edited address): follow the address. A cam open on top closes first.
 function followRoute() {
   if (!$('#cam-view').hidden && !history.state?.cam) $('#cam-view').hidden = true;
-  const [c, id] = routeParts();
+  const [c, rawId] = routeParts();
+  const id = ['colorado', 'utah'].includes(rawId) ? OVERVIEW : rawId; // (a state's name: its overview)
   const code = validCode(c);
   if (code && code !== state.code) return setState(code);
   const want = id || null;
@@ -2412,7 +2430,7 @@ $('#panel-open').hidden = !WIDE.matches || state.panelOpen;
 // Show the last copy instantly, then fetch fresh data.
 if (!state.firstVisit) {
   // A shared link to a resort or the overview opens it (with the list one back step behind it).
-  const shared = routeParts()[1];
+  const shared = ((x) => (['colorado', 'utah'].includes(x) ? OVERVIEW : x))(routeParts()[1]);
   if (shared) {
     history.replaceState(null, '', `#${state.code.toLowerCase()}`);
     history.pushState({ page: true }, '', `#${state.code.toLowerCase()}/${shared}`);
@@ -2427,7 +2445,7 @@ state.data = read(`${STORE.data}:${state.code}`, null) ?? (state.code === 'CO' ?
 startMap();
 render();
 load();
-$('#state-btn').hidden = !ALL_STATES;
+$('#state-btn').hidden = STATE_CODES.size < 2;
 function syncMarksBtn() {
   const b = $('#labels-btn');
   b.setAttribute('aria-pressed', String(state.marks === 'all'));

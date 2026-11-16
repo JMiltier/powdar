@@ -9,11 +9,13 @@ export const VAIL_SITES = {
   breckenridge: 'https://www.breckenridge.com',
   keystone: 'https://www.keystoneresort.com',
   'crested-butte': 'https://www.skicb.com',
+  'park-city': 'https://www.parkcitymountain.com', // (Utah)
 };
-// Crested Butte names its pages differently.
+// Crested Butte and Park City name their pages differently.
 const PAGES = {
   default: ['snow-and-weather-report.aspx', 'terrain-and-lift-status.aspx'],
   'https://www.skicb.com': ['weather-report.aspx', 'lift-and-terrain-status.aspx'],
+  'https://www.parkcitymountain.com': ['weather-report.aspx', 'terrain-and-lift-status.aspx'],
 };
 const pages = (site) => PAGES[site] ?? PAGES.default;
 export const snowPage = (site) => `${site}/the-mountain/mountain-conditions/${pages(site)[0]}`;

@@ -1,13 +1,15 @@
 // Builds the single data.json the app reads. Pure apart from the fetch you pass in,
 // so it runs the same in the GitHub Action, the local preview server and tests.
 import { RESORTS, PLANNED } from './resorts.js';
+import { UT_RESORTS } from './resorts-ut.js';
+import { SKI_UTAH, parseSkiUtah } from './skiutah.js';
 import { MODELS, modelUrl, snowHours, uvUrl } from './models.js';
 import { ensembleUrl, summarizeEnsemble } from './ensemble.js';
 import { parseSnotel, snotelUrl, stationSeason, waterYear } from './snotel.js';
 import { LIFT_SOURCES, summarizeLifts } from './lifts.js';
 import { liftsDue } from './lift-hours.js';
 import { VAIL_SITES, snowPage, liftPage, parseVailSnow, parseVailTerrain } from './vail.js';
-import { fetchInsights } from './insights.js';
+import { fetchInsights, OFFICES } from './insights.js';
 import { WOLF_CREEK_REPORT, parseWolfCreek } from './wolfcreek.js';
 import CAMS from './cams.json' with { type: 'json' };
 
@@ -457,22 +459,59 @@ export function nightFor(r, lifts, today, open = true) {
 }
 
 // skipModels: don't fetch the weather models this time (the caller reuses the last hour's forecast).
+// Where a state's report comes from. Colorado: Colorado Ski Country's feed, Vail Resorts' pages,
+// the lift feeds, Wolf Creek's own report. Utah: Ski Utah's snow report (src/skiutah.js) and Park
+// City's own pages (a Vail Resorts mountain). Everything else (forecasts, ensembles, snowpack,
+// NOAA, insights) works the same for any state.
+export const REGIONS = {
+  CO: {
+    code: 'CO', name: 'Colorado', resorts: RESORTS, planned: PLANNED, csc: true,
+    vailIds: ['vail', 'beaver-creek', 'breckenridge', 'keystone', 'crested-butte'], liftSources: LIFT_SOURCES, cams: CAMS,
+    offices: OFFICES, alertArea: 'CO', wolfCreek: true,
+  },
+  UT: {
+    code: 'UT', name: 'Utah', resorts: UT_RESORTS, planned: {}, skiUtah: true,
+    vailIds: ['park-city'], liftSources: {}, cams: {},
+    offices: [{ id: 'SLC', name: 'Salt Lake City', covers: 'all of Utah’s ski country, the Wasatch to Brian Head' }], alertArea: 'UT',
+  },
+};
+
 // prevEnsemble: the last published ensemble summaries ({ at, today, byId }), reused for up to 6 hours
 // (the ensembles themselves only update every 6 hours, and each request is a big one).
 const ENSEMBLE_EVERY_MS = 6 * 3_600_000;
 // prevResorts: last published resorts by id (their surface weather and terrain log carry forward).
-export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), log = () => {}, backoff = 2000, skipModels = false, prevLifts = {}, prevEnsemble = null, prevResorts = {} } = {}) {
+export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fetch, now = new Date(), log = () => {}, backoff = 2000, skipModels = false, prevLifts = {}, prevEnsemble = null, prevResorts = {} } = {}) {
+  const RESORTS = R.resorts;
+  const LIFT_SOURCES = R.liftSources;
+  const CAMS = R.cams;
   const today = localDate(now);
   const season = seasonOf(today);
-  const planned = PLANNED[season.name] ?? {};
+  const planned = { ...(R.planned[season.name] ?? {}) };
 
   let csc = new Map();
   let cscOk = true;
-  try {
-    csc = parseCsc(await getJson(fetchFn, CSC_FEED, { backoff }), season);
-  } catch (err) {
-    cscOk = false;
-    log(`Colorado Ski Country feed failed: ${err.message}`);
+  if (R.csc) {
+    try {
+      csc = parseCsc(await getJson(fetchFn, CSC_FEED, { backoff }), season);
+    } catch (err) {
+      cscOk = false;
+      log(`Colorado Ski Country feed failed: ${err.message}`);
+    }
+  }
+  // Ski Utah: open resorts' 24-hour snow and base; the rest's opening dates (as planned dates).
+  let skiUtah = new Map();
+  if (R.skiUtah) {
+    try {
+      skiUtah = parseSkiUtah(await getText(fetchFn, SKI_UTAH, { backoff }), { startYear: Number(season.start.slice(0, 4)) });
+      for (const r of RESORTS) {
+        const e = skiUtah.get(r.skiutah);
+        if (!e || e.open) continue;
+        planned[r.id] = e.closedSeason ? { close: addDays(today, -1), note: 'closed this season' } : e.tba ? { note: 'TBA' } : { open: e.date };
+      }
+    } catch (err) {
+      cscOk = false;
+      log(`Ski Utah's snow report failed: ${err.message}`);
+    }
   }
 
   // Each model is one request covering every resort; NWS is two requests per resort (gridded
@@ -546,7 +585,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
 
   // Vail Resorts' mountains: their own snow reports (every update) and lift/run status (ski hours,
   // like the other lift feeds; otherwise the last reading stands). See vail.js.
-  const vailIds = Object.keys(VAIL_SITES);
+  const vailIds = R.vailIds;
   const vail = Object.fromEntries(await pool(vailIds, 2, async (id) => {
     const site = VAIL_SITES[id];
     let snow = null;
@@ -578,7 +617,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
   }
   // Wolf Creek's own snow report (no feed covers it).
   let wolf = null;
-  try {
+  if (R.wolfCreek) try {
     wolf = parseWolfCreek(await getText(fetchFn, WOLF_CREEK_REPORT, { backoff }));
   } catch (err) {
     log(`Wolf Creek's snow report failed: ${err.message}`);
@@ -677,7 +716,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
   });
 
   // The forecasters' key messages and active alerts (see insights.js).
-  const insights = await fetchInsights(getJson, fetchFn, { backoff, log });
+  const insights = await fetchInsights(getJson, fetchFn, { backoff, log, offices: R.offices, area: R.alertArea });
 
   const resorts = RESORTS.map((r, i) => {
     let c = r.csc ? csc.get(r.csc) : undefined;
@@ -690,6 +729,10 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     }
     // Wolf Creek: open when today's patrol report has terrain open (it runs weekends only early on,
     // so an older report says nothing about today).
+    // Ski Utah: open when its list says so (with its 24-hour snow and base); Park City's own pages
+    // (above) come first.
+    const su = R.skiUtah && skiUtah.get(r.skiutah);
+    if (!c && su?.open) c = { isOpen: true, report: { new24: su.new24 ?? null, depth: su.depth ?? null, source: `https://www.skiutah.com/members/${r.skiutah}/snowreport` }, own: true };
     if (!c && r.id === 'wolf-creek' && wolf) {
       const fresh = wolf.updated && wolf.updated >= addDays(today, -1);
       // (Its report gives the lifts running, not the total, so no "of N".)
@@ -709,6 +752,7 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
     return {
       id: r.id,
       name: r.name,
+      ...(r.short ? { short: r.short } : {}),
       region: r.region,
       at: r.at,
       url: r.url,
@@ -741,6 +785,8 @@ export async function buildReport({ fetch: fetchFn = fetch, now = new Date(), lo
   });
 
   return {
+    state: R.code,
+    stateName: R.name,
     insights,
     ensemble,
     generated: now.toISOString(),

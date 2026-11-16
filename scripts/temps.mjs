@@ -4,7 +4,10 @@
 // days either side so one odd year doesn't make a spike. The app draws this season against it.
 // Past seasons never change: run once a year, each fall (`node scripts/temps.mjs`).
 import { mkdir, writeFile } from 'node:fs/promises';
-import { RESORTS } from '../src/resorts.js';
+import { RESORTS as CO_RESORTS } from '../src/resorts.js';
+import { UT_RESORTS } from '../src/resorts-ut.js';
+// STATE=UT runs it for Utah's resorts (Colorado's by default).
+const RESORTS = process.env.STATE === 'UT' ? UT_RESORTS : CO_RESORTS;
 import { AWDB, waterYear } from '../src/snotel.js';
 
 const FIRST_SEASON = 2005;

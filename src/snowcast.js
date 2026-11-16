@@ -8,7 +8,7 @@ import { inflateRawSync } from 'node:zlib';
 export const SNOWCAST_KMZ = 'https://www.wpc.ncep.noaa.gov/pwpf/latest_kml/';
 export const SNOWCAST_AMOUNTS = [1, 2, 6, 12];
 const LEVELS = [10, 40, 70]; // slight / moderate / high chance contours (nested)
-const BBOX = [-110.5, 36.5, -101.5, 41.5]; // Colorado and a little around it
+const BBOX = [-114.5, 36.5, -101.5, 42.5]; // Colorado and Utah, and a little around them
 
 // The first file in a zip (a KMZ holds one KML).
 export function unzipFirst(buf, want = /\.kml$/i) {

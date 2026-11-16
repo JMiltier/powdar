@@ -2,7 +2,10 @@
 // in public/history/. Past seasons never change, so run this once a year after the season ends
 // (each fall): `npm run history`.
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { RESORTS } from '../src/resorts.js';
+import { RESORTS as CO_RESORTS } from '../src/resorts.js';
+import { UT_RESORTS } from '../src/resorts-ut.js';
+// STATE=UT runs it for Utah's resorts (Colorado's by default).
+const RESORTS = process.env.STATE === 'UT' ? UT_RESORTS : CO_RESORTS;
 import { despike, parseSnotel, snotelUrl, waterYear } from '../src/snotel.js';
 
 const FIRST_SEASON = 2005; // 2005-06 onward: 20+ winters

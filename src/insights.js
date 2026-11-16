@@ -19,8 +19,9 @@ export function keyMessages(text) {
   return m[1].split(/\n\s*-\s+/).map((s) => s.replace(/^\s*-\s+/, '').replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 6);
 }
 
-export async function fetchInsights(getJson, fetchFn, { backoff = 2000, log = () => {} } = {}) {
-  const discussions = (await Promise.all(OFFICES.map(async (o) => {
+// offices / area: which forecast offices and which state's alerts (Colorado's by default).
+export async function fetchInsights(getJson, fetchFn, { backoff = 2000, log = () => {}, offices = OFFICES, area = 'CO' } = {}) {
+  const discussions = (await Promise.all(offices.map(async (o) => {
     try {
       const list = await getJson(fetchFn, `${NWS}/products/types/AFD/locations/${o.id}`, { backoff });
       const latest = list['@graph']?.[0];
@@ -40,7 +41,7 @@ export async function fetchInsights(getJson, fetchFn, { backoff = 2000, log = ()
 
   let alerts = [];
   try {
-    const res = await getJson(fetchFn, `${NWS}/alerts/active?area=CO`, { backoff });
+    const res = await getJson(fetchFn, `${NWS}/alerts/active?area=${area}`, { backoff });
     const seen = new Set();
     alerts = (res.features ?? []).map((f) => f.properties).filter((p) => ALERT_EVENTS.test(p.event ?? ''))
       // The same alert is often issued for several zones: one entry per event and wording.

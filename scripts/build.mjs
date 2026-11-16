@@ -1,7 +1,7 @@
 // Fetches fresh data and writes public/data.json. Run by the GitHub Action every 30 minutes.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fetchSnowcast } from '../src/snowcast.js';
-import { buildReport } from '../src/report.js';
+import { buildReport, REGIONS as STATE_REGIONS } from '../src/report.js';
 import { buildStateReport } from '../src/state-report.js';
 
 const RETRY_AFTER_MS = 45_000;
@@ -105,6 +105,37 @@ await writeFile(new URL('../public/data.json', import.meta.url), JSON.stringify(
 await writeFile(new URL('../public/data/co.json', import.meta.url), JSON.stringify(report));
 console.log('Wrote Colorado');
 
+// ---------- Utah: the same pipeline as Colorado (src/report.js REGIONS.UT) ----------
+// Its weather models every 2 hours (Colorado's hourly), to stay inside the free forecast allowance;
+// everything else (status, reports, lifts, NWS) every update. Without models this time, the last
+// published forecasts carry over.
+try {
+  const prevUt = await published('data/ut.json');
+  const utModelsAge = Date.now() - Date.parse(prevUt?.sources?.modelsAt ?? 0);
+  const utSkip = Boolean(prevUt && utModelsAge < 2 * 3_600_000);
+  const ut = await buildReport({
+    region: STATE_REGIONS.UT, log: (msg) => console.warn(`Utah: ${msg}`), skipModels: utSkip,
+    prevLifts: Object.fromEntries((prevUt?.resorts ?? []).filter((r) => r.lifts).map((r) => [r.id, r.lifts])),
+    prevEnsemble: prevUt?.ensemble ?? null,
+    prevResorts: Object.fromEntries((prevUt?.resorts ?? []).map((r) => [r.id, r])),
+  });
+  if (utSkip || !Object.values(ut.sources.models ?? {}).some(Boolean)) {
+    // (Models skipped or unreachable: the last full forecasts, up to 12 hours old.)
+    if (prevUt && utModelsAge < 12 * 3_600_000) {
+      const old = new Map(prevUt.resorts.map((r) => [r.id, r.forecast]));
+      for (const r of ut.resorts) if (old.get(r.id)?.sources?.length > 1) r.forecast = old.get(r.id);
+      ut.sources.modelsAt = prevUt.sources.modelsAt;
+      ut.sources.modelsReused = true;
+    }
+  }
+  await writeFile(new URL('../public/data/ut.json', import.meta.url), JSON.stringify(ut));
+  console.log('Wrote Utah');
+} catch (err) {
+  console.warn(`Utah failed (${err.message}); keeping the last one.`);
+  const last = await published('data/ut.json');
+  if (last) await writeFile(new URL('../public/data/ut.json', import.meta.url), JSON.stringify(last));
+}
+
 // The snow forecast's chance areas (src/snowcast.js); the last published copy if WPC is unreachable.
 try {
   await writeFile(new URL('../public/data/snowcast.json', import.meta.url), JSON.stringify(await fetchSnowcast()));
@@ -132,7 +163,7 @@ const us = JSON.parse(await readFile(new URL('../src/us-resorts.json', import.me
 // list are kept ready); without it, states.json lists just Colorado.
 const US_STATES = process.env.US_STATES === '1';
 const byState = new Map();
-for (const r of US_STATES ? us.resorts : []) {
+for (const r of US_STATES ? us.resorts.filter((x) => x.state !== 'UT') : []) { // (Utah: built above, like Colorado)
   if (!byState.has(r.state)) byState.set(r.state, []);
   byState.get(r.state).push(r);
 }
