@@ -811,7 +811,10 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   const BUDGET_MS = 90; // the finished layout
   const TRIAL_MS = 45; // each label size's trial (only to see how many fit)
   const layoutCache = new Map();
+  let laidOutHidden = false;
   function layout() {
+    // (Labels turned off measure 0 px wide: lay them out when they're shown again, not now.)
+    if (el.classList.contains('labels-off')) { laidOutHidden = true; return; }
     const size = map.getSize();
     const pad = getPadding();
     const key = JSON.stringify([size, pad, map.getZoom(), order.map((o) => [o.r.id, o.widest, o.prio ?? 0]).sort()]);
@@ -1495,6 +1498,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     setMarks(mode) {
       el.classList.toggle('labels-off', mode !== 'all');
       el.classList.toggle('dots-off', mode === 'none');
+      if (mode === 'all' && laidOutHidden) { laidOutHidden = false; layout(); }
       requestAnimationFrame(placeTowns); // (towns fill the room the labels leave)
     },
     // Radar loop: play or pause (paused shows the newest frame).
