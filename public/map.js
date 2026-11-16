@@ -469,8 +469,12 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       }
       G.stroke();
     }
-    const overlay = L.imageOverlay(big.toDataURL('image/png'), map.getBounds(), { pane: 'snow', interactive: false });
+    // (Encoded off the main thread, unlike toDataURL; the memory's freed when the picture is dropped.)
+    const blob = await new Promise((done) => big.toBlob(done, 'image/png'));
+    const url = URL.createObjectURL(blob);
+    const overlay = L.imageOverlay(url, map.getBounds(), { pane: 'snow', interactive: false });
     overlay.coverage = painted / (w * h);
+    overlay.dispose = () => URL.revokeObjectURL(url);
     return overlay;
   }
   async function outlookLayer() {
@@ -497,6 +501,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   let frames = []; // [{ t, layer, clouds }] oldest first
   const frameCache = new Map(); // time → overlay (cleared when the map's size changes)
   const cloudCache = new Map(); // time → cloud overlay (or null when the satellite didn't answer)
+  // (A frame leaving the cache: its pictures' memory is freed.)
+  const dropFrame = (t) => { frameCache.get(t)?.dispose?.(); cloudCache.get(t)?.dispose?.(); frameCache.delete(t); cloudCache.delete(t); };
   const cloudSrc = (t) => (w, h, sw, ne) => `${CLOUDS_WMS}?${new URLSearchParams({
     service: 'WMS', version: '1.3.0', request: 'GetMap', layers: 'goes_longwave_imagery', styles: '', crs: 'EPSG:3857',
     bbox: [sw.x, sw.y, ne.x, ne.y].join(','), width: w, height: h, format: 'image/png', time: new Date(t).toISOString(),
@@ -549,13 +555,13 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       cloudCache.set(t, clouds);
       return { t, layer: radar, clouds };
     }));
-    for (const t of frameCache.keys()) if (!times.includes(t)) { frameCache.delete(t); cloudCache.delete(t); }
+    for (const t of [...frameCache.keys()]) if (!times.includes(t)) dropFrame(t);
     // NOAA lists its newest times a little before their pictures are ready, and those come back blank:
     // a frame far emptier than the others is left out (and not kept, so the next refresh tries again).
     const covs = built.map((f) => f.layer.coverage).sort((a, b) => a - b);
     const median = covs[Math.floor(covs.length / 2)] ?? 0;
     const good = median > 0.005 ? built.filter((f) => f.layer.coverage >= median * 0.3) : built;
-    for (const f of built) if (!good.includes(f)) { frameCache.delete(f.t); cloudCache.delete(f.t); }
+    for (const f of built) if (!good.includes(f)) dropFrame(f.t);
     return good;
   }
 
@@ -617,8 +623,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       } else if (layerName === 'outlook') next = await outlookLayer();
       else if (layerName === 'snowcast') next = await snowcastLayer();
     } catch { next = null; }
-    if (mine !== job) return;
+    if (mine !== job) { next?.dispose?.(); return; }
     overlay?.remove();
+    overlay?.dispose?.(); // (a single picture: its memory freed; radar frames stay cached)
     overlay = next?.addTo(map) ?? null;
     frames = nextFrames;
     if (layerName === 'radar') {
@@ -687,39 +694,47 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   }
 
   function placeTowns() {
+    // (All the writes, then all the reads, then the decisions, then the writes: the browser lays the
+    // page out once, not once per town and side tried.)
+    const view = el.getBoundingClientRect();
+    for (const { node } of towns) { node.hidden = false; node.dataset.side = 'right'; }
+    for (const spots of shields) for (const n of spots) n.hidden = false;
     const taken = [];
     for (const n of el.querySelectorAll('.pin:not(.hidden) .pin-bubble, .pin-dot, .pin:not(.hidden) .pin-tail line:not([style*="none"])')) taken.push(n.getBoundingClientRect());
+    const rights = towns.map(({ node }) => node.getBoundingClientRect());
+    const shieldBoxes = shields.map((spots) => spots.map((n) => n.getBoundingClientRect()));
     const overlaps = (a, b) => a.left < b.right + 3 && a.right > b.left - 3 && a.top < b.bottom + 3 && a.bottom > b.top - 3;
-    const view = el.getBoundingClientRect();
     const pad = getPadding();
     const inside = (b) => b.left >= view.left + 4 && b.right <= view.right - 4 && b.top >= view.top + pad.top && b.bottom <= view.bottom - pad.bottom;
-    for (const { node: t, fixed } of towns) {
-      // Name to the right of its square, else left, below or above. Major towns keep the side their
-      // space was reserved on (the resort labels already went around it).
-      let ok = false;
-      for (const side of fixed ? [fixed] : ['right', 'left', 'below', 'above']) {
-        t.hidden = false;
-        t.dataset.side = side;
-        const box = t.getBoundingClientRect();
-        if (fixed || (inside(box) && !taken.some((b) => b.width + b.height > 0 && overlaps(box, b)))) {
-          taken.push(box);
-          ok = true;
-          break;
+    // Each side's box from the right-hand one: mirrored for left; for above and below, the name
+    // (without the square) centered over or under the square.
+    const boxFor = (r, a, side) => {
+      if (side === 'right') return r;
+      if (side === 'left') return { left: 2 * a.x - r.right, right: 2 * a.x - r.left, top: r.top, bottom: r.bottom };
+      const w = r.right - r.left - 9;
+      const h = r.bottom - r.top + 7;
+      const top = side === 'below' ? a.y - 3 : a.y + 3 - h;
+      return { left: a.x - w / 2, right: a.x + w / 2, top, bottom: top + h };
+    };
+    const sides = towns.map((t, i) => {
+      const p = map.latLngToContainerPoint(t.at);
+      const a = { x: view.left + p.x, y: view.top + p.y };
+      for (const side of t.fixed ? [t.fixed] : ['right', 'left', 'below', 'above']) {
+        const box = boxFor(rights[i], a, side);
+        if (t.fixed || (inside(box) && !taken.some((b) => b.width + b.height > 0 && overlaps(box, b)))) {
+          taken.push({ ...box, width: box.right - box.left, height: box.bottom - box.top });
+          return side;
         }
       }
-      t.hidden = !ok;
-    }
-    for (const spots of shields) {
-      let shown = false;
-      for (const n of spots) {
-        n.hidden = false;
-        const box = n.getBoundingClientRect();
-        if (!shown && inside(box) && !taken.some((b) => b.width + b.height > 0 && overlaps(box, b))) {
-          taken.push(box);
-          shown = true;
-        } else n.hidden = true;
-      }
-    }
+      return null;
+    });
+    const shown = shieldBoxes.map((boxes) => {
+      const k = boxes.findIndex((box) => inside(box) && !taken.some((b) => b.width + b.height > 0 && overlaps(box, b)));
+      if (k >= 0) taken.push(boxes[k]);
+      return k;
+    });
+    towns.forEach(({ node }, i) => { node.hidden = !sides[i]; if (sides[i]) node.dataset.side = sides[i]; });
+    shields.forEach((spots, i) => spots.forEach((n, k) => { n.hidden = k !== shown[i]; }));
   }
 
   const fit = () => {
@@ -804,14 +819,41 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   const BUDGET_MS = 160; // the finished layout
   const TRIAL_MS = 70; // each label size's trial (only to see how many fit)
   const layoutCache = new Map();
+  // Finished layouts are also kept on the device (they take a moment to work out, and come out the
+  // same for the same screen, padding and labels): a reload or a view switch is then instant. Bump
+  // the version whenever the layout itself changes.
+  const SAVED = 'powdar:layouts';
+  const LAYOUT_VERSION = 3;
+  const savedLayout = (key) => {
+    try {
+      const entry = JSON.parse(localStorage.getItem(SAVED) ?? '{}')[key];
+      if (!entry) return null;
+      const result = entry.result.map((e) => ({ ...e, pin: pins.get(e.id) }));
+      return result.every((e) => e.pin) ? { scale: entry.scale, result } : null;
+    } catch { return null; }
+  };
+  const saveLayout = (key, { scale, result }) => {
+    // (Not until the label font is in: a layout measured with a stand-in font would be wrong later.)
+    if (document.fonts && !document.fonts.check("800 12px 'Powdar Labels'")) return;
+    try {
+      const all = JSON.parse(localStorage.getItem(SAVED) ?? '{}');
+      all[key] = { scale, result: result.map(({ pin, ...e }) => e), at: Date.now() };
+      // (The 8 most recent: a phone sees a few screen heights, the address bar showing or not.)
+      const keep = Object.entries(all).sort((a, b) => b[1].at - a[1].at).slice(0, 8);
+      localStorage.setItem(SAVED, JSON.stringify(Object.fromEntries(keep)));
+    } catch { /* storage full or off: just not kept */ }
+  };
   let laidOutHidden = false;
   function layout() {
     // (Labels turned off measure 0 px wide: lay them out when they're shown again, not now.)
     if (el.classList.contains('labels-off')) { laidOutHidden = true; return; }
     const size = map.getSize();
     const pad = getPadding();
-    const key = JSON.stringify([size, pad, map.getZoom(), order.map((o) => [o.r.id, o.widest, o.prio ?? 0]).sort()]);
-    const cached = layoutCache.get(key);
+    // (Every number any label shows, in any view: the chips' one width comes from the widest of them.)
+    const texts = [...new Set(order.flatMap((o) => o.texts ?? []))].sort();
+    const key = JSON.stringify([LAYOUT_VERSION, size, pad, map.getZoom(), texts, order.map((o) => [o.r.id, o.prio ?? 0]).sort()]);
+    const cached = layoutCache.get(key) ?? savedLayout(key);
+    if (cached) layoutCache.set(key, cached);
     if (cached) {
       el.style.setProperty('--label-scale', cached.scale);
       return apply(cached.result);
@@ -842,6 +884,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     }
     if (layoutCache.size > 40) layoutCache.clear();
     layoutCache.set(key, best);
+    saveLayout(key, best);
     apply(best.result);
   }
 
@@ -853,27 +896,21 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     // Un-hide everything first: a label hidden by the last layout would measure as zero size.
     for (const o of order) o.pin.root.classList.remove('hidden');
     for (const o of order) o.pin.bubble.classList.remove('compact');
-    // Sized for the widest number across the views that share this layout (o.widest) and placed in a
-    // fixed order, so those views get the same layout: switching views changes the numbers, never
-    // where labels sit. Every label's number chip is the same width, as short as the longest number
-    // needs (so they look alike, and the name beside each never moves).
-    const widthOf = (o, text) => {
-      const shown = o.pin.val.textContent;
-      o.pin.val.textContent = text;
-      const w = o.pin.val.offsetWidth;
-      o.pin.val.textContent = shown;
-      return w;
-    };
-    for (const o of order) o.pin.val.style.minWidth = '';
-    const chipW = Math.max(0, ...order.map((o) => widthOf(o, o.widest ?? o.pin.val.textContent)));
-    const measure = (o) => {
-      const shown = o.pin.val.textContent;
-      o.pin.val.style.minWidth = `${chipW}px`;
-      o.pin.val.textContent = o.widest ?? shown;
-      const size = { w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight, valW: chipW };
-      o.pin.val.textContent = shown;
-      return size;
-    };
+    // Every number chip is the same width, the widest number any label shows in any view, so the
+    // labels look alike and every view gets the same layout: switching views never moves a label (or
+    // the name beside its number). Placed in a fixed order, for the same reason.
+    const probe = order[0]?.pin.val;
+    let chipW = 0;
+    if (probe) {
+      const shown = probe.textContent;
+      probe.style.minWidth = '';
+      for (const t of new Set(order.flatMap((o) => o.texts ?? [o.pin.val.textContent]))) { probe.textContent = t; chipW = Math.max(chipW, probe.offsetWidth); }
+      probe.textContent = shown;
+    }
+    // (All the writes, then all the reads: one layout pass, not one per label.)
+    for (const o of order) o.pin.val.style.minWidth = `${chipW}px`;
+    const sizes = new Map(order.map((o) => [o, { w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight, valW: chipW }]));
+    const measure = (o) => sizes.get(o);
     const items = [...order].sort((a, b) => a.r.id.localeCompare(b.r.id))
       .map((o) => ({ ...o, empty: false, p: map.latLngToContainerPoint(o.r.at), ...measure(o) }));
     const dots = items.map((it) => it.p);
@@ -1385,6 +1422,8 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
           place: { s: n.s, w: it.fullW, h: it.h },
           tail: n.tail ? n.tail.seg.map((v, k) => (v - (k % 2 ? it.p.y : it.p.x)).toFixed(1)) : null,
         } : null,
+        id: it.r.id,
+        chip: it.valW,
         compact: Boolean(it.compact),
         place: c ? { s: c.s, w: it.w, h: it.h } : null,
         tail: c?.tail ? c.tail.seg.map((v, k) => (v - (k % 2 ? it.p.y : it.p.x)).toFixed(1)) : null,
@@ -1400,7 +1439,12 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   let selectedPin = null;
   function apply(result) {
     requestAnimationFrame(placeTowns);
-    for (const entry of result) {
+    // Chips first (the layout's width), then every label's width read in one go, then the moves: no
+    // layout pass per label.
+    for (const entry of result) if (entry.chip) entry.pin.val.style.minWidth = `${entry.chip}px`;
+    for (const entry of result) entry.pin.bubble.classList.toggle('compact', entry.compact);
+    const widths = result.map((entry) => entry.pin.bubble.offsetWidth);
+    result.forEach((entry, k) => {
       const { pin } = entry;
       const { place, tail, compact } = pin === selectedPin && entry.alt ? { ...entry.alt, compact: false } : entry;
       pin.root.classList.toggle('hidden', !place);
@@ -1408,7 +1452,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       // The spot was sized for the widest number; a shorter one keeps the edge nearest its dot (a
       // label right of its dot keeps its left edge, one to the left its right edge), so it never shifts.
       const transform = place && (() => {
-        const actual = pin.bubble.offsetWidth;
+        const actual = widths[k];
         const left = place.s[0] - place.w / 2;
         const shift = place.s[0] < -2 ? place.w - actual : Math.abs(place.s[0]) <= 2 ? (place.w - actual) / 2 : 0;
         return `translate(${left + shift}px, ${place.s[1] - place.h / 2}px)`;
@@ -1421,7 +1465,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         pin.tail.setAttribute('y2', tail[3]);
       }
       if (transform) pin.bubble.style.transform = transform;
-    }
+    });
   }
 
   // items: [{ r, text, label, level, open, selected }]
@@ -1541,8 +1585,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       map.invalidateSize({ animate: false, pan: false });
       fit();
       layout();
-      frameCache.clear(); // pictures were for the old size
-      cloudCache.clear();
+      for (const t of [...frameCache.keys()]) dropFrame(t); // pictures were for the old size
       if (layerName !== 'none') drawLayer();
     },
   };

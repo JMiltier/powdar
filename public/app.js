@@ -462,12 +462,15 @@ function valueFor(r, metricKey = state.metric) {
     const close = r.dates?.close;
     const daysOut = date ? (Date.parse(date) - Date.parse(state.data.today)) / 864e5 : 0;
     // Short on the map; the list and details say how much is open.
-    if (s === 'open') return { text: 'Open', sub: r.status.pct != null ? `${r.status.pct}% of runs` : '', level: 'open', sort: 1e5 + (r.status.pct ?? 0) };
-    if (s === 'likely') return { text: 'Open?', level: 'likely', sort: 9e4 };
+    // (Open: a check in the green chip, "Open" for screen readers; short like the rest.)
+    if (s === 'open') return { text: '✓', long: 'open', sub: r.status.pct != null ? `${r.status.pct}% of runs` : '', level: 'open', sort: 1e5 + (r.status.pct ?? 0) };
+    if (s === 'likely') return { text: '✓?', long: 'probably open', level: 'likely', sort: 9e4 };
     // (Shaded by how soon: deepest this week, palest a month or more out, so the order reads at a glance.)
-    if (s === 'soon') return { text: daysOut <= 0 ? 'Today' : r.dates?.when ?? monthDay(date), level: `soon soon-${daysOut <= 7 ? 1 : daysOut <= 14 ? 2 : daysOut <= 28 ? 3 : 4}`, sort: 8e4 - daysOut };
+    // (Days to go, "5d": short like the snow views' numbers, so every view's labels are the same size and
+    // never move; the date itself is in the list and the details.)
+    if (s === 'soon') return { text: daysOut <= 0 ? 'Now' : `${Math.round(daysOut)}d`, long: daysOut <= 0 ? 'opens today' : `opens ${r.dates?.when ?? monthDay(date)}`, level: `soon soon-${daysOut <= 7 ? 1 : daysOut <= 14 ? 2 : daysOut <= 28 ? 3 : 4}`, sort: 8e4 - daysOut };
     if (s === 'late') return { text: 'Late', level: 'late', sort: 7e4 };
-    return { text: s === 'done' ? 'Closed' : 'TBA', level: 'tba', sort: 0 };
+    return { text: s === 'done' ? 'Closed' : 'TBA', long: s === 'done' ? 'closed for the season' : 'opening day not announced', level: 'tba', sort: 0 };
   }
   // Base at an open resort that doesn't report one (Vail Resorts' mountains): NOAA's natural snow
   // says ~0 while the resort skis on machine-made snow, so say "not reported" rather than 0″.
@@ -1719,10 +1722,10 @@ function renderMap() {
     const fav = state.favs.has(r.id);
     const open = r.status.state === 'open';
     return {
-      r, text: v.text, label: v.text, level: v.level, selected, match: matches(r),
-      // The widest this resort's number gets across the snow views (or, on Dates, its date): labels are
-      // laid out for it, so they stay put from one snow view to the next.
-      widest: (state.metric === 'dates' ? ['dates'] : availableMetrics().filter((m) => m !== 'dates')).map((m) => valueFor(r, m).text).reduce((a, t) => (t.length > a.length ? t : a), ''),
+      r, text: v.text, label: v.long ?? v.text, level: v.level, selected, match: matches(r),
+      // Every number this resort shows in any view: labels are laid out for the widest of all of them,
+      // so they never move from one view to another.
+      texts: availableMetrics().map((m) => valueFor(r, m).text),
       open: open && !['dates', 'season'].includes(METRICS[state.metric].kind),
       important: selected || fav || open,
       // Who keeps a full label when space runs out: filter matches, then favorites, then open resorts.
