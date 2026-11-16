@@ -1149,3 +1149,8 @@ body.reordering .rrow.dragging { transform-origin: center; }
    Font License), so they measure the same everywhere and the layout is the same on every phone. */
 @font-face { font-family: 'Powdar Labels'; src: url('fonts/roboto-labels.woff2') format('woff2'); font-weight: 600 900; font-display: block; }
 .pin-bubble, .pin-val, .pin-name { font-family: 'Powdar Labels', system-ui, sans-serif; }
+/* Town markers that show on any background (snow colors, satellite): a solid square with a ring
+   in the opposite shade, and names in a stronger color with a firmer halo. */
+.place::before { width: 6px; height: 6px; border-radius: 1.5px; opacity: 1; background: #3d4756; box-shadow: 0 0 0 1.5px #fff; }
+:root[data-theme="dark"] .place::before { background: #e6ebf2; box-shadow: 0 0 0 1.5px #0e141c; }
+.place { color: color-mix(in srgb, var(--text) 72%, var(--muted)); text-shadow: 0 0 2px var(--bg), 0 0 2px var(--bg), 0 0 4px var(--bg), 0 0 6px var(--bg); }
