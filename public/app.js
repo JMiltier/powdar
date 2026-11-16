@@ -1753,6 +1753,16 @@ function render() {
   for (const b of document.querySelectorAll('[data-layer]')) b.setAttribute('aria-checked', String(b.dataset.layer === state.layer));
   for (const b of document.querySelectorAll('[data-area]')) b.setAttribute('aria-pressed', String((b.dataset.area === 'us') === state.usWide));
   $('[data-area="state"]').textContent = state.data.stateName ?? 'Colorado';
+  // The whole-US view offers only the layers that cover the whole country (and headings with nothing
+  // left under them go too).
+  for (const b of document.querySelectorAll('#layers [data-layer]')) b.hidden = state.usWide && !['snow', 'outlook'].includes(b.dataset.layer);
+  for (const h of document.querySelectorAll('#layers .layers-head')) {
+    let n = h.nextElementSibling;
+    let any = false;
+    for (; n && !n.classList.contains('layers-head'); n = n.nextElementSibling) any ||= !n.hidden;
+    h.hidden = !any;
+  }
+  $('.layers-area-note').hidden = state.usWide;
   // Hidden but still taking its space, so changing the overlay never shifts the map.
   $('#legend').classList.toggle('off', state.layer === 'none');
   $('#map').dataset.layer = state.layer; // (the light map dims a little under white snow)
