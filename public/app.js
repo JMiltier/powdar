@@ -107,6 +107,7 @@ const state = {
   outlookSeason: null, // e.g. "NDJ 2026-2027", once the outlook has loaded
   radar: { time: null, playing: false, count: 0 }, // the radar loop's current frame
   cast: { day: 1, amount: 1, areas: null }, // the snow forecast's period and amount
+  tempView: read('cs:tempView', 'close'), // the temperature chart: 'close' (4 weeks) or 'season'
   openDay: null, // the forecast day opened in a resort's page (YYYY-MM-DD)
   satDate: null, // the satellite views' day (YYYY-MM-DD), newest real one by default
   satLatest: null,
@@ -1406,7 +1407,7 @@ function renderOverview() {
     tempBlock = `<p class="season-head">${diff == null ? 'This season so far, against normal' : Math.abs(diff) <= 1 ? 'The last week has been <b>about normal</b> in ski country'
       : `The last week has been <span class="temp-diff ${diff > 0 ? 'warm' : 'cold'}">${Math.round(Math.abs(toUnit(diff, true)))}${unitLabel()} ${diff > 0 ? 'warmer' : 'colder'}</span> than normal in ski country`}</p>
       ${tempChart(temps, ahead, tn.days)}
-      <p class="legend-line"><i class="k-now"></i>This season <i class="k-proj"></i>Next 7 days <i class="k-median"></i>Normal</p>`;
+      <p class="legend-line temp-key"><i class="k-now"></i>This season <i class="k-proj"></i>Next 7 days <i class="k-median"></i>Normal</p>`;
     notes.push(`Ski-country temperature: the average daily mean (high and low) of the same ${list.length} mountain stations, roughly 9,000–11,500 ft (not Denver or the plains); normal range averaged from each station's ${tn.seasons} winters.`);
   }
 
@@ -1425,7 +1426,7 @@ function renderOverview() {
     ${snowChart}
     <h3 class="section">By region</h3>
     <ul class="regions">${regionRows}</ul>
-    <h3 class="section">Temperature, ski country <span class="section-note">${list.length} mountain stations</span></h3>
+    <div class="season-title"><h3 class="section">Temperature, ski country <span class="section-note">${list.length} stations</span></h3>${tempViewPick()}</div>
     ${tempBlock}
     ${soon.length ? `<h3 class="section">Opening next</h3><ul class="report">${soon.map((r) => `<li><span>${esc(r.name)}</span><b>${esc(monthDay(r.status.date))}</b></li>`).join('')}</ul>` : ''}
     <h3 class="section">Most snow, next 7 days</h3>
@@ -1476,53 +1477,69 @@ function tempSection(r, notes) {
   const ahead = (r.forecast?.days ?? []).filter((d) => d.hi != null && d.lo != null).map((d) => [dayOfSeason(d.date), (d.hi + d.lo) / 2]);
   notes.push(`Temperature: daily mean of the high and low at the ${sourceLink(SNOTEL_SITE(r.station), `${n.name} SNOTEL station`)} (USDA NRCS); normal range from the ${n.seasons} winters ${esc(n.first)} to ${esc(n.last)}. Forecast: the snow forecast's daily highs and lows at mid-mountain.`);
   return `
-    <h3 class="section">Temperature</h3>
+    <div class="season-title"><h3 class="section">Temperature</h3>${tempViewPick()}</div>
     <p class="season-head">${head}</p>
     ${tempChart(st.temps, ahead, n.days)}
-    <p class="legend-line"><i class="k-now"></i>This season <i class="k-proj"></i>Next 7 days <i class="k-median"></i>Normal</p>
+    <p class="legend-line temp-key"><i class="k-now"></i>This season <i class="k-proj"></i>Next 7 days <i class="k-median"></i>Normal</p>
     <p class="band-key"><span class="t-band-wide">Coldest–warmest 10%</span><span class="t-band-mid">Typical half</span></p>`;
 }
+// Daily mean temperature against the normal range. Two views: "4 weeks" (the default: the last four
+// weeks and the coming week, where the story is, with dates along the bottom) and the whole season.
 function tempChart(seasonF, aheadF, daysF) {
   // Everything in the chosen unit from here on.
   const season = seasonF.map(([d, v]) => [d, toUnit(v)]);
   const ahead = aheadF.map(([d, v]) => [d, toUnit(v)]);
   const days = daysF.map((row) => row && row.map((v) => toUnit(v)));
-  const step = state.unit === 'C' ? 10 : 20;
   const freezing = toUnit(32);
-  const W = 320;
-  const H = 128;
-  const pad = { l: 22, r: 4, t: 16, b: 18 };
   const last = season.at(-1);
   const proj = last && ahead.length ? [last, ...ahead.filter(([d]) => d > last[0])] : [];
-  const all = [...days.filter(Boolean).flatMap((p) => [p[0], p[4]]), ...season.map((p) => p[1]), ...proj.map((p) => p[1])];
-  const lo = Math.floor((Math.min(...all) - 2) / 10) * 10;
-  const hi = Math.ceil((Math.max(...all) + 2) / 10) * 10;
-  const x = (d) => pad.l + (d / SEASON_DAYS) * (W - pad.l - pad.r);
+  const close = state.tempView !== 'season' && last;
+  const d0 = close ? Math.max(0, last[0] - 28) : 0;
+  const d1 = close ? Math.min(SEASON_DAYS, Math.max(last[0] + 7, proj.at(-1)?.[0] ?? 0)) : SEASON_DAYS;
+  const inView = (p) => p[0] >= d0 && p[0] <= d1;
+  const shown = season.filter(inView);
+  const projShown = proj.filter(inView);
+  const W = 320;
+  const H = close ? 150 : 128;
+  const pad = { l: 24, r: 6, t: 16, b: 18 };
+  const step = close ? (state.unit === 'C' ? 5 : 10) : state.unit === 'C' ? 10 : 20;
+  const all = [...days.slice(d0, d1 + 1).filter(Boolean).flatMap((p) => [p[0], p[4]]), ...shown.map((p) => p[1]), ...projShown.map((p) => p[1])];
+  const lo = Math.floor((Math.min(...all) - 2) / step) * step;
+  const hi = Math.ceil((Math.max(...all) + 2) / step) * step;
+  const x = (d) => pad.l + ((d - d0) / (d1 - d0 || 1)) * (W - pad.l - pad.r);
   const y = (v) => H - pad.b - ((v - lo) / (hi - lo)) * (H - pad.t - pad.b);
   const path = (pts) => pts.map((p, i) => `${i ? 'L' : 'M'}${x(p[0]).toFixed(1)} ${y(p[1]).toFixed(1)}`).join(' ');
   const band = (a, b, cls) => {
-    const pts = days.map((v, d) => (v ? [d, v[a], v[b]] : null)).filter(Boolean);
+    const pts = days.map((v, d) => (v && d >= d0 && d <= d1 ? [d, v[a], v[b]] : null)).filter(Boolean);
+    if (!pts.length) return '';
     return `<path class="${cls}" d="M${pts.map((p) => `${x(p[0]).toFixed(1)} ${y(p[2]).toFixed(1)}`).join(' L')} L${[...pts].reverse().map((p) => `${x(p[0]).toFixed(1)} ${y(p[1]).toFixed(1)}`).join(' L')} Z"/>`;
   };
-  const med = days.map((v, d) => (v ? [d, v[2]] : null)).filter(Boolean);
+  const med = days.map((v, d) => (v && d >= d0 && d <= d1 ? [d, v[2]] : null)).filter(Boolean);
   const grid = [];
   for (let t = Math.ceil(lo / step) * step; t <= hi; t += step) grid.push(t);
-  const months = MONTHS.map((m, i) => `<text x="${x(MONTH_STARTS[i] + 2).toFixed(1)}" y="${H - 4}">${m}</text>`).join('');
+  // Along the bottom: months for the season; for the close-up, a date each week.
+  const seasonStart = Date.parse(`${state.data.today.slice(0, 4) - (state.data.today.slice(5) < '10-01' ? 1 : 0)}-10-01T12:00:00Z`);
+  const ticks = close
+    ? Array.from({ length: 6 }, (_, i) => d0 + i * 7).filter((d) => d <= d1).map((d) => `<text x="${x(d).toFixed(1)}" y="${H - 4}" text-anchor="${x(d) > W - 24 ? 'end' : x(d) < pad.l + 12 ? 'start' : 'middle'}">${monthDay(new Date(seasonStart + d * 864e5).toISOString().slice(0, 10))}</text>`).join('')
+    : MONTHS.map((m, i) => `<text x="${x(MONTH_STARTS[i] + 2).toFixed(1)}" y="${H - 4}">${m}</text>`).join('');
   const flip = last && x(last[0]) > W - 80;
   return `
-    <svg class="chart temp-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily temperature this season compared with normal">
+    <svg class="chart temp-chart${close ? ' close' : ''}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Daily temperature ${close ? 'the last four weeks and the coming week' : 'this season'} compared with normal">
       ${grid.map((t) => `<line class="grid" x1="${pad.l}" x2="${W - pad.r}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text class="t-axis" x="${pad.l - 4}" y="${(y(t) + 3).toFixed(1)}" text-anchor="end">${t}°</text>`).join('')}
       <text class="t-axis t-unit" x="${pad.l - 4}" y="${pad.t - 5}" text-anchor="end">${unitLabel()}</text>
       ${freezeLine(y, pad, W, lo, hi, freezing)}
       ${band(0, 4, 't-band-wide')}${band(1, 3, 't-band-mid')}
       <path class="median" d="${path(med)}"/>
-      ${proj.length > 1 ? `<path class="halo" d="${path(proj)}"/><path class="proj" d="${path(proj)}"/>` : ''}
-      <path class="halo" d="${path(season)}"/><path class="now" d="${path(season)}"/>
+      ${close && last ? `<line class="today-line" x1="${x(last[0]).toFixed(1)}" x2="${x(last[0]).toFixed(1)}" y1="${pad.t}" y2="${H - pad.b}"/>` : ''}
+      ${projShown.length > 1 ? `<path class="halo" d="${path(projShown)}"/><path class="proj" d="${path(projShown)}"/>` : ''}
+      <path class="halo" d="${path(shown)}"/><path class="now" d="${path(shown)}"/>
       ${last ? `<circle class="now-dot" cx="${x(last[0])}" cy="${y(last[1])}" r="3"/>
         <text class="now-label" text-anchor="${flip ? 'end' : 'start'}" x="${(x(last[0]) + (flip ? -7 : 7)).toFixed(1)}" y="${(y(last[1]) - 7).toFixed(1)}">now ${Math.round(last[1])}${unitLabel()}</text>` : ''}
-      ${months}
+      ${ticks}
     </svg>`;
 }
+const tempViewPick = () => `<span class="temp-view" role="group" aria-label="Temperature chart range">
+  <button type="button" data-temp-view="close" aria-pressed="${state.tempView !== 'season'}">4 weeks</button><button type="button" data-temp-view="season" aria-pressed="${state.tempView === 'season'}">Season</button></span>`;
 // The freezing line, faintly, when it's in range.
 const freezeLine = (y, pad, W, lo, hi, t) => (t > lo && t < hi ? `<line class="freeze" x1="${pad.l}" x2="${W - pad.r}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}"/><text class="t-axis freeze-label" x="${W - pad.r - 2}" y="${(y(t) - 3).toFixed(1)}" text-anchor="end">${Math.round(t)}°${state.unit} freezing</text>` : '');
 
@@ -2220,6 +2237,12 @@ document.addEventListener('click', (e) => {
   const row = t.closest('[data-open]');
   if (row) return select(row.dataset.open);
   if (t.closest('[data-back]')) return select(null);
+  const tv = t.closest('[data-temp-view]');
+  if (tv) {
+    state.tempView = tv.dataset.tempView;
+    write('cs:tempView', state.tempView);
+    return render();
+  }
   const dayBtn = t.closest('[data-day]');
   if (dayBtn) {
     state.openDay = state.openDay === dayBtn.dataset.day ? null : dayBtn.dataset.day;

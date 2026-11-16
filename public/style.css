@@ -1122,3 +1122,25 @@ body.reordering .rrow.dragging { transform-origin: center; }
 .dot-chooser button:active, .dot-chooser button:hover { background: var(--accent-soft); }
 .dot-chooser b { min-width: 34px; font-size: 0.78rem; color: var(--accent); font-variant-numeric: tabular-nums; }
 .pin-val { text-align: center; box-sizing: border-box; }
+
+/* Temperature chart: easier to read. This season in a warm, strong line over a clearer normal
+   range; a faint line at today in the close-up. A small toggle picks 4 weeks or the whole season. */
+.temp-chart { --series: #e8590c; }
+:root[data-theme="dark"] .temp-chart { --series: #ffa94d; }
+.temp-chart .now { stroke-width: 2.4; }
+.temp-chart .t-band-wide { fill: color-mix(in srgb, #7f93ad 30%, transparent); }
+.temp-chart .t-band-mid { fill: color-mix(in srgb, #7f93ad 50%, transparent); }
+:root[data-theme="dark"] .temp-chart .t-band-wide { fill: color-mix(in srgb, #9fb3cc 22%, transparent); }
+:root[data-theme="dark"] .temp-chart .t-band-mid { fill: color-mix(in srgb, #9fb3cc 38%, transparent); }
+.temp-chart .t-axis, .temp-chart text { font-size: 9px; }
+.temp-chart .today-line { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 3; opacity: 0.6; }
+.temp-view { display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--bg); flex: none; }
+.temp-view button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 0.74rem; font-weight: 650; padding: 4px 10px; border-radius: 999px; cursor: pointer; }
+.temp-view button[aria-pressed="true"] { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
+.temp-chart .median { stroke: var(--muted); opacity: 0.9; }
+.temp-key .k-now { background: #e8590c; border-top-color: #e8590c; }
+.temp-key .k-proj { border-top-color: #e8590c; }
+:root[data-theme="dark"] .temp-key .k-now { background: #ffa94d; border-top-color: #ffa94d; }
+:root[data-theme="dark"] .temp-key .k-proj { border-top-color: #ffa94d; }
+.temp-key .k-median { border-top-color: var(--muted); }
+.temp-key .k-proj { background: none !important; border-top-style: dashed !important; }
