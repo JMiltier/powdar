@@ -1113,3 +1113,11 @@ body.reordering .rrow.dragging { transform-origin: center; }
   .cast-key i { width: 10px; }
   .cast-key span { margin-left: 2px; }
 }
+
+/* Several resorts under one tap: a small list to choose from. */
+.dot-chooser { position: absolute; z-index: 700; width: 180px; padding: 4px; border-radius: 12px;
+  background: var(--card); color: var(--text); box-shadow: var(--shadow); display: flex; flex-direction: column; }
+.dot-chooser button { display: flex; align-items: center; gap: 8px; text-align: left; border: 0; background: none; color: inherit;
+  font: inherit; font-size: 0.86rem; font-weight: 650; padding: 8px 8px; border-radius: 8px; cursor: pointer; }
+.dot-chooser button:active, .dot-chooser button:hover { background: var(--accent-soft); }
+.dot-chooser b { min-width: 34px; font-size: 0.78rem; color: var(--accent); font-variant-numeric: tabular-nums; }

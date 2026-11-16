@@ -762,14 +762,17 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         if (moved > 12 || !quick) return;
         handledAt = performance.now();
         L.DomEvent.stopPropagation(e);
-        onSelect(r.id);
+        // A label is exactly one resort; a dot may sit among others: pick from what's under the finger.
+        if (node === dot) pickNear(e.clientX, e.clientY);
+        else onSelect(r.id);
       });
       node.addEventListener('pointercancel', () => { down = null; });
       node.addEventListener('click', (e) => {
         if (!e.target.closest('button')) return;
         L.DomEvent.stopPropagation(e);
         if (performance.now() - handledAt < 700) return;
-        onSelect(r.id);
+        if (node === dot) pickNear(e.clientX, e.clientY);
+        else onSelect(r.id);
       });
     }
     L.marker(r.at, { pane: 'dots', icon: L.divIcon({ html: dot, className: 'pin-host', iconSize: [0, 0] }), keyboard: false }).addTo(map);
@@ -1344,7 +1347,42 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     layout();
   }
 
-  map.on('click', () => onSelect(null));
+  // Taps near the dots: the small dots are hard to hit, so a tap within a fingertip (26 px) of one
+  // counts; where several are that close (Aspen's four), a little list of them to choose from.
+  // A tap with nothing near closes what's open.
+  let chooser = null;
+  const closeChooser = () => { chooser?.remove(); chooser = null; };
+  function pickNear(clientX, clientY) {
+    closeChooser();
+    const box = el.getBoundingClientRect();
+    const at = L.point(clientX - box.left, clientY - box.top);
+    if (el.classList.contains('dots-off')) return onSelect(null);
+    const near = order
+      .filter((o) => !o.pin.dot.classList.contains('filtered-out'))
+      .map((o) => ({ o, d: map.latLngToContainerPoint(o.r.at).distanceTo(at) }))
+      .filter((x) => x.d <= 26)
+      .sort((a, b) => a.d - b.d);
+    if (!near.length) return onSelect(null);
+    // One resort, unless another's dot overlaps it (then there's no telling which was meant).
+    const p0 = map.latLngToContainerPoint(near[0].o.r.at);
+    const overlapping = near.slice(1).filter((x) => map.latLngToContainerPoint(x.o.r.at).distanceTo(p0) < 16);
+    if (!overlapping.length && (near.length === 1 || near[0].d * 2 < near[1].d)) return onSelect(near[0].o.r.id);
+    chooser = document.createElement('div');
+    chooser.className = 'dot-chooser';
+    chooser.setAttribute('role', 'menu');
+    chooser.innerHTML = near.map(({ o }) => `<button type="button" role="menuitem" data-id="${o.r.id}"><b>${o.pin.val.textContent}</b> ${o.r.name}</button>`).join('');
+    chooser.style.left = `${Math.min(Math.max(8, at.x - 90), box.width - 188)}px`;
+    chooser.style.top = `${Math.max(8, at.y + 14)}px`;
+    chooser.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-id]');
+      L.DomEvent.stopPropagation(e);
+      if (b) { closeChooser(); onSelect(b.dataset.id); }
+    });
+    chooser.addEventListener('pointerdown', (e) => L.DomEvent.stopPropagation(e));
+    el.appendChild(chooser);
+  }
+  map.on('click', (e) => pickNear(e.originalEvent.clientX, e.originalEvent.clientY));
+  map.on('movestart zoomstart', closeChooser);
 
   return {
     update,
