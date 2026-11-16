@@ -1121,3 +1121,4 @@ body.reordering .rrow.dragging { transform-origin: center; }
   font: inherit; font-size: 0.86rem; font-weight: 650; padding: 8px 8px; border-radius: 8px; cursor: pointer; }
 .dot-chooser button:active, .dot-chooser button:hover { background: var(--accent-soft); }
 .dot-chooser b { min-width: 34px; font-size: 0.78rem; color: var(--accent); font-variant-numeric: tabular-nums; }
+.pin-val { text-align: center; box-sizing: border-box; }

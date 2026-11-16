@@ -803,7 +803,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   function layout() {
     const size = map.getSize();
     const pad = getPadding();
-    const key = JSON.stringify([size, pad, map.getZoom(), order.map((o) => [o.r.id, o.pin.bubble.textContent, o.pin.bubble.className.replace(/ (compact|is-selected)/g, ''), o.prio ?? 0]).sort()]);
+    const key = JSON.stringify([size, pad, map.getZoom(), order.map((o) => [o.r.id, o.widest, o.prio ?? 0]).sort()]);
     const cached = layoutCache.get(key);
     if (cached) {
       el.style.setProperty('--label-scale', cached.scale);
@@ -838,7 +838,20 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     // Un-hide everything first: a label hidden by the last layout would measure as zero size.
     for (const o of order) o.pin.root.classList.remove('hidden');
     for (const o of order) o.pin.bubble.classList.remove('compact');
-    const items = order.map((o) => ({ ...o, p: map.latLngToContainerPoint(o.r.at), w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight }));
+    // Sized for each resort's widest number across every view (o.widest) and placed in a fixed order,
+    // so every view gets the same layout: switching views changes the numbers, never where labels sit.
+    // (The number chip keeps that width in every view, so the name beside it never moves either.)
+    const measure = (o) => {
+      const shown = o.pin.val.textContent;
+      o.pin.val.style.minWidth = '';
+      o.pin.val.textContent = o.widest ?? shown;
+      const size = { w: o.pin.bubble.offsetWidth, h: o.pin.bubble.offsetHeight, valW: o.pin.val.offsetWidth };
+      o.pin.val.textContent = shown;
+      o.pin.val.style.minWidth = `${size.valW}px`;
+      return size;
+    };
+    const items = [...order].sort((a, b) => a.r.id.localeCompare(b.r.id))
+      .map((o) => ({ ...o, empty: false, p: map.latLngToContainerPoint(o.r.at), ...measure(o) }));
     const dots = items.map((it) => it.p);
     // Each resort's way out of its cluster: from the middle of its neighbors (within 70 px) to it.
     const OUTWARD = 600;
@@ -1260,7 +1273,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     for (const it of pending) {
       if (!it.compact) {
         it.compact = true;
-        it.w = it.pin.val.offsetWidth;
+        it.w = it.valW;
         buildCands(it, true, true);
         if (!labels.includes(it)) labels.push(it);
       }
@@ -1292,11 +1305,11 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       return {
         pin: it.pin,
         alt: n && (it.compact || !c) ? {
-          transform: `translate(${n.s[0] - it.fullW / 2}px, ${n.s[1] - it.h / 2}px)`,
+          place: { s: n.s, w: it.fullW, h: it.h },
           tail: n.tail ? n.tail.seg.map((v, k) => (v - (k % 2 ? it.p.y : it.p.x)).toFixed(1)) : null,
         } : null,
         compact: Boolean(it.compact),
-        transform: c ? `translate(${c.s[0] - it.w / 2}px, ${c.s[1] - it.h / 2}px)` : null,
+        place: c ? { s: c.s, w: it.w, h: it.h } : null,
         tail: c?.tail ? c.tail.seg.map((v, k) => (v - (k % 2 ? it.p.y : it.p.x)).toFixed(1)) : null,
       };
     });
@@ -1310,9 +1323,17 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     requestAnimationFrame(placeTowns);
     for (const entry of result) {
       const { pin } = entry;
-      const { transform, tail, compact } = pin === selectedPin && entry.alt ? { ...entry.alt, compact: false } : entry;
-      pin.root.classList.toggle('hidden', !transform);
+      const { place, tail, compact } = pin === selectedPin && entry.alt ? { ...entry.alt, compact: false } : entry;
+      pin.root.classList.toggle('hidden', !place);
       pin.bubble.classList.toggle('compact', compact);
+      // The spot was sized for the widest number; a shorter one keeps the edge nearest its dot (a
+      // label right of its dot keeps its left edge, one to the left its right edge), so it never shifts.
+      const transform = place && (() => {
+        const actual = pin.bubble.offsetWidth;
+        const left = place.s[0] - place.w / 2;
+        const shift = place.s[0] < -2 ? place.w - actual : Math.abs(place.s[0]) <= 2 ? (place.w - actual) / 2 : 0;
+        return `translate(${left + shift}px, ${place.s[1] - place.h / 2}px)`;
+      })();
       pin.tail.style.display = tail ? '' : 'none';
       if (tail) {
         pin.tail.setAttribute('x1', tail[0]);
