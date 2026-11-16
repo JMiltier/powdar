@@ -239,7 +239,9 @@ export const SNOW_COLOR = [
   [146, 74, 204, 232], [200, 64, 176, 238], [236, 80, 140, 244], [236, 80, 140, 244], [236, 80, 140, 244], [236, 80, 140, 244],
 ];
 
-export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [], onOutlook, onRadar, onCast }) {
+// labelSides: { resortId: 'N' | 'S' | 'E' | 'W' }: a side a resort's label should sit on, where the
+// short-line layout alone reads ambiguously (Aspen's tight cluster).
+export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [], onOutlook, onRadar, onCast, labelSides = {} }) {
   const bounds = L.latLngBounds(resorts.map((r) => r.at));
   if (extend) bounds.extend(extend);
   // A state with a single resort still needs some area around it.
@@ -823,7 +825,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // same for the same screen, padding and labels): a reload or a view switch is then instant. Bump
   // the version whenever the layout itself changes.
   const SAVED = 'powdar:layouts';
-  const LAYOUT_VERSION = 3;
+  const LAYOUT_VERSION = 7;
   const savedLayout = (key) => {
     try {
       const entry = JSON.parse(localStorage.getItem(SAVED) ?? '{}')[key];
@@ -851,7 +853,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     const pad = getPadding();
     // (Every number any label shows, in any view: the chips' one width comes from the widest of them.)
     const texts = [...new Set(order.flatMap((o) => o.texts ?? []))].sort();
-    const key = JSON.stringify([LAYOUT_VERSION, size, pad, map.getZoom(), texts, order.map((o) => [o.r.id, o.prio ?? 0]).sort()]);
+    const key = JSON.stringify([LAYOUT_VERSION, labelSides, size, pad, map.getZoom(), texts, order.map((o) => [o.r.id, o.prio ?? 0]).sort()]);
     const cached = layoutCache.get(key) ?? savedLayout(key);
     if (cached) layoutCache.set(key, cached);
     if (cached) {
@@ -942,9 +944,10 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         const tail = lead.seg ? { seg: lead.seg } : null;
         if (tail && reserved.some((r) => segRect(tail.seg, r))) continue;
         // (Relaxed, for the number-only fallback: a hairline may pass beside other points, and reach further.)
-        // (A dot right against this one, like Buttermilk's and Highlands': the line may graze its edge,
-        // as any line out of the pair must.)
-        if (!relaxed && tail && dots.some((d) => d !== it.p && segPointDist(tail.seg, d) < (Math.hypot(d.x - it.p.x, d.y - it.p.y) < 14 ? DOT_R - 1 : DOT_R + 3))) continue;
+        // (A dot right against this one may be grazed, as any line out of the pair must; one overlapping
+        // it, like Buttermilk's and Highlands', reads as the same spot and doesn't count.)
+        const clear = (d) => { const apart = Math.hypot(d.x - it.p.x, d.y - it.p.y); return apart < 2 * DOT_R + 1 ? 0 : apart < 14 ? DOT_R - 1 : DOT_R + 3; };
+        if (!relaxed && tail && dots.some((d) => d !== it.p && segPointDist(tail.seg, d) < clear(d))) continue;
         // Labels that matter (open, favorite, filter match) may reach further when they must.
         // (Far: the last try for a full name before number-only.)
         if (lead.len > (far ? maxLead * 3.2 : (it.prio ?? 0) > 0 ? maxLead * 2.3 : relaxed ? maxLead * 1.5 : maxLead)) continue;
@@ -954,10 +957,13 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         // neighbors costs extra (the cartographer's rule: Keystone, on the cluster's east side, labels
         // east; Copper, west).
         const out = it.away ? Math.max(0, -(s[0] * it.away[0] + s[1] * it.away[1]) / (Math.hypot(s[0], s[1]) || 1)) : 0;
+        // (A preferred side, labelSides: worth a fair bit more line.)
+        const side = Math.abs(s[1]) > Math.abs(s[0]) * 0.6 ? (s[1] < 0 ? 'N' : 'S') : s[0] > 0 ? 'E' : 'W';
+        const sided = labelSides[it.r.id] && labelSides[it.r.id] !== side ? 1500 : 0;
         const long = Math.max(0, lead.len - 25); // (past ~20 px of visible line, length costs much more)
         // (The area the label and its line cover: a quick first check for clashes.)
         const ext = tail ? [Math.min(box[0], tail.seg[2]), Math.min(box[1], tail.seg[3]), Math.max(box[2], tail.seg[2]), Math.max(box[3], tail.seg[3])] : box;
-        it.cands.push({ s, box, tail, ext, len: lead.len, cost: lead.len * lead.len + 6 * long * long + (s[2] ?? 60) + out * OUTWARD });
+        it.cands.push({ s, box, tail, ext, len: lead.len, cost: lead.len * lead.len + 6 * long * long + (s[2] ?? 60) + out * OUTWARD + sided });
       }
       it.cands.sort((a, b) => a.cost - b.cost);
     };
@@ -1077,19 +1083,19 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         if (delta < 0 || rand() < Math.exp(-delta / temp)) pick.set(it, next);
         continue;
       }
-      // Or a kick: the one label in the way moves to its own best free spot, if that's better overall
-      // (a chain one-at-a-time moves can't make: Vail nearer its dot, Loveland's label stepping aside).
+      // Or a kick: the (up to 2) labels in the way move to their own best free spots, if that's better
+      // overall (chains one-at-a-time moves can't make: Vail nearer its dot, Loveland's label stepping
+      // aside; Highlands' label taking Buttermilk's side of Aspen).
       const inWay = labels.filter((o) => o !== it && pick.get(o) && clash(next, pick.get(o)));
-      if (inWay.length !== 1) continue;
-      const o = inWay[0];
-      const oWas = pick.get(o);
-      const before = costOf(it, cur) + costOf(o, oWas);
+      if (inWay.length > 2) continue;
+      const was = inWay.map((o) => pick.get(o));
+      const before = costOf(it, cur) + inWay.reduce((t, o, k) => t + costOf(o, was[k]), 0);
       pick.set(it, next);
-      pick.set(o, null);
-      const oNow = reseatBest(o);
-      pick.set(o, oNow);
-      const delta = costOf(it, next) + costOf(o, oNow) - before;
-      if (!oNow || !(delta < 0 || rand() < Math.exp(-delta / temp))) { pick.set(it, cur); pick.set(o, oWas); }
+      for (const o of inWay) pick.set(o, null);
+      let ok = true;
+      for (const o of inWay) { const n = reseatBest(o); pick.set(o, n); if (!n) ok = false; }
+      const delta = ok ? costOf(it, next) + inWay.reduce((t, o) => t + costOf(o, pick.get(o)), 0) - before : Infinity;
+      if (!(delta < 0 || rand() < Math.exp(-delta / temp))) { pick.set(it, cur); inWay.forEach((o, k) => pick.set(o, was[k])); }
     }
     if (total() > bestSeen.cost) { pick.clear(); for (const [k, v] of bestSeen.picks) pick.set(k, v); }
     // Then settle: each label moves to its cheapest free spot (closest, line-free if there's room),
@@ -1384,20 +1390,21 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     settle();
     keepOrder(120);
 
-    // 6) Shortest lines last: for the longest lines first, try a spot nearer the dot, moving the (up
-    //    to 2) labels in the way elsewhere; kept when the lines involved get shorter overall (squared,
-    //    so evening out one long line counts) and none of the moved ones ends up on a long line.
+    // 6) Shortest lines last: for the longest lines first, try a cheaper spot (nearer the dot, or on
+    //    its preferred side), moving the (up to 2) labels in the way elsewhere; kept when the labels
+    //    involved cost less overall (length squared, so evening out one long line counts) and none of
+    //    the moved ones ends up on a long line.
     const lineLen = (o) => pick.get(o)?.len ?? 0;
     const linesUntil = performance.now() + 60; // (its own small time allowance)
     for (const it of labels.filter((o) => pick.get(o)).sort((a, b) => lineLen(b) - lineLen(a))) {
       if (performance.now() > linesUntil) break;
       const was = pick.get(it);
       if (!was) continue;
-      for (const c of it.cands.filter((x) => x.len < was.len - 2).slice(0, 12)) {
+      for (const c of it.cands.filter((x) => x.cost < was.cost - 20).slice(0, 12)) {
         const blockers = labels.filter((o) => o !== it && pick.get(o) && clash(c, pick.get(o)));
         if (blockers.length > 2) continue;
         const saved = [[it, was], ...blockers.map((o) => [o, pick.get(o)])];
-        const sq = () => saved.reduce((t, [o]) => t + lineLen(o) ** 2, 0);
+        const sq = () => saved.reduce((t, [o]) => t + (pick.get(o)?.cost ?? 1e7), 0);
         const before = sq();
         for (const o of blockers) pick.set(o, null);
         pick.set(it, c);
