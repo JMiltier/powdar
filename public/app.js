@@ -2170,9 +2170,9 @@ function startMap() {
     onRadar: (r) => { state.radar = r; syncRadarKey(); },
     onCast: (c) => { state.cast = { ...state.cast, ...c }; if (state.layer === 'snowcast') $('#legend').innerHTML = legendFor('snowcast'); },
     places: state.code === 'CO' ? CO_TOWNS : state.code === 'UT' ? UT_TOWNS : [],
-    // Aspen's four dots nearly touch: Snowmass and Highlands to the left, Aspen Mountain to the
-    // right, Buttermilk below.
-    labelSides: { snowmass: 'W', 'aspen-highlands': 'W', 'aspen-mountain': 'E', buttermilk: 'S' },
+    // Aspen's four dots nearly touch: Snowmass and Buttermilk (the upper of the pair) to the left,
+    // Aspen Mountain to the right, Highlands (the lower one) below.
+    labelSides: { snowmass: 'W', buttermilk: 'W', 'aspen-mountain': 'E', 'aspen-highlands': 'S' },
   });
   if (useInset) {
     insetEl = document.createElement('div');
