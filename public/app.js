@@ -820,7 +820,6 @@ function renderDetail(r) {
     </div>
     ${dayMore(f.days.find((d) => d.date === state.openDay))}
     ${f.week2 ? `<p class="week2"><b>Days 8–14</b> about ${inches(f.week2.mid)} more${rangeText(f.week2.range) ? ` <span class="muted">(${rangeText(f.week2.range)})</span>` : ''}</p>` : ''}
-    ${f.correction?.factor && f.correction.factor !== 1 ? `<p class="fine">Model forecasts ${f.correction.factor > 1 ? 'raised' : 'lowered'} ×${f.correction.factor}: over the last ${f.correction.days} days ${esc(r.name)} reported ${inches(f.correction.reported)} where they estimated ${inches(f.correction.modeled)}</p>` : ''}
     <p class="fine">${unitLabel()} · wind ${windUnit()}${f.days.some((d) => d.uv != null) ? ' · UV at the day’s peak' : ''} · Tap a day for more</p>` : '<p class="muted">Forecast unavailable right now.</p>';
 
   // Where every number comes from, gathered at the very bottom for anyone curious.
