@@ -2105,6 +2105,11 @@ function showNotice(text) {
 const CO_TOWNS = [
   ['Denver', 39.7392, -104.9903, true], ['Colorado Springs', 38.8339, -104.8214, true], ['Fort Collins', 40.5853, -105.0844, true],
   ['Durango', 37.2753, -107.8801, true], ['Grand Junction', 39.0639, -108.5506],
+  // The resorts' own towns: only with the resort labels off (with them on, they'd repeat the labels).
+  // Ahead of the smaller towns: they win the room near the resorts.
+  ['Steamboat Springs', 40.485, -106.8317, false, true], ['Aspen', 39.1911, -106.8175, false, true], ['Vail', 39.6403, -106.3742, false, true],
+  ['Breckenridge', 39.4817, -106.0384, false, true], ['Telluride', 37.9375, -107.8123, false, true], ['Crested Butte', 38.8697, -106.9878, false, true],
+  ['Winter Park', 39.8917, -105.7631, false, true], ['Granby', 40.0861, -105.9395, false, true],
   ['Boulder', 40.015, -105.2705], ['Pueblo', 38.2544, -104.6091], ['Glenwood Springs', 39.5505, -107.3248], ['Gunnison', 38.5458, -106.9253],
   ['Montrose', 38.4783, -107.8762], ['Alamosa', 37.4695, -105.87], ['Salida', 38.5347, -105.9989],
   ['Leadville', 39.2508, -106.2925], ['Pagosa Springs', 37.2694, -107.0098], ['Eagle', 39.6553, -106.8287], ['Craig', 40.5153, -107.5464],
@@ -2113,6 +2118,7 @@ const CO_TOWNS = [
   ['Idaho Springs', 39.7425, -105.5136], ['Avon', 39.6314, -106.5222], ['Fairplay', 39.2247, -105.9967], ['Meeker', 40.0375, -107.9131],
   ['Delta', 38.7422, -108.069], ['Cortez', 37.3489, -108.5859], ['Walden', 40.7317, -106.2836], ['Trinidad', 37.1695, -104.5005],
   ['Cañon City', 38.441, -105.2425], ['Lake City', 38.03, -107.3156], ['Georgetown', 39.7061, -105.6975], ['Basalt', 39.3689, -107.0328],
+  ['Hayden', 40.495, -107.257], ['Grand Lake', 40.2522, -105.8231], ['Nederland', 39.9614, -105.5108],
 ];
 // Utah's towns, as Colorado's: the cities, then the ski towns and the ones on the way.
 const UT_TOWNS = [

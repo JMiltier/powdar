@@ -644,12 +644,13 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // Towns for orientation, quieter than the resorts: small muted text by a tiny square. Most important
   // first; one that would touch a resort's label, hairline or dot (or a more important town) hides.
   map.createPane('places').style.zIndex = 580; // under the resort dots and labels
-  const towns = places.map(([name, lat, lon, major]) => {
+  // (places: [name, lat, lon, major, resortTown]: a resort's own town shows only with the labels off.)
+  const towns = places.map(([name, lat, lon, major, resortTown]) => {
     const node = document.createElement('span');
     node.className = 'place';
     node.textContent = name;
     L.marker([lat, lon], { pane: 'places', interactive: false, keyboard: false, icon: L.divIcon({ html: node, className: 'place-host', iconSize: [0, 0] }) }).addTo(map);
-    return { node, at: [lat, lon], major: Boolean(major) };
+    return { node, at: [lat, lon], major: Boolean(major), resortTown: Boolean(resortTown) };
   });
   // The major towns' name boxes (container pixels), reserved before the resort labels are placed:
   // name to the right of the square, or to the left near the right edge.
@@ -718,13 +719,16 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       const top = side === 'below' ? a.y - 3 : a.y + 3 - h;
       return { left: a.x - w / 2, right: a.x + w / 2, top, bottom: top + h };
     };
+    const labelsOff = el.classList.contains('labels-off');
     const sides = towns.map((t, i) => {
+      if (t.resortTown && !labelsOff) return null;
       const p = map.latLngToContainerPoint(t.at);
       const a = { x: view.left + p.x, y: view.top + p.y };
       for (const side of t.fixed ? [t.fixed] : ['right', 'left', 'below', 'above']) {
         const box = boxFor(rights[i], a, side);
         if (t.fixed || (inside(box) && !taken.some((b) => b.width + b.height > 0 && overlaps(box, b)))) {
-          taken.push({ ...box, width: box.right - box.left, height: box.bottom - box.top });
+          // (Copied field by field: a DOMRect's fields aren't its own, so {...box} would be empty.)
+          taken.push({ left: box.left, right: box.right, top: box.top, bottom: box.bottom, width: box.right - box.left, height: box.bottom - box.top });
           return side;
         }
       }
