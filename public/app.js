@@ -12,7 +12,7 @@ const ALL_STATES = false;
 // its resorts are.
 const AREAS = [
   { code: 'CO', name: 'Colorado', at: [36.95, -106.6], side: 'C', box: [[37.4, -108.2], [40.55, -105.4]] },
-  { code: 'UT', name: 'Utah', at: [40.9, -112.2], side: 'W', box: [[37.6, -112.95], [42.0, -111.4]] },
+  { code: 'UT', name: 'Utah', at: [41.95, -112.9], side: 'W', box: [[37.6, -112.95], [42.0, -111.4]] },
   { code: 'TAHOE', name: 'Tahoe', at: [39.05, -119.6], side: 'E', box: [[38.15, -120.42], [39.4, -119.85]] },
   { code: 'MAMMOTH', name: 'Mammoth', at: [37.3, -118.75], side: 'E', box: [[37.6, -119.12], [37.8, -118.98]] },
   { code: 'SOCAL', name: 'SoCal', at: [33.95, -117.25], side: 'C', box: [[34.18, -117.72], [34.4, -116.83]] },
@@ -2163,12 +2163,21 @@ const CO_TOWNS = [
 // State names, quiet ([name, lat, lon]): each state's middle on the West map; on an area's map, the
 // neighbors' names near the shared border (Nevada east of the line through Lake Tahoe). A name shows
 // only where there's room (after the towns).
-const asState = ([name, lat, lon]) => [name, lat, lon, false, false, 'state'];
+// (Each with a few spots to try, best first: the first one clear of the bubbles, cities and labels.)
+const asState = ([name, lat, lon, alts = []]) => [name, lat, lon, false, false, 'state', alts];
 const STATE_MIDDLES = [
-  ['WASHINGTON', 47.3, -120.4], ['OREGON', 43.9, -120.5], ['CALIFORNIA', 36.4, -119.9], ['NEVADA', 39.0, -116.9],
-  ['IDAHO', 43.8, -114.9], ['MONTANA', 47.0, -109.5], ['WYOMING', 43.0, -107.5], ['UTAH', 39.1, -111.6],
-  ['COLORADO', 38.6, -104.6], ['ARIZONA', 34.3, -111.7], ['NEW MEXICO', 34.4, -106.1], ['NEBRASKA', 41.5, -99.8],
-  ['KANSAS', 38.5, -98.4], ['SOUTH DAKOTA', 44.4, -100.2], ['OKLAHOMA', 35.6, -97.5],
+  ['WASHINGTON', 47.3, -120.4, [[46.7, -118.7], [47.8, -118.3], [46.4, -120.8]]],
+  ['OREGON', 43.9, -120.5, [[44.6, -119.6], [43.2, -121.3]]],
+  ['CALIFORNIA', 36.4, -119.9, [[35.3, -119.1], [40.4, -122.0], [35.0, -117.0], [36.6, -118.0]]],
+  ['NEVADA', 39.0, -116.9, [[40.4, -116.8], [38.0, -116.2], [41.6, -117.6], [41.7, -116.0], [36.7, -116.3], [41.2, -115.3], [37.3, -115.5], [39.9, -117.9], [40.7, -115.4], [38.5, -117.4], [36.2, -116.0]]],
+  ['IDAHO', 43.8, -114.9, [[44.7, -115.1], [42.8, -113.6], [45.6, -115.8]]],
+  ['MONTANA', 47.0, -109.5, [[46.4, -111.4], [47.6, -107.0]]],
+  ['WYOMING', 43.0, -107.5, [[42.3, -108.3], [43.9, -106.3]]],
+  ['UTAH', 39.1, -111.6, [[38.6, -110.6], [39.6, -112.6], [37.8, -112.0]]],
+  ['COLORADO', 38.6, -104.6, [[39.6, -103.6], [37.7, -104.2], [40.4, -103.6]]],
+  ['ARIZONA', 34.3, -111.7, [[35.2, -112.6], [33.0, -111.3], [34.9, -110.1]]],
+  ['NEW MEXICO', 34.4, -106.1, [[33.4, -105.6], [35.6, -104.4], [34.0, -108.0], [32.8, -107.4]]],
+  ['NEBRASKA', 41.5, -99.8], ['KANSAS', 38.5, -98.4], ['SOUTH DAKOTA', 44.4, -100.2], ['OKLAHOMA', 35.6, -97.5],
 ].map(asState);
 const STATE_NAMES = [
   ...STATE_MIDDLES,

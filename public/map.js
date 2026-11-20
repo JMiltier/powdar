@@ -657,12 +657,13 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   map.createPane('places').style.zIndex = 580; // under the resort dots and labels
   // (places: [name, lat, lon, major, resortTown, kind]: a resort's own town shows only with the labels
   // off; kind 'state': a state's name, quiet, centered on its spot, placed last.)
-  const towns = places.map(([name, lat, lon, major, resortTown, kind]) => {
+  // (A state can also have alts: [[lat, lon]…], other spots to try when its first is taken.)
+  const towns = places.map(([name, lat, lon, major, resortTown, kind, alts = []]) => {
     const node = document.createElement('span');
     node.className = kind === 'state' ? 'place state-name' : 'place';
     node.textContent = name;
-    L.marker([lat, lon], { pane: 'places', interactive: false, keyboard: false, icon: L.divIcon({ html: node, className: 'place-host', iconSize: [0, 0] }) }).addTo(map);
-    return { node, at: [lat, lon], major: Boolean(major), resortTown: Boolean(resortTown), state: kind === 'state' };
+    const marker = L.marker([lat, lon], { pane: 'places', interactive: false, keyboard: false, icon: L.divIcon({ html: node, className: 'place-host', iconSize: [0, 0] }) }).addTo(map);
+    return { node, marker, at: [lat, lon], alts, major: Boolean(major), resortTown: Boolean(resortTown), state: kind === 'state' };
   });
   // State lines: thin and quiet, over the relief and the snow (under the labels).
   map.createPane('stateLines').style.zIndex = 256;
@@ -721,7 +722,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     // (All the writes, then all the reads, then the decisions, then the writes: the browser lays the
     // page out once, not once per town and side tried.)
     const view = el.getBoundingClientRect();
-    for (const t of towns) { t.node.hidden = false; t.node.dataset.side = t.state ? 'C' : 'right'; }
+    for (const t of towns) { t.node.hidden = false; t.node.dataset.side = t.state ? 'C' : 'right'; if (t.alts.length) t.marker.setLatLng(t.at); }
     for (const spots of shields) for (const n of spots) n.hidden = false;
     const taken = [];
     for (const n of el.querySelectorAll('.pin:not(.hidden) .pin-bubble, .pin-dot, .pin:not(.hidden) .pin-tail line:not([style*="none"]), .west-bubble')) taken.push(n.getBoundingClientRect());
@@ -741,10 +742,25 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       return { left: a.x - w / 2, right: a.x + w / 2, top, bottom: top + h };
     };
     const labelsOff = el.classList.contains('labels-off');
+    const spotOf = new Map(); // a state placed at one of its other spots → that spot
     const sides = towns.map((t, i) => {
       if (t.resortTown && !labelsOff) return null;
       const p = map.latLngToContainerPoint(t.at);
       const a = { x: view.left + p.x, y: view.top + p.y };
+      if (t.state) {
+        // Its spots in turn (the name measured at the first, moved to each): the first that's clear.
+        for (const at of [t.at, ...t.alts]) {
+          const q = map.latLngToContainerPoint(at);
+          const r = rights[i];
+          const box = { left: r.left + q.x - p.x, right: r.right + q.x - p.x, top: r.top + q.y - p.y, bottom: r.bottom + q.y - p.y };
+          if (inside(box) && !taken.some((b) => b.width + b.height > 0 && overlaps(box, b))) {
+            taken.push({ ...box, width: box.right - box.left, height: box.bottom - box.top });
+            if (at !== t.at) spotOf.set(t, at);
+            return 'C';
+          }
+        }
+        return null;
+      }
       for (const side of t.fixed ? [t.fixed] : t.state ? ['C'] : ['right', 'left', 'below', 'above']) {
         const box = boxFor(rights[i], a, side);
         if (t.fixed || (inside(box) && !taken.some((b) => b.width + b.height > 0 && overlaps(box, b)))) {
@@ -760,7 +776,11 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       if (k >= 0) taken.push(boxes[k]);
       return k;
     });
-    towns.forEach(({ node }, i) => { node.hidden = !sides[i]; if (sides[i]) node.dataset.side = sides[i]; });
+    towns.forEach((t, i) => {
+      t.node.hidden = !sides[i];
+      if (sides[i]) t.node.dataset.side = sides[i];
+      if (spotOf.has(t)) t.marker.setLatLng(spotOf.get(t));
+    });
     shields.forEach((spots, i) => spots.forEach((n, k) => { n.hidden = k !== shown[i]; }));
   }
 
