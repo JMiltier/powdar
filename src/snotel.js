@@ -4,7 +4,8 @@ export const AWDB = 'https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data';
 
 const DAY_MS = 86_400_000;
 // Below this much water in the normal snowpack, "% of normal" swings wildly, so we don't show it.
-const MIN_NORMAL_FOR_PCT = 0.5;
+// (Below an inch of normal snow water, a percentage means little: 4″ against 0.5″ reads 800%.)
+const MIN_NORMAL_FOR_PCT = 1;
 
 const dayNum = (ymd) => Date.parse(`${ymd}T12:00:00Z`) / DAY_MS;
 

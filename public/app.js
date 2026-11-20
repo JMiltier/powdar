@@ -1030,11 +1030,12 @@ const stationsList = () => {
 };
 // Statewide % of normal: all the stations' snow water against all their normals.
 // (minNormal: below this much normal water, a % swings wildly; a region with one station can go lower.)
+// (Until the stations' normal averages an inch of snow water: early, not "517 %".)
 function statewidePct(list = stationsList(), minNormal = 2) {
   const ok = list.filter((s) => s.latest?.normal != null);
   const have = ok.reduce((a, s) => a + s.latest.swe, 0);
   const normal = ok.reduce((a, s) => a + s.latest.normal, 0);
-  return normal >= minNormal ? Math.round((have / normal) * 100) : null;
+  return normal >= Math.max(minNormal, ok.length) ? Math.round((have / normal) * 100) : null;
 }
 // Average of the stations' curves, day by day ([day, value] points, filled in between).
 function averageCurve(curves) {
@@ -1819,6 +1820,7 @@ function render() {
   $('#list').hidden = open;
   $('#detail').hidden = !open;
   $('.foot').hidden = open; // a resort's own sources sit at the bottom of its details
+  $('#foot').innerHTML = footText();
   grabEl.classList.toggle('has-detail', open);
   if (!open) $('#grab-detail').innerHTML = '';
   if (west && !$('#west').hidden) {
@@ -1827,6 +1829,7 @@ function render() {
     $('#detail').hidden = true;
     renderWestSheet();
     $('#stormy').hidden = true;
+    $('.foot').hidden = true; // (the sources are each area's: see footText)
   } else {
     if (overview) renderOverview();
     else if (r) renderDetail(r);
@@ -2370,6 +2373,23 @@ setInterval(() => {
   if (t) t.textContent = timeAgo(state.data.generated);
 }, 60_000);
 
+// Where the list's numbers come from, for the area showing (at the bottom of the list).
+const AREA_SOURCES = {
+  CO: 'Open status, lifts and snow totals: Colorado Ski Country USA and the resorts’ own reports; Vail Resorts’ mountains (Vail, Beaver Creek, Breckenridge, Keystone, Crested Butte) from their own pages. Typical season snowfall: ZRankings.',
+  UT: 'Open status and snow totals: Ski Utah; Park City from Vail Resorts’ own pages.',
+  TAHOE: 'Heavenly, Northstar and Kirkwood: Vail Resorts’ own pages. Palisades, Alpine Meadows and Boreal: their live lift status (open when a lift is running). The rest: forecasts and NOAA’s snow estimate, with no live status yet.',
+  MAMMOTH: 'Mammoth and June: their live lift status (open when a lift is running).',
+  SOCAL: 'No live status feed yet: forecasts and NOAA’s snow-on-the-ground estimate.',
+};
+function footText() {
+  const snowpack = state.data?.resorts?.some((r) => r.station);
+  return `Last 24 hrs: the resort’s own report when it has one, otherwise a weather-model estimate (est.).
+    Forecast: a blend of the National Weather Service and five weather models (European, American GFS/HRRR, Canadian,
+    NOAA’s National Blend and the UK Met Office), run for each resort’s mid-mountain elevation; days 8–14 from about 100
+    ensemble runs. Weather: National Weather Service.${snowpack ? ' Snowpack: the nearest NRCS SNOTEL snow station against its normal.' : ''}
+    ${AREA_SOURCES[state.code] ?? ''} Live lift status comes straight from resorts that publish it.`;
+}
+
 // ---------- the West: every area at once ----------
 // Pinch out on an area's map (or scroll down on it, or tap its badge on the "today" card) for a small
 // map of the West with each area's best number for the current view; tap one to go there. Pinching
@@ -2477,12 +2497,19 @@ function pickArea(code) {
       if (open ? k < 0.72 : k > 1.35) { pinch = null; if (open) openWest(); else closeWest(); }
     }, { passive: true });
     $(sel).addEventListener('touchend', () => { pinch = null; }, { passive: true });
-    // (A mouse or trackpad: scrolling down zooms out to the West, up comes back.)
+    // (A mouse or trackpad: scrolling down zooms out to the West, up comes back. A trackpad pinch in
+    // Chrome or Edge arrives as a scroll with Ctrl held: the same, and the page itself doesn't zoom.)
     let wheel = 0;
     $(sel).addEventListener('wheel', (e) => {
-      wheel = Math.sign(e.deltaY) === Math.sign(wheel) ? wheel + e.deltaY : e.deltaY;
+      if (e.ctrlKey) e.preventDefault();
+      const dy = e.ctrlKey ? e.deltaY * 6 : e.deltaY; // (pinch steps are small)
+      wheel = Math.sign(dy) === Math.sign(wheel) ? wheel + dy : dy;
       if (open ? wheel > 120 : wheel < -120) { wheel = 0; if (open) openWest(); else closeWest(); }
-    }, { passive: true });
+    }, { passive: false });
+    // (Safari on a Mac: a trackpad pinch is its own gesture event.)
+    $(sel).addEventListener('gesturechange', (e) => {
+      if (open ? e.scale < 0.8 : e.scale > 1.25) { if (open) openWest(); else closeWest(); }
+    });
   }
 }
 // Once, on a first visit: where the other areas are.
@@ -2490,7 +2517,8 @@ function hintWest() {
   if (ALL_STATES || AREAS.length < 2 || read(STORE.westHint, false)) return;
   write(STORE.westHint, true);
   const others = AREAS.filter((a) => a.code !== state.code).map((a) => a.name);
-  setTimeout(() => toast(`Pinch out on the map for ${others.length > 1 ? `${others.slice(0, -1).join(', ')} and ${others.at(-1)}` : others[0]}`), 2500);
+  const how = matchMedia('(pointer: fine)').matches ? 'Scroll down on the map (or pinch your trackpad)' : 'Pinch out on the map';
+  setTimeout(() => toast(`${how} for ${others.length > 1 ? `${others.slice(0, -1).join(', ')} and ${others.at(-1)}` : others[0]}`), 2500);
 }
 
 // ---------- states ----------
