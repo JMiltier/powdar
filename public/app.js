@@ -47,7 +47,7 @@ const SURFACE = {
   VC: 'Variable', LG: 'Loose granular', LSGR: 'Loose granular', FG: 'Frozen granular', WG: 'Wet granular', ICY: 'Icy',
 };
 const SOURCE_NAMES = {
-  nws: 'National Weather Service', ecmwf_ifs025: 'European ECMWF', gfs_seamless: 'American GFS/HRRR', gem_seamless: 'Canadian GEM', icon_seamless: 'German ICON',
+  nws: 'National Weather Service', ecmwf_ifs025: 'European ECMWF', gfs_seamless: 'American GFS/HRRR', gem_seamless: 'Canadian GEM', icon_seamless: 'German ICON', ncep_nbm_conus: 'NOAA Blend (NBM)', ukmo_global_deterministic_10km: 'UK Met Office',
 };
 
 // What the map and list show. `steps` are the upper bounds of each color level.

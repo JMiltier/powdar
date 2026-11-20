@@ -525,7 +525,7 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
     Promise.all(MODELS.map(async (m) => {
       if (skipModels) return null;
       try {
-        const data = await getJson(fetchFn, modelUrl(m.id, RESORTS, MODEL_DAYS), { backoff });
+        const data = await getJson(fetchFn, modelUrl(m.id, RESORTS, Math.min(m.days ?? MODEL_DAYS, MODEL_DAYS)), { backoff });
         return Array.isArray(data) ? data : [data];
       } catch (err) {
         log(`Model ${m.label} failed: ${err.message}${err.cause ? ` (${err.cause.code ?? err.cause.message})` : ''}`);

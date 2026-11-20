@@ -2,14 +2,17 @@
 // elevation, turned into snowfall with a temperature-based snow-to-liquid ratio.
 export const OPEN_METEO = 'https://api.open-meteo.com/v1/forecast';
 
-// Four independent global/regional models. gfs_seamless uses HRRR for the first ~2 days in the US.
+// The weather models: three global ones (gfs_seamless uses the 3 km HRRR for the first ~2 days in the
+// US, so the mountains themselves are resolved), NOAA's National Blend of Models (its many models
+// corrected against what actually fell: the Weather Service's own starting point), and the UK Met
+// Office's 10 km model. days: how far each one reaches (so the request asks no further).
 export const MODELS = [
   { id: 'ecmwf_ifs025', label: 'European (ECMWF)' },
   { id: 'gfs_seamless', label: 'American (GFS/HRRR)' },
   { id: 'gem_seamless', label: 'Canadian (GEM)' },
+  { id: 'ncep_nbm_conus', label: 'NOAA Blend (NBM)', days: 11 },
+  { id: 'ukmo_global_deterministic_10km', label: 'UK Met Office', days: 7 },
 ];
-// ICON (German) was dropped: it adds the least for US mountains, and three models keep the nationwide
-// update inside Open-Meteo's free daily allowance.
 
 const FT_TO_M = 0.3048;
 const MM_PER_INCH = 25.4;

@@ -105,39 +105,38 @@ await writeFile(new URL('../public/data.json', import.meta.url), JSON.stringify(
 await writeFile(new URL('../public/data/co.json', import.meta.url), JSON.stringify(report));
 console.log('Wrote Colorado');
 
-// ---------- Utah: the same pipeline as Colorado (src/report.js REGIONS.UT) ----------
-// (One of the areas, beside Colorado: see AREAS in public/app.js.)
-{
-  // Its weather models every 2 hours (Colorado's hourly), to stay inside the free forecast allowance;
-  // everything else (status, reports, lifts, NWS) every update. Without models this time, the last
-  // published forecasts carry over.
+// ---------- The other areas: the same pipeline as Colorado (src/report.js REGIONS) ----------
+// (See AREAS in public/app.js.) Their weather models every 2 hours (Colorado's hourly), to stay inside
+// the free forecast allowance; everything else (status, reports, lifts, NWS) every update. Without
+// models this time, the last published forecasts carry over (up to 12 hours old).
+async function buildArea(code) {
+  const R = STATE_REGIONS[code];
+  const file = `data/${code.toLowerCase()}.json`;
   try {
-    const prevUt = await published('data/ut.json');
-    const utModelsAge = Date.now() - Date.parse(prevUt?.sources?.modelsAt ?? 0);
-    const utSkip = Boolean(prevUt && utModelsAge < 2 * 3_600_000);
-    const ut = await buildReport({
-      region: STATE_REGIONS.UT, log: (msg) => console.warn(`Utah: ${msg}`), skipModels: utSkip,
-      prevLifts: Object.fromEntries((prevUt?.resorts ?? []).filter((r) => r.lifts).map((r) => [r.id, r.lifts])),
-      prevEnsemble: prevUt?.ensemble ?? null,
-      prevResorts: Object.fromEntries((prevUt?.resorts ?? []).map((r) => [r.id, r])),
+    const prev = await published(file);
+    const age = Date.now() - Date.parse(prev?.sources?.modelsAt ?? 0);
+    const skip = Boolean(prev && age < 2 * 3_600_000);
+    const rep = await buildReport({
+      region: R, log: (msg) => console.warn(`${R.name}: ${msg}`), skipModels: skip,
+      prevLifts: Object.fromEntries((prev?.resorts ?? []).filter((r) => r.lifts).map((r) => [r.id, r.lifts])),
+      prevEnsemble: prev?.ensemble ?? null,
+      prevResorts: Object.fromEntries((prev?.resorts ?? []).map((r) => [r.id, r])),
     });
-    if (utSkip || !Object.values(ut.sources.models ?? {}).some(Boolean)) {
-      // (Models skipped or unreachable: the last full forecasts, up to 12 hours old.)
-      if (prevUt && utModelsAge < 12 * 3_600_000) {
-        const old = new Map(prevUt.resorts.map((r) => [r.id, r.forecast]));
-        for (const r of ut.resorts) if (old.get(r.id)?.sources?.length > 1) r.forecast = old.get(r.id);
-        ut.sources.modelsAt = prevUt.sources.modelsAt;
-        ut.sources.modelsReused = true;
-      }
+    if ((skip || !Object.values(rep.sources.models ?? {}).some(Boolean)) && prev && age < 12 * 3_600_000) {
+      const old = new Map(prev.resorts.map((r) => [r.id, r.forecast]));
+      for (const r of rep.resorts) if (old.get(r.id)?.sources?.length > 1) r.forecast = old.get(r.id);
+      rep.sources.modelsAt = prev.sources.modelsAt;
+      rep.sources.modelsReused = true;
     }
-    await writeFile(new URL('../public/data/ut.json', import.meta.url), JSON.stringify(ut));
-    console.log('Wrote Utah');
+    await writeFile(new URL(`../public/${file}`, import.meta.url), JSON.stringify(rep));
+    console.log(`Wrote ${R.name}`);
   } catch (err) {
-    console.warn(`Utah failed (${err.message}); keeping the last one.`);
-    const last = await published('data/ut.json');
-    if (last) await writeFile(new URL('../public/data/ut.json', import.meta.url), JSON.stringify(last));
+    console.warn(`${R.name} failed (${err.message}); keeping the last one.`);
+    const last = await published(file);
+    if (last) await writeFile(new URL(`../public/${file}`, import.meta.url), JSON.stringify(last));
   }
 }
+for (const code of Object.keys(STATE_REGIONS).filter((c) => c !== 'CO')) await buildArea(code);
 
 // The snow forecast's chance areas (src/snowcast.js); the last published copy if WPC is unreachable.
 try {
