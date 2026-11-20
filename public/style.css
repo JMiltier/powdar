@@ -1223,3 +1223,7 @@ body.west-open #filter-btn { display: none; }
 .place.state-name { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.14em; opacity: 0.55; gap: 0; }
 .place.state-name::before { display: none; }
 .place[data-side="C"] { left: 0; top: 0; transform: translate(-50%, -50%); }
+
+.install-hint { cursor: default; }
+.install-hint b { font-weight: 700; }
+.share-ic { width: 13px; height: 13px; vertical-align: -2px; }

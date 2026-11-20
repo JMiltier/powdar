@@ -1740,6 +1740,11 @@ addEventListener('beforeinstallprompt', (e) => {
   $('#install-btn').hidden = false;
 });
 addEventListener('appinstalled', () => { installPrompt = null; $('#install-btn').hidden = true; });
+// iPhone and iPad (iPadOS says it's a Mac, but has a touch screen): no install prompt, so the ⓘ card
+// says how, until Powdar is opened from the home screen.
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const installed = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+$('#ios-install').hidden = !isIOS || installed;
 
 function renderMap() {
   if (!state.map) return;
