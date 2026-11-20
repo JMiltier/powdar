@@ -11,6 +11,10 @@ const TILES = {
   dark: 'https://services.arcgisonline.com/arcgis/rest/services/Elevation/World_Hillshade_Dark/MapServer/tile/{z}/{y}/{x}',
 };
 const isDark = () => document.documentElement.dataset.theme === 'dark';
+// State lines (public/geo/state-lines.json: US Census boundaries via us-atlas, the West, ~1 km), loaded
+// once for every map.
+let stateLinesReq = null;
+const stateLines = () => (stateLinesReq ??= fetch('geo/state-lines.json').then((r) => (r.ok ? r.json() : [])).catch(() => []));
 // NASA GIBS: each day's real satellite photo (VIIRS, ~250 m, a few hours after the early-afternoon
 // passes), free and keyless. 'sat' is true color (snow white, clouds white too); 'satsnow' is
 // shortwave-infrared false color, where snow shows bright cyan and clouds stay white.
@@ -243,8 +247,11 @@ export const SNOW_COLOR = [
 // short-line layout alone reads ambiguously (Aspen's tight cluster).
 // getObstacles(size) → [[left, top, right, bottom]…]: the map's own floating buttons, in map pixels
 // (no label or line goes under them).
-export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [], onOutlook, onRadar, onCast, labelSides = {}, getObstacles = () => [] }) {
-  const bounds = L.latLngBounds(resorts.map((r) => r.at));
+// frame: [[s, w], [n, e]] to show instead of the resorts' own extent (the West).
+// west: { areas, onPick(code), onDismiss() }: the map of every area (no resort labels: a bubble per
+// area, its resorts as dots; see setAreas), with all the same layers as an area's map.
+export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [], onOutlook, onRadar, onCast, labelSides = {}, getObstacles = () => [], frame = null, west = null }) {
+  const bounds = frame ? L.latLngBounds(frame) : L.latLngBounds(resorts.map((r) => r.at));
   if (extend) bounds.extend(extend);
   // A state with a single resort still needs some area around it.
   if (bounds.getNorthEast().distanceTo(bounds.getSouthWest()) < 40000) bounds.extend(bounds.getCenter().toBounds(80000));
@@ -648,13 +655,23 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // Towns for orientation, quieter than the resorts: small muted text by a tiny square. Most important
   // first; one that would touch a resort's label, hairline or dot (or a more important town) hides.
   map.createPane('places').style.zIndex = 580; // under the resort dots and labels
-  // (places: [name, lat, lon, major, resortTown]: a resort's own town shows only with the labels off.)
-  const towns = places.map(([name, lat, lon, major, resortTown]) => {
+  // (places: [name, lat, lon, major, resortTown, kind]: a resort's own town shows only with the labels
+  // off; kind 'state': a state's name, quiet, centered on its spot, placed last.)
+  const towns = places.map(([name, lat, lon, major, resortTown, kind]) => {
     const node = document.createElement('span');
-    node.className = 'place';
+    node.className = kind === 'state' ? 'place state-name' : 'place';
     node.textContent = name;
     L.marker([lat, lon], { pane: 'places', interactive: false, keyboard: false, icon: L.divIcon({ html: node, className: 'place-host', iconSize: [0, 0] }) }).addTo(map);
-    return { node, at: [lat, lon], major: Boolean(major), resortTown: Boolean(resortTown) };
+    return { node, at: [lat, lon], major: Boolean(major), resortTown: Boolean(resortTown), state: kind === 'state' };
+  });
+  // State lines: thin and quiet, over the relief and the snow (under the labels).
+  map.createPane('stateLines').style.zIndex = 256;
+  stateLines().then((lines) => {
+    if (!lines.length) return;
+    const ll = lines.map((l) => l.map(([lon, lat]) => [lat, lon]));
+    // (A soft halo under the dashes, so the line reads over snow, radar and the outlook alike.)
+    L.polyline(ll, { pane: 'stateLines', className: 'state-halo', weight: 3, interactive: false }).addTo(map);
+    L.polyline(ll, { pane: 'stateLines', className: 'state-line', weight: 1.2, interactive: false }).addTo(map);
   });
   // The major towns' name boxes (container pixels), reserved before the resort labels are placed:
   // name to the right of the square, or to the left near the right edge.
@@ -704,10 +721,10 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     // (All the writes, then all the reads, then the decisions, then the writes: the browser lays the
     // page out once, not once per town and side tried.)
     const view = el.getBoundingClientRect();
-    for (const { node } of towns) { node.hidden = false; node.dataset.side = 'right'; }
+    for (const t of towns) { t.node.hidden = false; t.node.dataset.side = t.state ? 'C' : 'right'; }
     for (const spots of shields) for (const n of spots) n.hidden = false;
     const taken = [];
-    for (const n of el.querySelectorAll('.pin:not(.hidden) .pin-bubble, .pin-dot, .pin:not(.hidden) .pin-tail line:not([style*="none"])')) taken.push(n.getBoundingClientRect());
+    for (const n of el.querySelectorAll('.pin:not(.hidden) .pin-bubble, .pin-dot, .pin:not(.hidden) .pin-tail line:not([style*="none"]), .west-bubble')) taken.push(n.getBoundingClientRect());
     const rights = towns.map(({ node }) => node.getBoundingClientRect());
     const shieldBoxes = shields.map((spots) => spots.map((n) => n.getBoundingClientRect()));
     const overlaps = (a, b) => a.left < b.right + 3 && a.right > b.left - 3 && a.top < b.bottom + 3 && a.bottom > b.top - 3;
@@ -716,7 +733,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     // Each side's box from the right-hand one: mirrored for left; for above and below, the name
     // (without the square) centered over or under the square.
     const boxFor = (r, a, side) => {
-      if (side === 'right') return r;
+      if (side === 'right' || side === 'C') return r; // (a state's name: measured where it sits)
       if (side === 'left') return { left: 2 * a.x - r.right, right: 2 * a.x - r.left, top: r.top, bottom: r.bottom };
       const w = r.right - r.left - 9;
       const h = r.bottom - r.top + 7;
@@ -728,7 +745,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       if (t.resortTown && !labelsOff) return null;
       const p = map.latLngToContainerPoint(t.at);
       const a = { x: view.left + p.x, y: view.top + p.y };
-      for (const side of t.fixed ? [t.fixed] : ['right', 'left', 'below', 'above']) {
+      for (const side of t.fixed ? [t.fixed] : t.state ? ['C'] : ['right', 'left', 'below', 'above']) {
         const box = boxFor(rights[i], a, side);
         if (t.fixed || (inside(box) && !taken.some((b) => b.width + b.height > 0 && overlaps(box, b)))) {
           // (Copied field by field: a DOMRect's fields aren't its own, so {...box} would be empty.)
@@ -747,9 +764,11 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     shields.forEach((spots, i) => spots.forEach((n, k) => { n.hidden = k !== shown[i]; }));
   }
 
+  // (The West: more room at the sides, for the bubbles beside each area.)
+  const [ex, ey] = west ? [64, 30] : [EDGE_X, EDGE_Y];
   const fit = () => {
     const p = getPadding();
-    map.fitBounds(bounds, { paddingTopLeft: [p.left + EDGE_X, p.top + EDGE_Y], paddingBottomRight: [p.right + EDGE_X, p.bottom + EDGE_Y], animate: false });
+    map.fitBounds(bounds, { paddingTopLeft: [p.left + ex, p.top + ey], paddingBottomRight: [p.right + ex, p.bottom + ey], animate: false });
   };
   fit();
 
@@ -1556,7 +1575,56 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // Any touch outside the list closes it (a label, the panel, the buttons…), as does a new view.
   document.addEventListener('pointerdown', (e) => { if (chooser && !chooser.contains(e.target)) closeChooser(); }, true);
 
+  // The West: a bubble per area (its best number for the current view) beside its resorts' dots.
+  const bubbles = new Map();
+  const dotted = new Set();
+  const keepOnScreen = () => {
+    const box = el.getBoundingClientRect();
+    for (const a of west?.areas ?? []) {
+      const node = bubbles.get(a.code);
+      node.classList.remove('side-E', 'side-W', 'side-C');
+      node.classList.add(`side-${a.side ?? 'E'}`);
+      if (a.side === 'C') continue;
+      const b = node.getBoundingClientRect();
+      if (b.right > box.right - 6) node.classList.replace('side-E', 'side-W');
+      else if (b.left < box.left + 6) node.classList.replace('side-W', 'side-E');
+    }
+  };
+  if (west) {
+    map.createPane('westDots').style.zIndex = 590;
+    for (const a of west.areas) {
+      const node = document.createElement('button');
+      node.type = 'button';
+      node.className = `west-bubble side-${a.side ?? 'E'}`;
+      node.innerHTML = '<b class="pin-val"></b><span class="west-name"></span>';
+      node.querySelector('.west-name').textContent = a.name;
+      L.DomEvent.disableClickPropagation(node);
+      node.addEventListener('click', () => west.onPick(a.code));
+      L.marker(a.at, { icon: L.divIcon({ html: node, className: 'west-host', iconSize: [0, 0] }), keyboard: false, zIndexOffset: 1000 }).addTo(map);
+      bubbles.set(a.code, node);
+    }
+    map.on('click', () => west.onDismiss?.()); // (the map around the bubbles: back to the area)
+    requestAnimationFrame(placeTowns);
+  }
+
   return {
+    // The West's bubbles. values: { code: { text, level, label, current, dots: [[lat, lon]…] } }.
+    setAreas(values) {
+      for (const [code, node] of bubbles) {
+        const v = values[code] ?? { text: '·', level: 'none' };
+        if (v.dots && !dotted.has(code)) {
+          dotted.add(code);
+          for (const at of v.dots) L.circleMarker(at, { pane: 'westDots', radius: 2.5, weight: 1, className: 'west-dot', interactive: false }).addTo(map);
+        }
+        const val = node.querySelector('.pin-val');
+        val.textContent = v.text;
+        val.className = `pin-val lvl-${v.level}`;
+        node.classList.toggle('is-current', Boolean(v.current));
+        node.setAttribute('aria-label', `${node.querySelector('.west-name').textContent}: ${v.label ?? v.text}`);
+      }
+      keepOnScreen();
+      requestAnimationFrame(placeTowns); // (the cities go around the bubbles)
+    },
     update,
     setRoads,
     // Light or dark relief to match the theme.
@@ -1609,83 +1677,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       // No animated pan: the labels must be laid out from the map's final positions.
       map.invalidateSize({ animate: false, pan: false });
       fit();
-      layout();
+      if (west) { keepOnScreen(); requestAnimationFrame(placeTowns); } else layout();
       for (const t of [...frameCache.keys()]) dropFrame(t); // pictures were for the old size
       if (layerName !== 'none') drawLayer();
     },
-  };
-}
-
-// The West: a small fixed map of every ski area (pinch out on an area's map to see it). Each area is
-// one bubble, its best number for the current view, at a spot of its own; its resorts are faint dots.
-// areas: [{ code, name, at: [lat, lon] (its bubble), side: 'E' | 'W' (which side of that spot the
-// bubble sits), box: [[s, w], [n, e]] (where its resorts are) }]
-// getPadding() → { top, right, bottom, left } as for the area maps; onPick(code) when one is tapped.
-export function createWestMap(el, { areas, getPadding, onPick, onDismiss }) {
-  const map = L.map(el, {
-    zoomControl: false, attributionControl: false, zoomSnap: 0, inertia: false,
-    dragging: false, touchZoom: false, doubleClickZoom: false, scrollWheelZoom: false, boxZoom: false, keyboard: false,
-  });
-  let base = null;
-  const setTheme = () => {
-    base?.remove();
-    base = L.tileLayer(isDark() ? TILES.dark : TILES.light, { maxZoom: 9, detectRetina: true }).addTo(map);
-  };
-  setTheme();
-  const bounds = L.latLngBounds(areas.flatMap((a) => [a.at, ...a.box]));
-  const fit = () => {
-    const p = getPadding();
-    map.invalidateSize({ animate: false, pan: false });
-    map.fitBounds(bounds, { paddingTopLeft: [p.left + 56, p.top + 30], paddingBottomRight: [p.right + 56, p.bottom + 30], animate: false });
-  };
-  fit();
-  map.createPane('westDots').style.zIndex = 590;
-  const dotted = new Set();
-  map.on('click', () => onDismiss?.()); // (the map around the bubbles: back to the area)
-  const bubbles = new Map(areas.map((a) => {
-    const node = document.createElement('button');
-    node.type = 'button';
-    node.className = `west-bubble side-${a.side ?? 'E'}`;
-    node.dataset.area = a.code;
-    node.innerHTML = '<b class="pin-val"></b><span class="west-name"></span>';
-    node.querySelector('.west-name').textContent = a.name;
-    L.DomEvent.disableClickPropagation(node);
-    node.addEventListener('click', () => onPick(a.code));
-    L.marker(a.at, { icon: L.divIcon({ html: node, className: 'west-host', iconSize: [0, 0] }), keyboard: false }).addTo(map);
-    return [a.code, node];
-  }));
-  // (A bubble that would run off the screen goes on the other side of its spot.)
-  const keepOnScreen = () => {
-    const box = el.getBoundingClientRect();
-    for (const a of areas) {
-      const node = bubbles.get(a.code);
-      node.classList.remove('side-E', 'side-W');
-      node.classList.add(`side-${a.side ?? 'E'}`);
-      const b = node.getBoundingClientRect();
-      if (a.side === 'C') continue;
-      if (b.right > box.right - 6) node.classList.replace('side-E', 'side-W');
-      else if (b.left < box.left + 6) node.classList.replace('side-W', 'side-E');
-    }
-  };
-  return {
-    // values: { code: { text, level, label, current, dots: [[lat, lon]…] } }: each area's number for
-    // the current view (and its resorts, drawn once they're known).
-    update(values) {
-      for (const [code, node] of bubbles) {
-        const v = values[code] ?? { text: '·', level: 'none' };
-        if (v.dots && !dotted.has(code)) {
-          dotted.add(code);
-          for (const at of v.dots) L.circleMarker(at, { pane: 'westDots', radius: 2.5, weight: 1, className: 'west-dot', interactive: false }).addTo(map);
-        }
-        const val = node.querySelector('.pin-val');
-        val.textContent = v.text;
-        val.className = `pin-val lvl-${v.level}`;
-        node.classList.toggle('is-current', Boolean(v.current));
-        node.setAttribute('aria-label', `${node.querySelector('.west-name').textContent}: ${v.label ?? v.text}`);
-      }
-      keepOnScreen();
-    },
-    refit() { fit(); keepOnScreen(); },
-    setTheme,
   };
 }

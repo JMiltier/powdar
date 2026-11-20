@@ -1,4 +1,4 @@
-import { createSnowMap, createWestMap, CREDITS, satTile, SNOW_RAMP, SNOW_COLOR, CAST_AMOUNTS } from './map.js?v=__V__';
+import { createSnowMap, CREDITS, satTile, SNOW_RAMP, SNOW_COLOR, CAST_AMOUNTS } from './map.js?v=__V__';
 import { weatherIcon, UI } from './icons.js?v=__V__';
 
 // One data file per state (data/co.json, data/ut.json…), plus an index of states for the picker.
@@ -247,27 +247,30 @@ async function latestSatDay() {
   } catch { /* fall through */ }
   return addDays(today, -1);
 }
+// The map showing now: the West's, while it's open, or the area's. (Only that one draws its layer.)
+const shownMap = () => (west && !$('#west').hidden ? west : state.map);
 async function applyLayer() {
-  if (!state.map) return;
+  const m = shownMap();
+  if (!m) return;
   if (SAT_VIEWS.includes(state.layer)) {
-    state.map.setLayer('none');
+    m.setLayer('none');
     if (!state.satLatest) {
       state.satLatest = await latestSatDay();
       state.satDate ??= state.satLatest;
       render();
     }
-    state.map.setBase(state.layer, state.satDate);
+    m.setBase(state.layer, state.satDate);
   } else {
-    state.map.setBase('terrain');
-    state.map.setSnowStyle(state.snowStyle);
-    state.map.setLayer(state.layer);
+    m.setBase('terrain');
+    m.setSnowStyle(state.snowStyle);
+    m.setLayer(state.layer);
   }
 }
 function stepSatDay(n) {
   const next = addDays(state.satDate, n);
   if (next > state.satLatest || next < addDays(state.satLatest, -30)) return;
   state.satDate = next;
-  state.map?.setBase(state.layer, next);
+  shownMap()?.setBase(state.layer, next);
   render();
 }
 const satDayText = (iso) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }) : 'Latest');
@@ -1772,7 +1775,7 @@ function syncRoute() {
 function render() {
   if (!state.data) return;
   syncRibbon();
-  if (west && !$('#west').hidden) west.update(westValues());
+  if (west && !$('#west').hidden) west.setAreas(westValues());
   $('#state-btn').textContent = `${state.data.stateName ?? 'Colorado'} ▾`;
   document.querySelectorAll('[data-metric]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.metric === state.metric)));
   syncFilters();
@@ -2157,6 +2160,30 @@ const CO_TOWNS = [
   ['Cañon City', 38.441, -105.2425], ['Lake City', 38.03, -107.3156], ['Georgetown', 39.7061, -105.6975], ['Basalt', 39.3689, -107.0328],
   ['Hayden', 40.495, -107.257], ['Grand Lake', 40.2522, -105.8231], ['Nederland', 39.9614, -105.5108],
 ];
+// State names, quiet ([name, lat, lon]): each state's middle on the West map; on an area's map, the
+// neighbors' names near the shared border (Nevada east of the line through Lake Tahoe). A name shows
+// only where there's room (after the towns).
+const asState = ([name, lat, lon]) => [name, lat, lon, false, false, 'state'];
+const STATE_MIDDLES = [
+  ['WASHINGTON', 47.3, -120.4], ['OREGON', 43.9, -120.5], ['CALIFORNIA', 36.4, -119.9], ['NEVADA', 39.0, -116.9],
+  ['IDAHO', 43.8, -114.9], ['MONTANA', 47.0, -109.5], ['WYOMING', 43.0, -107.5], ['UTAH', 39.1, -111.6],
+  ['COLORADO', 38.6, -104.6], ['ARIZONA', 34.3, -111.7], ['NEW MEXICO', 34.4, -106.1], ['NEBRASKA', 41.5, -99.8],
+  ['KANSAS', 38.5, -98.4], ['SOUTH DAKOTA', 44.4, -100.2], ['OKLAHOMA', 35.6, -97.5],
+].map(asState);
+const STATE_NAMES = [
+  ...STATE_MIDDLES,
+  ['CALIFORNIA', 38.62, -120.32], ['NEVADA', 38.78, -119.74], ['NEVADA', 37.95, -118.35], // (Tahoe, Mammoth)
+  ['WYOMING', 41.25, -106.9], ['NEW MEXICO', 36.8, -106.4], ['UTAH', 39.6, -109.35], // (Colorado)
+  ['IDAHO', 42.25, -112.0], ['WYOMING', 41.4, -110.7], // (Utah)
+].map((x) => (x.length === 3 ? asState(x) : x));
+// The West's landmarks: the cities near the resorts first, then the rest of the big ones.
+const WEST_PLACES = [
+  ['Reno', 39.5296, -119.8138], ['Sacramento', 38.5816, -121.4944], ['Los Angeles', 34.0522, -118.2437], ['Salt Lake City', 40.7608, -111.891],
+  ['Denver', 39.7392, -104.9903], ['Las Vegas', 36.1699, -115.1398], ['San Francisco', 37.7749, -122.4194], ['Phoenix', 33.4484, -112.074],
+  ['Albuquerque', 35.0844, -106.6504], ['Boise', 43.615, -116.2023], ['Portland', 45.5152, -122.6784], ['Seattle', 47.6062, -122.3321],
+  ['San Diego', 32.7157, -117.1611], ['Fresno', 36.7378, -119.7871],
+  ...STATE_MIDDLES,
+];
 // California's areas' towns, as Colorado's: the cities, then the ski towns and the ones on the way.
 const TAHOE_TOWNS = [
   ['Reno', 39.5296, -119.8138, true], ['Truckee', 39.328, -120.1833], ['South Lake Tahoe', 38.9332, -119.9844],
@@ -2232,7 +2259,7 @@ function startMap() {
     // Each radar frame: just update the key's button and time (no full re-render while playing).
     onRadar: (r) => { state.radar = r; syncRadarKey(); },
     onCast: (c) => { state.cast = { ...state.cast, ...c }; if (state.layer === 'snowcast') $('#legend').innerHTML = legendFor('snowcast'); },
-    places: { CO: CO_TOWNS, UT: UT_TOWNS, TAHOE: TAHOE_TOWNS, MAMMOTH: MAMMOTH_TOWNS, SOCAL: SOCAL_TOWNS }[state.code] ?? [],
+    places: [...({ CO: CO_TOWNS, UT: UT_TOWNS, TAHOE: TAHOE_TOWNS, MAMMOTH: MAMMOTH_TOWNS, SOCAL: SOCAL_TOWNS }[state.code] ?? []), ...STATE_NAMES],
     // The labels and ⓘ buttons in the map's bottom-right corner (style.css: 30 px, 10 px from the right,
     // 10 and 48 px above the collapsed sheet; 12 and 50 on wide screens).
     // (And the inset, where there is one.)
@@ -2368,9 +2395,19 @@ function openWest() {
   if (ALL_STATES || AREAS.length < 2 || !$('#west').hidden) return;
   $('#west').hidden = false;
   document.body.classList.add('west-open');
-  if (!west) west = createWestMap($('#west'), { areas: AREAS, getPadding: coveredPadding, onPick: pickArea, onDismiss: closeWest });
-  else west.refit();
-  west.update(westValues());
+  if (!west) {
+    west = createSnowMap($('#west'), {
+      resorts: [], frame: AREAS.flatMap((a) => [a.at, ...a.box]), places: WEST_PLACES, getPadding: coveredPadding,
+      onSelect: () => {}, onOutlook: (season) => { state.outlookSeason = season; render(); },
+      onRadar: (r) => { state.radar = r; syncRadarKey(); },
+      onCast: (c) => { state.cast = { ...state.cast, ...c }; if (state.layer === 'snowcast') $('#legend').innerHTML = legendFor('snowcast'); },
+      west: { areas: AREAS, onPick: pickArea, onDismiss: closeWest },
+    });
+  } else west.refit();
+  // (The layer moves to the West: the area's map stops drawing its own meanwhile.)
+  state.map?.setLayer('none');
+  applyLayer();
+  west.setAreas(westValues());
   render();
   write(STORE.westHint, true); // (found it: no hint needed)
   // The other areas' latest numbers (shown from the last saved copy meanwhile).
@@ -2388,6 +2425,8 @@ function closeWest() {
   if ($('#west').hidden) return;
   $('#west').hidden = true;
   document.body.classList.remove('west-open');
+  west.setLayer('none');
+  applyLayer();
   render();
 }
 function pickArea(code) {
@@ -2587,19 +2626,19 @@ document.addEventListener('click', (e) => {
     const c = state.cast;
     if (castDay) c.day = Math.min(3, Math.max(1, c.day + Number(castDay.dataset.castDay)));
     else c.amount = CAST_AMOUNTS[(CAST_AMOUNTS.indexOf(c.amount) + 1) % CAST_AMOUNTS.length];
-    state.map?.setCast(c.day, c.amount);
+    shownMap()?.setCast(c.day, c.amount);
     $('#legend').innerHTML = legendFor('snowcast');
     return;
   }
   if (t.closest('[data-snow-cycle]')) {
     state.snowStyle = SNOW_STYLES[(SNOW_STYLES.indexOf(state.snowStyle) + 1) % SNOW_STYLES.length];
     write(STORE.snowStyle, state.snowStyle);
-    state.map?.setSnowStyle(state.snowStyle);
+    shownMap()?.setSnowStyle(state.snowStyle);
     return render();
   }
   const satStep = t.closest('[data-sat-step]');
   if (satStep) return stepSatDay(Number(satStep.dataset.satStep));
-  if (t.closest('#radar-play')) return state.map?.playRadar(!state.radar.playing);
+  if (t.closest('#radar-play')) return shownMap()?.playRadar(!state.radar.playing);
   if (t.closest('#snow-btn')) {
     // (The panel pulled up hides the map and the menu: down it goes, so both can be seen.)
     if ($('#layers').hidden && !WIDE.matches && state.sheet !== 'peek') setSheet('peek');
