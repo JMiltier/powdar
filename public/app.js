@@ -62,6 +62,12 @@ const METRICS = {
   },
   // The last 3 days: the resort's own 72-hour figure where it gives one (Wolf Creek), otherwise its
   // last three reported days added up, the models' estimate filling any day it didn't report (est.).
+  // The last week, the same way: the resort's own 7-day total, else its reported days added up, the
+  // models filling any day it didn't report (est.). (Measured, unlike a 14-day forecast: worth a view.)
+  past7: {
+    kind: 'snow', get: (r) => past7(r).v, est: (r) => past7(r).est,
+    steps: [2, 6, 12, 24], top: 'Most new snow, last 7 days',
+  },
   past72: {
     kind: 'snow', get: (r) => past72(r).v, est: (r) => past72(r).est,
     steps: [1, 3, 6, 12], top: 'Most new snow, last 3 days',
@@ -566,7 +572,7 @@ function availableMetrics() {
   // (Snowpack vs normal isn't a map view any more: it's on every resort row and page, and the overview.)
   // (No 14-day view: past a week, the forecast can tell a stormy pattern from a dry one but not the
   // inches at a resort. That signal is the "stormy pattern" note instead: see stormy().)
-  return ['past72', 'new24', 'next72', 'next7', 'base', ...(hasDates ? ['dates'] : [])];
+  return ['past7', 'past72', 'new24', 'next72', 'next7', 'base', ...(hasDates ? ['dates'] : [])];
 }
 function syncRibbon() {
   const avail = availableMetrics();
@@ -629,7 +635,7 @@ function renderHeadline() {
         ? `<strong>${above} above normal</strong> · ${below} below · top: <strong>${esc(best.name)} ${v}%</strong>`
         : 'Too early in the season to compare snowpack with normal';
     } else {
-      const quiet = { new24: 'No new snow in the last 24 hrs', next72: 'No real snow in the next 3 days', past72: 'No new snow in the last 3 days', next7: 'No real snow in the next 7 days' };
+      const quiet = { new24: 'No new snow in the last 24 hrs', next72: 'No real snow in the next 3 days', past72: 'No new snow in the last 3 days', past7: 'No new snow in the last 7 days', next7: 'No real snow in the next 7 days' };
       text = v >= 1 ? `${m.top}: <strong>${esc(best.name)} ${inches(v)}</strong>` : quiet[state.metric];
     }
   }
@@ -660,7 +666,7 @@ function shortStatus(r) {
   if (s.state === 'done') return 'Closed';
   return 'Opens TBA';
 }
-const METRIC_LABEL = { new24: 'Most −1d', past72: 'Most −3d', next72: 'Most +3d', next7: 'Most +7d', base: 'Deepest', season: 'Snowpack', dates: 'Opening' };
+const METRIC_LABEL = { new24: 'Most −1d', past72: 'Most −3d', past7: 'Most −7d', next72: 'Most +3d', next7: 'Most +7d', base: 'Deepest', season: 'Snowpack', dates: 'Opening' };
 
 function rowSub(r) {
   const s = r.status;
@@ -674,14 +680,18 @@ function rowSub(r) {
 // small bars with day letters and the inches above any bar with an inch or more.
 // The last n days' snow, oldest first: what the resort reported where it did (r.snowLog, and this
 // morning's 24-hour figure for yesterday), otherwise the weather models' estimate (est: true).
-function past72(r) {
-  if (r.report?.new72 != null && !r.report.staleSince) return { v: r.report.new72, est: false };
+// The last n days' total: the resort's own figure for them (own) when its report is current, else its
+// reported days added up, the models' estimate filling any day it didn't report.
+function pastTotal(r, n, own) {
+  if (own != null && !r.report?.staleSince) return { v: own, est: false };
   const today = state.data.today;
-  // (A report updated this afternoon covers today, so the three days end today; otherwise yesterday.)
-  const days = (r.snowLog ?? []).some((e) => e.date === today) ? [...pastSnow(r, 2), pastToday(r)] : pastSnow(r, 3);
+  // (A report updated this afternoon covers today, so the n days end today; otherwise yesterday.)
+  const days = (r.snowLog ?? []).some((e) => e.date === today) ? [...pastSnow(r, n - 1), pastToday(r)] : pastSnow(r, n);
   if (days.every((d) => d.snow == null)) return { v: null, est: false };
   return { v: Math.round(days.reduce((a, d) => a + (d.snow ?? 0), 0) * 10) / 10, est: days.some((d) => d.est || d.snow == null) };
 }
+const past72 = (r) => pastTotal(r, 3, r.report?.new72);
+const past7 = (r) => pastTotal(r, 7, r.report?.new7d);
 const pastToday = (r) => ({ date: state.data.today, snow: r.snowLog.find((e) => e.date === state.data.today).snow, est: false });
 
 function pastSnow(r, n) {
@@ -769,7 +779,7 @@ function renderList() {
     const lifts = r.report?.lifts?.total || r.report?.lifts?.open ? r.report.lifts : r.lifts?.total ? r.lifts : null;
     const lead = ['dates', 'base'].includes(state.metric) ? 'new24' : state.metric;
     const v = valueFor(r, lead);
-    const LABEL = { new24: '24 hr', past72: 'Last 3d', next72: 'Next 3d', next7: 'Next 7d', season: 'Pack' };
+    const LABEL = { new24: '24 hr', past72: 'Last 3d', past7: 'Last 7d', next72: 'Next 3d', next7: 'Next 7d', season: 'Pack' };
     const base = valueFor(r, 'base');
     const third = open
       ? { text: lifts ? (lifts.total ? `${lifts.open}/${lifts.total}` : `${lifts.open}`) : '–', label: 'Lifts', on: false }
