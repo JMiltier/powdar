@@ -2716,7 +2716,7 @@ $('#panel-open').hidden = !WIDE.matches || state.panelOpen;
 // Show the last copy instantly, then fetch fresh data.
 if (!state.firstVisit) {
   // A shared link to a resort or the overview opens it (with the list one back step behind it).
-  const shared = ((x) => (['colorado', 'utah'].includes(x) ? OVERVIEW : x))(routeParts()[1]);
+  const shared = ((x) => (AREAS.some((a) => a.name.toLowerCase() === x) ? OVERVIEW : x))(routeParts()[1]);
   if (shared) {
     history.replaceState(null, '', `#${state.code.toLowerCase()}`);
     history.pushState({ page: true }, '', `#${state.code.toLowerCase()}/${shared}`);

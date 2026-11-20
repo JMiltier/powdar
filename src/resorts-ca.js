@@ -26,7 +26,7 @@ export const TAHOE_RESORTS = [
 ];
 
 export const MAMMOTH_RESORTS = [
-  {id: 'mammoth', name: 'Mammoth Mountain', short: 'Mammoth', at: [37.6444,-119.0094], elev: 9542, aspect: 'NE', snotel: null, region: 'Eastern Sierra', nws: ['REV',58,18], url: 'https://www.mammothmountain.com'},
+  {id: 'mammoth-mountain', name: 'Mammoth Mountain', short: 'Mammoth', at: [37.6444,-119.0094], elev: 9542, aspect: 'NE', snotel: null, region: 'Eastern Sierra', nws: ['REV',58,18], url: 'https://www.mammothmountain.com'},
   {id: 'june', name: 'June Mountain', short: 'June', at: [37.7537,-119.0757], elev: 8855, aspect: 'NE', snotel: ['846:CA:SNTL','Virginia Lakes Ridge'], region: 'Eastern Sierra', nws: ['REV',56,23], url: 'https://www.junemountain.com'},
 ];
 

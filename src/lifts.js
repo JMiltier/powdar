@@ -53,7 +53,7 @@ export const LIFT_SOURCES = {
   // California (src/resorts-ca.js)
   palisades: mtnpowder(61, 'https://www.palisadestahoe.com/mountain-information/lift-and-grooming-status'),
   'alpine-meadows': mtnpowder(62, 'https://www.palisadestahoe.com/mountain-information/lift-and-grooming-status#tab=alpine-meadows-'),
-  mammoth: mtnpowder(60, 'https://www.mammothmountain.com/on-the-mountain/mountain-report#lifts-and-trails'),
+  'mammoth-mountain': mtnpowder(60, 'https://www.mammothmountain.com/on-the-mountain/mountain-report#lifts-and-trails'),
   june: mtnpowder(59, 'https://www.junemountain.com/mountain-information/mountain-report#/'),
   boreal: powdr('api.rideboreal.com', 'https://www.rideboreal.com/the-mountain/the-mountain/trail-lift-info/full-trail-report'),
   'arapahoe-basin': mtnpowder(93, 'https://www.arapahoebasin.com/snow-report/#lift-and-trail-status'),

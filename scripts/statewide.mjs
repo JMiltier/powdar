@@ -9,8 +9,10 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { RESORTS as CO_RESORTS } from '../src/resorts.js';
 import { UT_RESORTS } from '../src/resorts-ut.js';
-// STATE=UT runs it for Utah's resorts (Colorado's by default).
-const RESORTS = process.env.STATE === 'UT' ? UT_RESORTS : CO_RESORTS;
+import { TAHOE_RESORTS, MAMMOTH_RESORTS, SOCAL_RESORTS } from '../src/resorts-ca.js';
+// STATE=UT (or TAHOE, MAMMOTH, SOCAL) runs it for that area's resorts (Colorado's by default).
+const AREA = { CO: ['Colorado', CO_RESORTS], UT: ['Utah', UT_RESORTS], TAHOE: ['Tahoe', TAHOE_RESORTS], MAMMOTH: ['Mammoth', MAMMOTH_RESORTS], SOCAL: ['SoCal', SOCAL_RESORTS] }[process.env.STATE ?? 'CO'];
+const RESORTS = AREA[1];
 
 const DAYS = 273;
 const stations = [...new Set(RESORTS.filter((r) => r.snotel).map((r) => r.snotel[0].split(':')[0]))];
@@ -45,7 +47,7 @@ const snow = Array.from({ length: DAYS }, (_, d) => {
   return vals.length >= 10 ? [...[0.1, 0.25, 0.5, 0.75, 0.9].map((p) => r1(pct(vals, p))), r1(vals.at(-1))] : null;
 });
 const seasons = seasonMeans.map((s) => s.season).sort();
-await writeFile(new URL(`../public/history/${process.env.STATE === 'UT' ? 'utah' : 'colorado'}.json`, import.meta.url), `${JSON.stringify({
+await writeFile(new URL(`../public/history/${AREA[0].toLowerCase()}.json`, import.meta.url), `${JSON.stringify({
   stations: hist.length, seasons: seasons.length, first: seasons[0], last: seasons.at(-1), days: snow,
 })}\n`);
 console.log(`Snowpack: ${hist.length} stations, ${seasons.length} seasons (${seasons[0]} – ${seasons.at(-1)})`);
@@ -56,7 +58,7 @@ const tdays = Array.from({ length: DAYS }, (_, d) => {
   const rows = temps.map((t) => t.days[d]).filter(Boolean);
   return rows.length ? [0, 1, 2, 3, 4].map((k) => r1(rows.reduce((a, r) => a + r[k], 0) / rows.length)) : null;
 });
-await writeFile(new URL(`../public/temps/${process.env.STATE === 'UT' ? 'utah' : 'colorado'}.json`, import.meta.url), `${JSON.stringify({
-  name: process.env.STATE === 'UT' ? 'Utah' : 'Colorado', stations: temps.length, seasons: temps[0]?.seasons, first: temps[0]?.first, last: temps[0]?.last, days: tdays,
+await writeFile(new URL(`../public/temps/${AREA[0].toLowerCase()}.json`, import.meta.url), `${JSON.stringify({
+  name: AREA[0], stations: temps.length, seasons: temps[0]?.seasons, first: temps[0]?.first, last: temps[0]?.last, days: tdays,
 })}\n`);
 console.log(`Temperature: ${temps.length} stations`);

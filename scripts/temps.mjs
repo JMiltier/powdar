@@ -6,8 +6,10 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { RESORTS as CO_RESORTS } from '../src/resorts.js';
 import { UT_RESORTS } from '../src/resorts-ut.js';
-// STATE=UT runs it for Utah's resorts (Colorado's by default).
-const RESORTS = process.env.STATE === 'UT' ? UT_RESORTS : CO_RESORTS;
+import { TAHOE_RESORTS, MAMMOTH_RESORTS, SOCAL_RESORTS } from '../src/resorts-ca.js';
+// STATE=UT (or TAHOE, MAMMOTH, SOCAL) runs it for that area's resorts (Colorado's by default).
+const AREA = { CO: ['Colorado', CO_RESORTS], UT: ['Utah', UT_RESORTS], TAHOE: ['Tahoe', TAHOE_RESORTS], MAMMOTH: ['Mammoth', MAMMOTH_RESORTS], SOCAL: ['SoCal', SOCAL_RESORTS] }[process.env.STATE ?? 'CO'];
+const RESORTS = AREA[1];
 import { AWDB, waterYear } from '../src/snotel.js';
 
 const FIRST_SEASON = 2005;
