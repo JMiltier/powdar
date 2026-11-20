@@ -106,8 +106,8 @@ await writeFile(new URL('../public/data/co.json', import.meta.url), JSON.stringi
 console.log('Wrote Colorado');
 
 // ---------- Utah: the same pipeline as Colorado (src/report.js REGIONS.UT) ----------
-// Off for now (Powdar is Colorado-only); UTAH=1 or US_STATES=1 builds it.
-if (process.env.UTAH === '1' || process.env.US_STATES === '1') {
+// (One of the areas, beside Colorado: see AREAS in public/app.js.)
+{
   // Its weather models every 2 hours (Colorado's hourly), to stay inside the free forecast allowance;
   // everything else (status, reports, lifts, NWS) every update. Without models this time, the last
   // published forecasts carry over.

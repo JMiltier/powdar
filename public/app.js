@@ -1,4 +1,4 @@
-import { createSnowMap, CREDITS, satTile, SNOW_RAMP, SNOW_COLOR, CAST_AMOUNTS } from './map.js?v=__V__';
+import { createSnowMap, createWestMap, CREDITS, satTile, SNOW_RAMP, SNOW_COLOR, CAST_AMOUNTS } from './map.js?v=__V__';
 import { weatherIcon, UI } from './icons.js?v=__V__';
 
 // One data file per state (data/co.json, data/ut.json…), plus an index of states for the picker.
@@ -7,14 +7,20 @@ const STATES_URL = 'states.json';
 // Colorado only for now. Set to true (and build with US_STATES=1) to bring back the state picker and
 // every other state's map.
 const ALL_STATES = false;
-// Utah is built and ready but off for now; set to true (and build with UTAH=1) to bring it back.
-const WITH_UTAH = false;
-// Every state with resorts. Anything else in the address or storage is ignored (e.g. an old bad "#half").
-const STATE_CODES = !ALL_STATES ? new Set(WITH_UTAH ? ['CO', 'UT'] : ['CO']) : new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
+// The ski areas, each its own tight map: pinch out on one for the West, then tap another. at: where
+// its bubble sits on the West map (side: right of that spot, left, or C centered on it); box: where
+// its resorts are.
+const AREAS = [
+  { code: 'CO', name: 'Colorado', at: [36.95, -106.6], side: 'C', box: [[37.4, -108.2], [40.55, -105.4]] },
+  { code: 'UT', name: 'Utah', at: [40.75, -111.3], side: 'E', box: [[37.6, -112.95], [42.0, -111.4]] },
+];
+// Every area (or, nationwide, state) with resorts. Anything else in the address or storage is ignored
+// (e.g. an old bad "#half").
+const STATE_CODES = !ALL_STATES ? new Set(AREAS.map((a) => a.code)) : new Set(["CO", "AK", "AZ", "CA", "CT", "IA", "ID", "IL", "IN", "MA", "MD", "ME", "MI", "MN", "MO", "MT", "NC", "ND", "NH", "NJ", "NM", "NV", "NY", "OH", "OR", "PA", "SD", "TN", "UT", "VA", "VT", "WA", "WI", "WV", "WY"]);
 const validCode = (c) => (c && STATE_CODES.has(String(c).toUpperCase()) ? String(c).toUpperCase() : null);
 const STORE = {
   data: 'cs:data', favs: 'cs:favs', metric: 'cs:metric', snowDepth: 'cs:snowCover', layer: 'cs:layer', openOnly: 'cs:openOnly', favsOnly: 'cs:favsOnly', pass: 'cs:pass', sort: 'cs:sort', order: 'cs:order', unit: 'cs:unit', dist: 'cs:dist', labels: 'cs:labels', snowStyle: 'cs:snowStyle2', panel: 'cs:panel',
-  state: 'cs:state', states: 'cs:states', theme: 'cs:theme',
+  state: 'cs:state', states: 'cs:states', theme: 'cs:theme', westHint: 'cs:westHint',
 };
 const RELOAD_AFTER_MS = 10 * 60_000;
 const WIDE = window.matchMedia('(min-width: 900px)');
@@ -31,6 +37,7 @@ function applyTheme(pick) {
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   document.querySelector('meta[name=theme-color]').content = dark ? '#161e29' : '#ffffff';
   state.map?.setTheme(); // (only called once `state` exists: at startup's end and on changes)
+  west?.setTheme();
   for (const b of document.querySelectorAll('[data-theme-pick]')) b.setAttribute('aria-pressed', String(b.dataset.themePick === choice));
 }
 
@@ -1326,13 +1333,13 @@ function headlineInsight() {
   return [pick, alert].filter(Boolean).join('</span><span class="row-sub overview-line">');
 }
 function overviewCard() {
-  if (!state.data?.snowpack || !['CO', 'UT'].includes(state.code)) return '';
+  if (!state.data?.snowpack || !AREAS.some((a) => a.code === state.code)) return '';
   const t = todayStats();
   const pct = statewidePct();
   return `
     <button type="button" class="row card overview-card" data-open="${OVERVIEW}">
       <span class="card-top">
-        <span class="co-badge" aria-hidden="true">${esc(state.code)}</span>
+        <span class="co-badge" data-west role="button" aria-label="All ski areas" title="All ski areas">${esc(state.code)}</span>
         <span class="row-name">${esc(stateName())} today</span>
         <span class="card-more">Overview${UI.chevron}</span>
       </span>
@@ -1756,6 +1763,7 @@ function syncRoute() {
 function render() {
   if (!state.data) return;
   syncRibbon();
+  if (west && !$('#west').hidden) west.update(westValues());
   $('#state-btn').textContent = `${state.data.stateName ?? 'Colorado'} ▾`;
   document.querySelectorAll('[data-metric]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.metric === state.metric)));
   syncFilters();
@@ -1804,6 +1812,7 @@ new ResizeObserver(() => {
   if (!before || sheetSizes().visible.peek === before) return;
   setSheet(state.sheet, false);
   state.map?.refit();
+  if (!$('#west').hidden) west?.refit();
 }).observe(grabEl);
 let sheetY = 0;
 
@@ -2067,6 +2076,7 @@ $('#list').addEventListener('pointercancel', endReorder);
 // Opening a resort (or the overview) from the list adds a step to the browser's history, so the
 // phone's back gesture returns to the list instead of leaving the site.
 function select(id) {
+  if (id) closeWest();
   if (!id && state.selected && history.state?.page) return history.back(); // (popstate does the rest)
   if (id && !state.selected) history.pushState({ page: true }, '', `#${state.code.toLowerCase()}/${id}`);
   state.selected = id;
@@ -2083,6 +2093,7 @@ function setPanel(open) {
   document.body.classList.toggle('panel-hidden', !open);
   $('#panel-open').hidden = open || !WIDE.matches;
   state.map?.refit();
+  if (!$('#west').hidden) west?.refit();
 }
 
 let toastTimer;
@@ -2235,6 +2246,7 @@ async function load() {
   }
   startMap();
   render();
+  hintWest();
   // (The spin shows for at least a moment, so a quick refresh still reads as one.)
   setTimeout(() => document.body.classList.remove('refreshing'), 500);
 }
@@ -2245,6 +2257,93 @@ setInterval(() => {
   const t = $('.when-text');
   if (t) t.textContent = timeAgo(state.data.generated);
 }, 60_000);
+
+// ---------- the West: every area at once ----------
+// Pinch out on an area's map (or scroll down on it, or tap its badge on the "today" card) for a small
+// map of the West with each area's best number for the current view; tap one to go there. Pinching
+// back in, tapping the map or Escape returns.
+let west = null;
+const areaData = new Map(); // code → that area's latest data (the current area's is state.data)
+const areaAsked = new Set();
+function westValues() {
+  const m = METRICS[state.metric];
+  const out = {};
+  for (const a of AREAS) {
+    const d = a.code === state.code ? state.data : areaData.get(a.code) ?? read(`${STORE.data}:${a.code}`, null);
+    if (!d?.resorts) continue;
+    const current = a.code === state.code;
+    const dots = d.resorts.map((r) => r.at);
+    if (m.kind === 'dates') {
+      const open = d.resorts.filter((r) => r.status?.state === 'open').length;
+      out[a.code] = { text: `${open}/${d.resorts.length}`, level: open ? 'open' : 'tba', label: `${open} of ${d.resorts.length} resorts open`, current, dots };
+      continue;
+    }
+    let best = null;
+    for (const r of d.resorts) { const v = m.get(r); if (v != null && (!best || v > best.v)) best = { v, r }; }
+    out[a.code] = best
+      ? { text: m.kind === 'base' ? depth(best.v) : inches(best.v), level: level(best.v, m.steps), label: `${m.kind === 'base' ? depth(best.v) : inches(best.v)} at ${best.r.name}`, current, dots }
+      : { text: '–', level: 'none', label: 'no data', current, dots };
+  }
+  return out;
+}
+function openWest() {
+  if (ALL_STATES || AREAS.length < 2 || !$('#west').hidden) return;
+  $('#west').hidden = false;
+  document.body.classList.add('west-open');
+  if (!west) west = createWestMap($('#west'), { areas: AREAS, getPadding: coveredPadding, onPick: pickArea, onDismiss: closeWest });
+  else west.refit();
+  west.update(westValues());
+  write(STORE.westHint, true); // (found it: no hint needed)
+  // The other areas' latest numbers (shown from the last saved copy meanwhile).
+  for (const a of AREAS) {
+    if (a.code === state.code || areaAsked.has(a.code)) continue;
+    areaAsked.add(a.code);
+    fetch(`${dataUrl(a.code)}?t=${Math.floor(Date.now() / 600000)}`).then((res) => (res.ok ? res.json() : null)).then((d) => {
+      if (!d) return;
+      areaData.set(a.code, d);
+      if (!$('#west').hidden) west.update(westValues());
+    }).catch(() => {});
+  }
+}
+function closeWest() {
+  if ($('#west').hidden) return;
+  $('#west').hidden = true;
+  document.body.classList.remove('west-open');
+}
+function pickArea(code) {
+  closeWest();
+  if (code === state.code) return;
+  // (Its latest data, if the West just fetched it, shows at once.)
+  if (areaData.has(code)) write(`${STORE.data}:${code}`, areaData.get(code));
+  setState(code);
+}
+// Pinch out (two fingers coming together) on the map: the West. Spread them on the West: back.
+{
+  const gap = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  for (const [sel, open] of [['#map', true], ['#west', false]]) {
+    let pinch = null;
+    $(sel).addEventListener('touchstart', (e) => { pinch = e.touches.length === 2 ? gap(e.touches) : null; }, { passive: true });
+    $(sel).addEventListener('touchmove', (e) => {
+      if (pinch == null || e.touches.length !== 2) return;
+      const k = gap(e.touches) / pinch;
+      if (open ? k < 0.72 : k > 1.35) { pinch = null; if (open) openWest(); else closeWest(); }
+    }, { passive: true });
+    $(sel).addEventListener('touchend', () => { pinch = null; }, { passive: true });
+    // (A mouse or trackpad: scrolling down zooms out to the West, up comes back.)
+    let wheel = 0;
+    $(sel).addEventListener('wheel', (e) => {
+      wheel = Math.sign(e.deltaY) === Math.sign(wheel) ? wheel + e.deltaY : e.deltaY;
+      if (open ? wheel > 120 : wheel < -120) { wheel = 0; if (open) openWest(); else closeWest(); }
+    }, { passive: true });
+  }
+}
+// Once, on a first visit: where the other areas are.
+function hintWest() {
+  if (ALL_STATES || AREAS.length < 2 || read(STORE.westHint, false)) return;
+  write(STORE.westHint, true);
+  const others = AREAS.filter((a) => a.code !== state.code).map((a) => a.name);
+  setTimeout(() => toast(`Pinch out on the map for ${others.length > 1 ? `${others.slice(0, -1).join(', ')} and ${others.at(-1)}` : others[0]}`), 2500);
+}
 
 // ---------- states ----------
 
@@ -2310,7 +2409,7 @@ function setState(code) {
 function followRoute() {
   if (!$('#cam-view').hidden && !history.state?.cam) $('#cam-view').hidden = true;
   const [c, rawId] = routeParts();
-  const id = ['colorado', 'utah'].includes(rawId) ? OVERVIEW : rawId; // (a state's name: its overview)
+  const id = AREAS.some((a) => a.name.toLowerCase() === rawId) ? OVERVIEW : rawId; // (an area's name: its overview)
   const code = validCode(c);
   if (code && code !== state.code) return setState(code);
   const want = id || null;
@@ -2344,6 +2443,7 @@ document.addEventListener('click', (e) => {
     write(STORE.sort, state.sort);
     return renderList();
   }
+  if (t.closest('[data-west]')) return openWest(); // (the area's badge on its "today" card)
   const row = t.closest('[data-open]');
   if (row) return select(row.dataset.open);
   if (t.closest('[data-back]')) return select(null);
@@ -2488,6 +2588,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (!$('#picker').hidden) openPicker(false);
   else if (!$('#cam-view').hidden) closeCam();
+  else if (!$('#west').hidden) closeWest();
   else if (state.selected) select(null);
 });
 document.addEventListener('visibilitychange', () => {
@@ -2504,6 +2605,7 @@ const onResize = () => {
   if (innerWidth === w && Math.abs(innerHeight - h) < 120 && !WIDE.matches) return;
   lastSize = [innerWidth, innerHeight];
   state.map?.refit();
+  if (!$('#west').hidden) west?.refit();
 };
 // Laying labels out takes ~0.1 s, so while a window is being dragged to a new size, wait for a pause.
 let resizeTimer;
@@ -2547,7 +2649,7 @@ state.data = read(`${STORE.data}:${state.code}`, null) ?? (state.code === 'CO' ?
 startMap();
 render();
 load();
-$('#state-btn').hidden = STATE_CODES.size < 2;
+$('#state-btn').hidden = !ALL_STATES; // (areas switch on the map itself: pinch out for the West)
 function syncMarksBtn() {
   const b = $('#labels-btn');
   b.setAttribute('aria-pressed', String(state.marks === 'all'));

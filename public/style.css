@@ -1184,3 +1184,23 @@ body.reordering .rrow.dragging { transform-origin: center; }
 /* Install as an app (in the ⓘ card, when the browser offers it). */
 .install-btn { display: block; width: 100%; margin: 0 0 8px; padding: 8px 10px; border: 0; border-radius: 10px; background: var(--accent); color: var(--card); font: inherit; font-weight: 700; text-align: left; cursor: pointer; }
 .install-btn small { display: block; font-weight: 500; opacity: 0.85; }
+
+/* The West: every ski area at once, over the area's map (under the top bar, key and sheet). */
+.west { position: fixed; inset: 0; z-index: 700; background: var(--bg); animation: west-in 0.28s var(--ease, ease-out); }
+.west[hidden] { display: none; }
+@keyframes west-in { from { opacity: 0; transform: scale(1.18); } to { opacity: 1; transform: none; } }
+.west .leaflet-tile-pane { filter: grayscale(0.75) contrast(1.15) brightness(0.92); }
+:root[data-theme="dark"] .west .leaflet-tile-pane { opacity: 0.9; filter: contrast(1.25) brightness(1.05); }
+.west-host { overflow: visible; }
+.west-dot { stroke: var(--card); fill: var(--accent); fill-opacity: 0.9; }
+.west-bubble {
+  position: absolute; top: 0; display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; border: 0; border-radius: 999px;
+  background: var(--card); color: var(--text); font: 700 0.95rem 'Powdar Labels', system-ui, sans-serif; white-space: nowrap; cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28); transform: translateY(-50%);
+}
+.west-bubble.side-E { left: 10px; }
+.west-bubble.side-W { right: 10px; }
+.west-bubble.side-C { left: 0; transform: translate(-50%, -50%); }
+.west-bubble .pin-val { font-size: 0.9rem; padding: 3px 8px; }
+.west-bubble.is-current { box-shadow: 0 0 0 2px var(--accent), 0 2px 10px rgba(0, 0, 0, 0.28); }
+body.west-open .legend, body.west-open .info-btn, body.west-open .labels-btn, body.west-open .credits { display: none; }
