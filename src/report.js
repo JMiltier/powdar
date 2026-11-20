@@ -297,7 +297,7 @@ const shortDate = (ymd) =>
   new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' });
 
 // One status per resort, phrased for people: what's the situation and how sure are we.
-export function statusFor({ live, isOpen, open, close, when, opened, note, report }, today) {
+export function statusFor({ live, isOpen, open, close, when, opened, reopen, note, report }, today) {
   if (close && today > close) return { state: 'done', label: 'Closed for the season' };
   if (live && isOpen) {
     const parts = [];
@@ -308,9 +308,11 @@ export function statusFor({ live, isOpen, open, close, when, opened, note, repor
     return { state: 'open', label: 'Open', pct, detail: parts.join(' · ') || null };
   }
   // Opening day, before the lifts start (or before the resort's report says so).
-  if (open && open === today) return { state: 'soon', label: 'Opens today', date: open, detail: null };
+  // (reopen: a resort that opened, closed, and has a day to open again: Wolf Creek after the 2026 floods.)
+  const verb = reopen ? 'Reopens' : 'Opens';
+  if (open && open === today) return { state: 'soon', label: `${verb} today`, date: open, detail: null };
   if (open && open > today) {
-    return { state: 'soon', label: `Opens ${when ?? shortDate(open)}`, date: open, detail: live ? null : 'Planned date' };
+    return { state: 'soon', label: `${verb} ${when ?? shortDate(open)}`, date: open, detail: live ? null : 'Planned date' };
   }
   if (open && opened) return { state: 'open', label: 'Open', date: open, detail: `Opened ${shortDate(open)} · no live lift count` };
   if (open && live) return { state: 'late', label: 'Not open yet', date: open, detail: `Was planned for ${shortDate(open)}` };
@@ -411,8 +413,14 @@ export function reportDay(updated, today) {
   return hour >= 15 ? day : addDays(day, -1);
 }
 
-export function snowLog(prev, today, report, modelPast = {}) {
-  const log = new Map((prev ?? []).filter((e) => e.date >= addDays(today, -14)).map((e) => [e.date, { ...e }]));
+// open: the resort is open now; openedOn: the day it opened. A resort that isn't open isn't measuring:
+// its 0″ isn't logged (snow it does report, is), and 0″ days from before it opened are dropped, so
+// the models' estimate stands for those (Purgatory's feed said 0″ under a 5″ storm the week before it
+// opened).
+export function snowLog(prev, today, report, modelPast = {}, { open = true, openedOn = null } = {}) {
+  const log = new Map((prev ?? [])
+    .filter((e) => e.date >= addDays(today, -14) && !(e.snow === 0 && openedOn && e.date < openedOn))
+    .map((e) => [e.date, { ...e }]));
   const put = (date, v) => {
     if (v == null || v < 0) return;
     const e = log.get(date) ?? { date, snow: 0 };
@@ -420,7 +428,7 @@ export function snowLog(prev, today, report, modelPast = {}) {
     if (modelPast[date] != null) e.model = modelPast[date];
     log.set(date, e);
   };
-  const day = report?.new24 != null ? reportDay(report.updated, today) : null;
+  const day = report?.new24 != null && (open || report.new24 > 0) ? reportDay(report.updated, today) : null;
   if (day) {
     put(day, report.new24);
     if (report.new48 != null && !log.has(addDays(day, -1))) put(addDays(day, -1), Math.max(0, report.new48 - report.new24));
@@ -801,9 +809,10 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
     const p = planned[r.id] ?? {};
     const facts = live
       ? { live, isOpen: c.isOpen, open: c.open, close: c.close, note: c.note, report: withLiveLifts(c.report, liftsById[r.id]) }
-      : { live, isOpen: false, open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when, opened: p.opened, note: p.note };
-    // Vail's pages say what's open but not their season dates: keep the announced ones.
-    if (c?.vail || c?.own) Object.assign(facts, { open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when });
+      : { live, isOpen: false, open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when, opened: p.opened, reopen: p.reopen, note: p.note };
+    // Vail's pages say what's open but not their season dates: keep the announced ones. (And a resort
+    // whose own page has gone quiet keeps its announced status: Wolf Creek's, reopening after a closure.)
+    if (c?.vail || c?.own) Object.assign(facts, { open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when, opened: p.opened, reopen: p.reopen });
     // A report from a closed resort is usually last season's leftovers.
     // (Vail Resorts' own reports are current even before opening day: keep those.)
     const report = live && (c.isOpen || c.vail || c.own) ? freshSnow(withLiveLifts(c.report, liftsById[r.id]), now) : null;
@@ -828,7 +837,7 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
       // Runs and lifts open each day (the last 8 days), to see new terrain opening.
       terrainLog: terrainLog(prevResorts[r.id]?.terrainLog, today, report?.trails?.open ?? null, (liftsById[r.id] ?? report?.lifts)?.open ?? null),
       // What the resort reported falling, day by day (see snowLog).
-      snowLog: snowLog(prevResorts[r.id]?.snowLog, today, report, rawPast[i]),
+      snowLog: snowLog(prevResorts[r.id]?.snowLog, today, report, rawPast[i], { open: Boolean(facts.isOpen || (facts.opened && facts.open && facts.open <= today)), openedOn: facts.open && facts.open <= today ? facts.open : null }),
       aspect: r.aspect ?? null,
       noaa: noaaSnow[i] ?? null,
       avgSnow: r.avgSnow ?? null,

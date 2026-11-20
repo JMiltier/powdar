@@ -58,5 +58,9 @@ export const PLANNED = {
     'beaver-creek': { open: '2026-11-25' },
     'crested-butte': { open: '2026-11-25' },
     keystone: { open: '2026-10-30', opened: true },
+    // Opened Oct 31, closed Nov 1 by the southwest floods (open again only Nov 14–15), reopening all
+    // lifts and terrain Nov 21 (wolfcreekski.com; Denver Gazette, Nov 19). Its own report page has
+    // stood still since Nov 18, so this says it.
+    'wolf-creek': { open: '2026-11-21', opened: true, reopen: true },
   },
 };

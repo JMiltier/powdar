@@ -159,7 +159,9 @@ test('buildReport assembles every resort', async () => {
   assert.equal(byId.vail.status.label, 'Opens Fri, Nov 13');
   assert.equal(byId.breckenridge.status.state, 'likely');
   assert.equal(byId.keystone.status.state, 'open');
-  assert.equal(byId['wolf-creek'].status.state, 'tba');
+  // (Wolf Creek: reopening after the 2026 flood closure, from its announced day.)
+  assert.equal(byId['wolf-creek'].status.state, 'soon');
+  assert.match(byId['wolf-creek'].status.label, /^Reopens /);
   assert.deepEqual(byId['arapahoe-basin'].dates, { open: '2026-10-28', close: '2027-05-10', when: null, planned: false });
   assert.deepEqual(byId.vail.dates, { open: '2026-11-13', close: null, when: null, planned: true });
 });
@@ -264,4 +266,13 @@ test('modelCorrection: a 0″ day under half a foot of model snow is a resort no
   const c = modelCorrection([{ date: '2026-11-17', snow: 0, model: 0 }, { date: '2026-11-18', snow: 0, model: 25.6 }, { date: '2026-11-19', snow: 3, model: 2.5 }]);
   assert.equal(c.days, 2);
   assert.ok(c.factor >= 1);
+});
+
+test("snowLog: a closed resort's 0″ isn't logged, and 0″ days from before it opened are dropped", async () => {
+  const { snowLog } = await import('../src/report.js');
+  const report = { new24: 0, updated: '2026-11-19T06:00:00-07:00' };
+  assert.deepEqual(snowLog([], '2026-11-19', report, {}, { open: false }), []);
+  const prev = [{ date: '2026-11-17', snow: 0, model: 5 }, { date: '2026-11-18', snow: 3, model: 2 }];
+  const log = snowLog(prev, '2026-11-20', null, {}, { open: true, openedOn: '2026-11-20' });
+  assert.deepEqual(log.map((e) => e.date), ['2026-11-18']);
 });
