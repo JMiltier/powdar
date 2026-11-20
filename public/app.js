@@ -1790,10 +1790,17 @@ function render() {
   $('.foot').hidden = open; // a resort's own sources sit at the bottom of its details
   grabEl.classList.toggle('has-detail', open);
   if (!open) $('#grab-detail').innerHTML = '';
-  if (overview) renderOverview();
-  else if (r) renderDetail(r);
-  else renderList();
-  renderHeadline();
+  if (west && !$('#west').hidden) {
+    // (The West showing: the sheet is about every area, not this one.)
+    $('#list').hidden = false;
+    $('#detail').hidden = true;
+    renderWestSheet();
+  } else {
+    if (overview) renderOverview();
+    else if (r) renderDetail(r);
+    else renderList();
+    renderHeadline();
+  }
   renderMap();
 }
 
@@ -2265,26 +2272,48 @@ setInterval(() => {
 let west = null;
 const areaData = new Map(); // code → that area's latest data (the current area's is state.data)
 const areaAsked = new Set();
-function westValues() {
+// Each area at a glance for the current view: its best resort and number (or, on Dates, how many are
+// open). → [{ area, data, best: { v, r } | null, open, text, level, label, sort }] (areas with data)
+function areaSummaries() {
   const m = METRICS[state.metric];
-  const out = {};
+  const out = [];
   for (const a of AREAS) {
     const d = a.code === state.code ? state.data : areaData.get(a.code) ?? read(`${STORE.data}:${a.code}`, null);
     if (!d?.resorts) continue;
-    const current = a.code === state.code;
-    const dots = d.resorts.map((r) => r.at);
+    const open = d.resorts.filter((r) => r.status?.state === 'open').length;
     if (m.kind === 'dates') {
-      const open = d.resorts.filter((r) => r.status?.state === 'open').length;
-      out[a.code] = { text: `${open}/${d.resorts.length}`, level: open ? 'open' : 'tba', label: `${open} of ${d.resorts.length} resorts open`, current, dots };
+      out.push({ area: a, data: d, best: null, open, text: `${open}/${d.resorts.length}`, level: open ? 'open' : 'tba', label: `${open} of ${d.resorts.length} resorts open`, sort: open });
       continue;
     }
     let best = null;
     for (const r of d.resorts) { const v = m.get(r); if (v != null && (!best || v > best.v)) best = { v, r }; }
-    out[a.code] = best
-      ? { text: m.kind === 'base' ? depth(best.v) : inches(best.v), level: level(best.v, m.steps), label: `${m.kind === 'base' ? depth(best.v) : inches(best.v)} at ${best.r.name}`, current, dots }
-      : { text: '–', level: 'none', label: 'no data', current, dots };
+    const text = best ? (m.kind === 'base' ? depth(best.v) : inches(best.v)) : '–';
+    out.push({ area: a, data: d, best, open, text, level: best ? level(best.v, m.steps) : 'none', label: best ? `${text} at ${best.r.name}` : 'no data', sort: best?.v ?? -1 });
   }
   return out;
+}
+function westValues() {
+  return Object.fromEntries(areaSummaries().map((x) => [x.area.code, { text: x.text, level: x.level, label: x.label, current: x.area.code === state.code, dots: x.data.resorts.map((r) => r.at) }]));
+}
+// The sheet while the West shows: the whole West's headline, and each area (best first) to go to.
+function renderWestSheet() {
+  const m = METRICS[state.metric];
+  const all = areaSummaries().sort((a, b) => b.sort - a.sort);
+  let text;
+  if (m.kind === 'dates') {
+    text = `<strong>${all.reduce((t, x) => t + x.open, 0)} open</strong> across the West`;
+  } else {
+    const top = all.find((x) => x.best);
+    const v = top?.best.v;
+    text = top && (m.kind === 'base' ? v : v >= 1) ? `${m.top}: <strong>${esc(top.best.r.name)}, ${esc(top.area.name)} ${top.text}</strong>` : `${m.top.replace(/^Most /, 'No ')}: none anywhere yet`;
+  }
+  $('#headline').innerHTML = text;
+  $('#list').innerHTML = `<p class="west-head">Ski areas <span class="muted">· tap one to go there</span></p>${all.map((x) => `
+    <button type="button" class="row area-row${x.area.code === state.code ? ' is-current' : ''}" data-area-pick="${x.area.code}">
+      <span class="area-main"><span class="row-name">${esc(x.area.name)}</span>
+        <span class="row-sub">${x.best ? `${esc(x.best.r.name)} · ` : ''}${x.open} of ${x.data.resorts.length} open</span></span>
+      <b class="val lvl-${x.level}">${x.text}</b>
+    </button>`).join('')}`;
 }
 function openWest() {
   if (ALL_STATES || AREAS.length < 2 || !$('#west').hidden) return;
@@ -2293,6 +2322,7 @@ function openWest() {
   if (!west) west = createWestMap($('#west'), { areas: AREAS, getPadding: coveredPadding, onPick: pickArea, onDismiss: closeWest });
   else west.refit();
   west.update(westValues());
+  render();
   write(STORE.westHint, true); // (found it: no hint needed)
   // The other areas' latest numbers (shown from the last saved copy meanwhile).
   for (const a of AREAS) {
@@ -2301,7 +2331,7 @@ function openWest() {
     fetch(`${dataUrl(a.code)}?t=${Math.floor(Date.now() / 600000)}`).then((res) => (res.ok ? res.json() : null)).then((d) => {
       if (!d) return;
       areaData.set(a.code, d);
-      if (!$('#west').hidden) west.update(westValues());
+      if (!$('#west').hidden) render();
     }).catch(() => {});
   }
 }
@@ -2309,6 +2339,7 @@ function closeWest() {
   if ($('#west').hidden) return;
   $('#west').hidden = true;
   document.body.classList.remove('west-open');
+  render();
 }
 function pickArea(code) {
   closeWest();
@@ -2444,6 +2475,8 @@ document.addEventListener('click', (e) => {
     return renderList();
   }
   if (t.closest('[data-west]')) return openWest(); // (the area's badge on its "today" card)
+  const areaPick = t.closest('[data-area-pick]');
+  if (areaPick) return pickArea(areaPick.dataset.areaPick);
   const row = t.closest('[data-open]');
   if (row) return select(row.dataset.open);
   if (t.closest('[data-back]')) return select(null);
