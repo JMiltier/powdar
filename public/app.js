@@ -12,7 +12,10 @@ const ALL_STATES = false;
 // its resorts are.
 const AREAS = [
   { code: 'CO', name: 'Colorado', at: [36.95, -106.6], side: 'C', box: [[37.4, -108.2], [40.55, -105.4]] },
-  { code: 'UT', name: 'Utah', at: [40.75, -111.3], side: 'E', box: [[37.6, -112.95], [42.0, -111.4]] },
+  { code: 'UT', name: 'Utah', at: [40.9, -112.2], side: 'W', box: [[37.6, -112.95], [42.0, -111.4]] },
+  { code: 'TAHOE', name: 'Tahoe', at: [39.05, -119.6], side: 'E', box: [[38.15, -120.42], [39.4, -119.85]] },
+  { code: 'MAMMOTH', name: 'Mammoth', at: [37.3, -118.75], side: 'E', box: [[37.6, -119.12], [37.8, -118.98]] },
+  { code: 'SOCAL', name: 'SoCal', at: [33.95, -117.25], side: 'C', box: [[34.18, -117.72], [34.4, -116.83]] },
 ];
 // Every area (or, nationwide, state) with resorts. Anything else in the address or storage is ignored
 // (e.g. an old bad "#half").
@@ -160,12 +163,14 @@ const hourText = (hm) => {
   const [h, m] = hm.split(':').map(Number);
   return `${((h + 11) % 12) + 1}${m ? `:${String(m).padStart(2, '0')}` : ''} ${h < 12 ? 'AM' : 'PM'}`;
 };
-const denverHour = () => Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
+// The area's own time zone (Colorado and Utah: Mountain; California: Pacific).
+const areaZone = () => state.data?.tz ?? 'America/Denver';
+const denverHour = () => Number(new Intl.DateTimeFormat('en-US', { timeZone: areaZone(), hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
 const monthDay = (ymd) => new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric' });
 const weekday = (ymd, today) => (ymd === today ? 'Today' : new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short' }));
 
 // "10:42 AM" in Colorado time.
-const clock = (iso) => new Date(iso).toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit' });
+const clock = (iso) => new Date(iso).toLocaleTimeString('en-US', { timeZone: areaZone(), hour: 'numeric', minute: '2-digit' });
 
 function timeAgo(iso) {
   const mins = Math.round((Date.now() - Date.parse(iso)) / 60_000);
@@ -990,11 +995,13 @@ const OVERVIEW = 'overview';
 // (#co/colorado, #ut/utah: the overview).
 const stateName = () => state.data?.stateName ?? 'Colorado';
 const stateSlug = () => stateName().toLowerCase();
-let stateHistory = null; // colorado.json (snowpack normals), once loaded
+// The area's snowpack normals (colorado.json…): undefined until asked for, then a promise while
+// loading, then the data, or null for an area without them (asked once, never again).
+let stateHistory;
 function loadStateHistory() {
-  if (!stateHistory) {
+  if (stateHistory === undefined) {
     stateHistory = fetch(`history/${stateSlug()}.json`).then((res) => (res.ok ? res.json() : null)).catch(() => null)
-      .then((d) => { stateHistory = d ?? false; if (state.selected === OVERVIEW) render(); return d; });
+      .then((d) => { stateHistory = d ?? null; if (state.selected === OVERVIEW) render(); return d; });
   }
   return stateHistory;
 }
@@ -1289,7 +1296,7 @@ function regionPcts() {
     return { name, pct: statewidePct(ids.map((id) => ({ id, ...d.snowpack[id] })), 0.5), resorts: d.resorts.filter((r) => r.region === name).map((r) => r.name) };
   }).filter((g) => g.pct != null).sort((a, b) => b.pct - a.pct);
 }
-const alertTime = (iso) => (iso ? new Date(iso).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'America/Denver' }) : '');
+const alertTime = (iso) => (iso ? new Date(iso).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', timeZone: areaZone() }) : '');
 function alertsBlock(alerts) {
   if (!alerts?.length) return '';
   return alerts.map((a) => `
@@ -1373,7 +1380,7 @@ function renderOverview() {
   // Statewide snowpack: the average station's snow water this season against past winters.
   const h = loadStateHistory();
   const hist = h && !(h instanceof Promise) ? h : null;
-  let snowChart = '<p class="muted small">Loading…</p>';
+  let snowChart = h === null ? '' : '<p class="muted small">Loading…</p>';
   if (hist) {
     const curve = (k) => hist.days.map((v, i) => (v ? [i, v[k]] : null)).filter(Boolean).filter((_, i) => i % 3 === 0);
     const bands = { p10: curve(0), p25: curve(1), p75: curve(3), p90: curve(4), max: curve(5), years: hist.seasons, first: hist.first, last: hist.last };
@@ -1411,9 +1418,10 @@ function renderOverview() {
     </li>`).join('');
 
   // Statewide temperature.
+  // (Not asked for yet: ask once. An area without normals yet comes back null: no comparison then.)
   const tn = tempNormals.get(stateSlug());
-  if (!tn) loadTemps(stateSlug()).then(() => { if (state.selected === OVERVIEW) render(); });
-  let tempBlock = '<p class="muted small">Loading…</p>';
+  if (!tempNormals.has(stateSlug())) Promise.resolve(loadTemps(stateSlug())).then(() => { if (state.selected === OVERVIEW) render(); });
+  let tempBlock = tn === null ? '' : '<p class="muted small">Loading…</p>';
   if (tn && !(tn instanceof Promise)) {
     const temps = averageCurve(list.map((s) => s.temps ?? []));
     const ahead = averageCurve(d.resorts.map((r) => (r.forecast?.days ?? []).filter((x) => x.hi != null && x.lo != null).map((x) => [dayOfSeason(x.date), (x.hi + x.lo) / 2])))
@@ -1482,7 +1490,8 @@ function tempSection(r, notes) {
   const st = station(r);
   if (!st?.temps?.length) return '';
   const n = tempNormals.get(r.station);
-  if (!n) loadTemps(r.station).then(() => { if (state.selected === r.id) render(); });
+  if (!tempNormals.has(r.station)) Promise.resolve(loadTemps(r.station)).then(() => { if (state.selected === r.id) render(); });
+  if (n === null) return ''; // (no normals for this station: nothing to compare with)
   if (!n || n instanceof Promise) return '<h3 class="section">Temperature</h3><p class="muted small">Loading…</p>';
   const median = (d) => n.days[Math.min(n.days.length - 1, Math.max(0, d))]?.[2];
   // How the last week compares with normal.
@@ -1840,13 +1849,23 @@ function sheetSizes() {
 
 // Pixels of map covered by the top bar and the list, so the map fits every resort in what's left:
 // above the collapsed sheet on phones, beside the side panel (if open) on wide screens.
-let legendHeight = 0;
+// The key's room: the tallest it has been on this phone, for any layer (the radar's, with its play
+// button, is taller; on a narrow phone a key wraps onto a second line). Kept on the device, and
+// grown (the map laid out again) the moment a key needs more, so no key ever covers a label.
+let legendHeight = Number(localStorage.getItem('cs:legendH')) || 0;
+new ResizeObserver(() => {
+  const h = $('#legend').offsetHeight;
+  if (h <= legendHeight || $('#legend').classList.contains('pending')) return;
+  legendHeight = h;
+  localStorage.setItem('cs:legendH', String(h));
+  state.map?.refit();
+}).observe($('#legend'));
 function coveredPadding() {
   const top = $('.ribbon').getBoundingClientRect().bottom; // (not .top: a toast there would shift the map)
   // The snow-cover key sits along the bottom of the map: keep resorts and labels clear of it.
   // Its space is kept whether or not it's showing (snow cover off, sheet pulled up), so the map never
   // shifts when it comes and goes.
-  legendHeight = $('#legend').offsetHeight || legendHeight;
+  legendHeight = Math.max(legendHeight, $('#legend').classList.contains('pending') ? 0 : $('#legend').offsetHeight);
   const legend = legendHeight + 12;
   if (WIDE.matches) return { top, left: state.panelOpen ? sheetEl.offsetWidth + 24 : 0, right: 0, bottom: legend };
   return { top, left: 0, right: 0, bottom: sheetSizes().visible.peek + legend };
@@ -2138,6 +2157,20 @@ const CO_TOWNS = [
   ['Cañon City', 38.441, -105.2425], ['Lake City', 38.03, -107.3156], ['Georgetown', 39.7061, -105.6975], ['Basalt', 39.3689, -107.0328],
   ['Hayden', 40.495, -107.257], ['Grand Lake', 40.2522, -105.8231], ['Nederland', 39.9614, -105.5108],
 ];
+// California's areas' towns, as Colorado's: the cities, then the ski towns and the ones on the way.
+const TAHOE_TOWNS = [
+  ['Reno', 39.5296, -119.8138, true], ['Truckee', 39.328, -120.1833], ['South Lake Tahoe', 38.9332, -119.9844],
+  ['Tahoe City', 39.1724, -120.1401], ['Incline Village', 39.2513, -119.9729], ['Carson City', 39.1638, -119.7674],
+  ['Kings Beach', 39.2377, -120.0266], ['Markleeville', 38.6946, -119.7802], ['Arnold', 38.2555, -120.3513], ['Pinecrest', 38.1913, -119.9946],
+];
+const MAMMOTH_TOWNS = [
+  ['Mammoth Lakes', 37.6485, -118.9721], ['June Lake', 37.7802, -119.0745], ['Lee Vining', 37.9575, -119.1218], ['Crowley Lake', 37.5694, -118.7398],
+];
+const SOCAL_TOWNS = [
+  ['San Bernardino', 34.1083, -117.2898, true], ['Big Bear Lake', 34.2439, -116.9114], ['Wrightwood', 34.3608, -117.6334],
+  ['Running Springs', 34.2078, -117.1092], ['Lake Arrowhead', 34.2483, -117.1892], ['Victorville', 34.5362, -117.2928],
+  ['Ontario', 34.0633, -117.6509], ['Claremont', 34.0967, -117.7198],
+];
 // Utah's towns, as Colorado's: the cities, then the ski towns and the ones on the way.
 const UT_TOWNS = [
   ['Salt Lake City', 40.7608, -111.891, true], ['Ogden', 41.223, -111.9738, true], ['Provo', 40.2338, -111.6585, true],
@@ -2156,11 +2189,17 @@ const INSETS = {
 const INSET_W = 150;
 const INSET_H = 150;
 let insetEl = null;
+// The inset's box in the top-left corner, under the top bar: Utah's west is empty desert there, so
+// the main map keeps its full width (on a small phone that matters) and its labels go around the box.
+function insetBox() {
+  const p = coveredPadding();
+  return { left: p.left + 10, top: p.top + 8 };
+}
 function placeInset() {
   if (!insetEl) return;
-  const p = coveredPadding();
-  insetEl.style.left = `${p.left + 10}px`;
-  insetEl.style.bottom = `${p.bottom + 4}px`;
+  const b = insetBox();
+  insetEl.style.left = `${b.left}px`;
+  insetEl.style.top = `${b.top}px`;
 }
 // Both maps behind one face: every call goes to both, each gets its own resorts.
 function joinMaps(main, inset, ids) {
@@ -2187,13 +2226,23 @@ function startMap() {
     // corridor's eastern labels stack up.
     extend: state.code === 'CO' ? [39.75, -105.3] : null,
     // (With an inset in the corner, the main map keeps clear of it.)
-    getPadding: useInset ? () => { const p = coveredPadding(); return { ...p, left: p.left + INSET_W + 10 }; } : coveredPadding,
+    getPadding: coveredPadding,
     onSelect: (id) => select(id),
     onOutlook: (season) => { state.outlookSeason = season; render(); },
     // Each radar frame: just update the key's button and time (no full re-render while playing).
     onRadar: (r) => { state.radar = r; syncRadarKey(); },
     onCast: (c) => { state.cast = { ...state.cast, ...c }; if (state.layer === 'snowcast') $('#legend').innerHTML = legendFor('snowcast'); },
-    places: state.code === 'CO' ? CO_TOWNS : state.code === 'UT' ? UT_TOWNS : [],
+    places: { CO: CO_TOWNS, UT: UT_TOWNS, TAHOE: TAHOE_TOWNS, MAMMOTH: MAMMOTH_TOWNS, SOCAL: SOCAL_TOWNS }[state.code] ?? [],
+    // The labels and ⓘ buttons in the map's bottom-right corner (style.css: 30 px, 10 px from the right,
+    // 10 and 48 px above the collapsed sheet; 12 and 50 on wide screens).
+    // (And the inset, where there is one.)
+    getObstacles: (size) => {
+      const base = WIDE.matches ? 0 : sheetSizes().visible.peek;
+      const buttons = (WIDE.matches ? [12, 50] : [10, 48]).map((b) => [size.x - 44, size.y - base - b - 34, size.x - 6, size.y - base - b + 4]);
+      if (!useInset) return buttons;
+      const b = insetBox();
+      return [...buttons, [b.left - 4, b.top - 4, b.left + INSET_W + 4, b.top + INSET_H + 4]];
+    },
     // Aspen's four dots nearly touch: Snowmass and Buttermilk (the upper of the pair) to the left,
     // Aspen Mountain to the right, Highlands (the lower one) below.
     labelSides: { snowmass: 'W', buttermilk: 'W', 'aspen-mountain': 'E', 'aspen-highlands': 'S' },
@@ -2425,7 +2474,7 @@ function setState(code) {
   state.selected = null;
   history.replaceState(null, '', routeFor());
   state.pastSeason = null;
-  stateHistory = null; // (each state its own statewide history)
+  stateHistory = undefined; // (each area its own history)
   state.map?.destroy();
   state.map = null;
   // Show the last saved copy of this state instantly (if any), then fetch fresh data.

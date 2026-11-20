@@ -29,18 +29,19 @@ export function snowRatio(c) {
 }
 
 // Each day's highest UV index at every resort (one request for all of them).
-export function uvUrl(resorts, days) {
+export function uvUrl(resorts, days, tz = 'America/Denver') {
   const q = new URLSearchParams({
     latitude: resorts.map((r) => r.at[0]).join(','),
     longitude: resorts.map((r) => r.at[1]).join(','),
     daily: 'uv_index_max',
     forecast_days: String(days),
-    timezone: 'America/Denver',
+    timezone: tz,
   });
   return `${OPEN_METEO}?${q}`;
 }
 
-export function modelUrl(model, resorts, days) {
+// tz: the area's time zone (its days run midnight to midnight there).
+export function modelUrl(model, resorts, days, tz = 'America/Denver') {
   const q = new URLSearchParams({
     latitude: resorts.map((r) => r.at[0]).join(','),
     longitude: resorts.map((r) => r.at[1]).join(','),
@@ -52,7 +53,7 @@ export function modelUrl(model, resorts, days) {
     forecast_days: String(days),
     past_days: '6', // the last few days too: "last 24 hours" where resorts don't report, and the past-5-days bars
     timeformat: 'unixtime',
-    timezone: 'America/Denver',
+    timezone: tz,
   });
   return `${OPEN_METEO}?${q}`;
 }

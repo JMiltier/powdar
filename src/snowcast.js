@@ -2,13 +2,13 @@
 // the chance of at least 1″, 2″, 6″ or 12″ of snow in each 24-hour period. NOAA's map service only
 // offers 4″, 8″ and 12″; the small amounts that matter most day to day come as KMZ files of
 // probability contours (www.wpc.ncep.noaa.gov/pwpf/latest_kml/), which the browser can't read, so the
-// build turns them into GeoJSON for Colorado (public/data/snowcast.json).
+// build turns them into GeoJSON for the areas (public/data/snowcast.json).
 import { inflateRawSync } from 'node:zlib';
 
 export const SNOWCAST_KMZ = 'https://www.wpc.ncep.noaa.gov/pwpf/latest_kml/';
 export const SNOWCAST_AMOUNTS = [1, 2, 6, 12];
 const LEVELS = [10, 40, 70]; // slight / moderate / high chance contours (nested)
-const BBOX = [-114.5, 36.5, -101.5, 42.5]; // Colorado and Utah, and a little around them
+const BBOX = [-124.8, 32.5, -101.5, 43.0]; // California, Utah and Colorado, and a little around them
 
 // The first file in a zip (a KMZ holds one KML).
 export function unzipFirst(buf, want = /\.kml$/i) {
@@ -39,7 +39,7 @@ const ring = (text) => text.trim().split(/\s+/).map((p) => p.split(',').slice(0,
 const near = (rings) => rings[0].some(([x, y]) => x >= BBOX[0] && x <= BBOX[2] && y >= BBOX[1] && y <= BBOX[3]);
 
 // One KML of probability contours → { start, end, features } (GeoJSON polygons with { prob }), only
-// the 10/40/70 % contours, only near Colorado.
+// the 10/40/70 % contours, only near the areas.
 export function parseContours(kml) {
   const valid = /Valid (\d\d)Z (\d\d)\/(\d\d)\/(\d{4}) - (\d\d)Z (\d\d)\/(\d\d)\/(\d{4})/.exec(kml);
   const iso = (h, m, d, y) => `${y}-${m}-${d}T${h}:00:00Z`;

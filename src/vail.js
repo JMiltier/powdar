@@ -10,6 +10,9 @@ export const VAIL_SITES = {
   keystone: 'https://www.keystoneresort.com',
   'crested-butte': 'https://www.skicb.com',
   'park-city': 'https://www.parkcitymountain.com', // (Utah)
+  heavenly: 'https://www.skiheavenly.com', // (California)
+  northstar: 'https://www.northstarcalifornia.com',
+  kirkwood: 'https://www.kirkwood.com',
 };
 // Crested Butte and Park City name their pages differently.
 const PAGES = {

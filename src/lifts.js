@@ -19,7 +19,7 @@ const decode = (s) => s
 // Hours only when they say something ("0:00 - 0:00" and "CLOSED" don't).
 const hoursText = (h) => (h && /\d/.test(h) && !/^0:00\s*-\s*0:00$/.test(h.trim()) ? h.trim() : null);
 
-// MtnPowder (Alterra's reporting platform): A-Basin, Steamboat, Winter Park.
+// MtnPowder (Alterra's reporting platform): A-Basin, Steamboat, Winter Park; Palisades, Alpine, Mammoth, June.
 const mtnpowder = (id, page) => ({
   url: `https://mtnpowder.com/feed/${id}/lifts`,
   page,
@@ -50,6 +50,12 @@ const aspen = (mountain, page) => ({
 });
 
 export const LIFT_SOURCES = {
+  // California (src/resorts-ca.js)
+  palisades: mtnpowder(61, 'https://www.palisadestahoe.com/mountain-information/lift-and-grooming-status'),
+  'alpine-meadows': mtnpowder(62, 'https://www.palisadestahoe.com/mountain-information/lift-and-grooming-status#tab=alpine-meadows-'),
+  mammoth: mtnpowder(60, 'https://www.mammothmountain.com/on-the-mountain/mountain-report#lifts-and-trails'),
+  june: mtnpowder(59, 'https://www.junemountain.com/mountain-information/mountain-report#/'),
+  boreal: powdr('api.rideboreal.com', 'https://www.rideboreal.com/the-mountain/the-mountain/trail-lift-info/full-trail-report'),
   'arapahoe-basin': mtnpowder(93, 'https://www.arapahoebasin.com/snow-report/#lift-and-trail-status'),
   steamboat: mtnpowder(6, 'https://www.steamboat.com/the-mountain/mountain-report#/lifts'),
   'winter-park': mtnpowder(5, 'https://www.winterparkresort.com/the-mountain/weather-dashboard#mountain-status'),

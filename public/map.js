@@ -241,7 +241,9 @@ export const SNOW_COLOR = [
 
 // labelSides: { resortId: 'N' | 'S' | 'E' | 'W' }: a side a resort's label should sit on, where the
 // short-line layout alone reads ambiguously (Aspen's tight cluster).
-export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [], onOutlook, onRadar, onCast, labelSides = {} }) {
+// getObstacles(size) → [[left, top, right, bottom]…]: the map's own floating buttons, in map pixels
+// (no label or line goes under them).
+export function createSnowMap(el, { resorts, onSelect, getPadding, extend, places = [], onOutlook, onRadar, onCast, labelSides = {}, getObstacles = () => [] }) {
   const bounds = L.latLngBounds(resorts.map((r) => r.at));
   if (extend) bounds.extend(extend);
   // A state with a single resort still needs some area around it.
@@ -483,7 +485,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     if (!outlookData) {
       const q = new URLSearchParams({
         where: '1=1', outFields: 'cat,prob,valid_seas', f: 'geojson', outSR: '4326', maxAllowableOffset: '0.02',
-        geometry: '-112,34,-99,44', geometryType: 'esriGeometryEnvelope', inSR: '4326',
+        // (Around this area's resorts, with room to spare: the map shows more than just them.)
+        geometry: (() => { const b = bounds.pad(1); return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((v) => v.toFixed(2)).join(','); })(),
+        geometryType: 'esriGeometryEnvelope', inSR: '4326',
       });
       outlookData = await (await fetch(`${OUTLOOK}?${q}`)).json();
       onOutlook?.(outlookData.features?.[0]?.properties?.valid_seas ?? null);
@@ -829,7 +833,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // same for the same screen, padding and labels): a reload or a view switch is then instant. Bump
   // the version whenever the layout itself changes.
   const SAVED = 'powdar:layouts';
-  const LAYOUT_VERSION = 7;
+  const LAYOUT_VERSION = 10;
   const savedLayout = (key) => {
     try {
       const entry = JSON.parse(localStorage.getItem(SAVED) ?? '{}')[key];
@@ -857,7 +861,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     const pad = getPadding();
     // (Every number any label shows, in any view: the chips' one width comes from the widest of them.)
     const texts = [...new Set(order.flatMap((o) => o.texts ?? []))].sort();
-    const key = JSON.stringify([LAYOUT_VERSION, labelSides, size, pad, map.getZoom(), texts, order.map((o) => [o.r.id, o.prio ?? 0]).sort()]);
+    const key = JSON.stringify([LAYOUT_VERSION, labelSides, getObstacles(size), size, pad, map.getZoom(), texts, order.map((o) => [o.r.id, o.prio ?? 0]).sort()]);
     const cached = layoutCache.get(key) ?? savedLayout(key);
     if (cached) layoutCache.set(key, cached);
     if (cached) {
@@ -872,7 +876,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     // Every size is tried; the best is the one with the fewest labels that don't fit, then the
     // shortest hairlines (labels close to their dots). Smaller text costs a lot: full size wins unless
     // a smaller size really is needed to fit names.
-    const score = (a, scale) => a.misses * 400 + a.length + (1 - scale) * 5000;
+    // (A name lost to number-only costs more than text 10 % smaller: on a small phone, every name
+    // shows, a touch smaller, rather than one going missing.)
+    const score = (a, scale) => a.misses * 600 + a.length + (1 - scale) * 5000;
     for (const [i, scale] of LABEL_SCALES.entries()) {
       el.style.setProperty('--label-scale', scale);
       const attempt = computeLayout(size, pad, start + TRIAL_MS * (i + 1), false);
@@ -888,6 +894,14 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       const attempt = computeLayout(size, pad, performance.now() + BUDGET_MS / 3, true, seed);
       if (!best || attempt.score < best.score) best = { ...attempt, scale };
     }
+    // Still a name squeezed to its number (a small or slow phone): the next size down too, kept if it
+    // shows every name. (A hidden name is worse than slightly smaller text.)
+    for (let i = LABEL_SCALES.indexOf(scale) + 1; best.misses > 0 && i < LABEL_SCALES.length; i++) {
+      el.style.setProperty('--label-scale', LABEL_SCALES[i]);
+      const attempt = { ...computeLayout(size, pad, performance.now() + BUDGET_MS / 2, true, 7), scale: LABEL_SCALES[i] };
+      if (attempt.misses < best.misses) best = attempt;
+    }
+    el.style.setProperty('--label-scale', best.scale);
     if (layoutCache.size > 40) layoutCache.clear();
     layoutCache.set(key, best);
     saveLayout(key, best);
@@ -930,7 +944,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       const d = Math.hypot(it.p.x - cx, it.p.y - cy);
       it.away = d > 3 ? [(it.p.x - cx) / d, (it.p.y - cy) / d] : null;
     }
-    const reserved = reserveTowns(size, area);
+    const reserved = [...reserveTowns(size, area), ...getObstacles(size)];
     const onTown = (box) => reserved.some((r) => box[0] < r[2] && box[2] > r[0] && box[1] < r[3] && box[3] > r[1]);
     const boxOf = (it, [dx, dy]) => [it.p.x + dx - it.w / 2 - GAP, it.p.y + dy - it.h / 2 - GAP, it.p.x + dx + it.w / 2 + GAP, it.p.y + dy + it.h / 2 + GAP];
 

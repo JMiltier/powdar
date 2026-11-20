@@ -12,7 +12,7 @@ export const ENSEMBLE_DAYS = 15;
 const FT_TO_M = 0.3048;
 const MM_PER_INCH = 25.4;
 
-export function ensembleUrl(resorts) {
+export function ensembleUrl(resorts, tz = 'America/Denver') {
   const q = new URLSearchParams({
     latitude: resorts.map((r) => r.at[0]).join(','),
     longitude: resorts.map((r) => r.at[1]).join(','),
@@ -21,7 +21,7 @@ export function ensembleUrl(resorts) {
     models: ENSEMBLE_MODELS.join(','),
     forecast_days: String(ENSEMBLE_DAYS),
     timeformat: 'unixtime',
-    timezone: 'America/Denver',
+    timezone: tz,
   });
   return `${ENSEMBLE_API}?${q}`;
 }

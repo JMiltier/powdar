@@ -2,6 +2,7 @@
 // so it runs the same in the GitHub Action, the local preview server and tests.
 import { RESORTS, PLANNED } from './resorts.js';
 import { UT_RESORTS } from './resorts-ut.js';
+import { TAHOE_RESORTS, MAMMOTH_RESORTS, SOCAL_RESORTS } from './resorts-ca.js';
 import { SKI_UTAH, parseSkiUtah } from './skiutah.js';
 import { MODELS, modelUrl, snowHours, uvUrl } from './models.js';
 import { ensembleUrl, summarizeEnsemble } from './ensemble.js';
@@ -18,16 +19,21 @@ import { nohrscUrl, parseNohrsc } from './noaa.js';
 export const CSC_FEED = 'https://snow.coloradoski.com/view/publicreport-feed';
 const NWS = 'https://api.weather.gov/gridpoints';
 const USER_AGENT = 'Powdar (github.com/JMiltier/powdar)';
-const TZ = 'America/Denver';
+// The area being built's time zone (set at the start of each build: areas build one after another).
+let TZ = 'America/Denver';
 export const FORECAST_DAYS = 7; // days shown day by day
 const OUTLOOK_DAYS = 14; // days 8–14 are summarised as a less-certain "week 2"
 export const MODEL_DAYS = 14; // two weeks: longer requests count extra against the free allowance
 const MM_PER_INCH = 25.4;
 const DAY_MS = 86_400_000;
 
-const dateFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+let dateFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+const setZone = (tz) => {
+  TZ = tz;
+  dateFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+};
 
-// 'YYYY-MM-DD' in Colorado time.
+// 'YYYY-MM-DD' in the area's own time.
 export const localDate = (d) => dateFmt.format(d);
 
 const addDays = (ymd, n) => new Date(Date.parse(`${ymd}T12:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
@@ -470,9 +476,35 @@ export const REGIONS = {
     offices: OFFICES, alertArea: 'CO', wolfCreek: true,
   },
   UT: {
-    code: 'UT', name: 'Utah', resorts: UT_RESORTS, planned: {}, skiUtah: true,
+    code: 'UT', name: 'Utah', resorts: UT_RESORTS, planned: {}, skiUtah: true, hours: 'UT',
     vailIds: ['park-city'], liftSources: {}, cams: {},
     offices: [{ id: 'SLC', name: 'Salt Lake City', covers: 'all of Utah’s ski country, the Wasatch to Brian Head' }], alertArea: 'UT',
+  },
+  // California's three areas (src/resorts-ca.js), on Pacific time. No status feed like Colorado's or
+  // Utah's: Vail Resorts' own pages, and the resorts' live lift feeds (a lift running: open).
+  TAHOE: {
+    code: 'TAHOE', name: 'Tahoe', resorts: TAHOE_RESORTS, planned: {}, tz: 'America/Los_Angeles', hours: 'CA',
+    vailIds: ['heavenly', 'northstar', 'kirkwood'], liftSources: LIFT_SOURCES, cams: {},
+    offices: [
+      { id: 'REV', name: 'Reno', covers: 'the Tahoe basin, Truckee and Mt Rose' },
+      { id: 'STO', name: 'Sacramento', covers: 'the west slope: Donner Summit, Highway 50, Kirkwood to Dodge Ridge' },
+    ],
+    alertArea: 'CA,NV', alertPoints: [[39.24, -120.2], [39.31, -120.34], [38.8, -120.03]],
+  },
+  MAMMOTH: {
+    code: 'MAMMOTH', name: 'Mammoth', resorts: MAMMOTH_RESORTS, planned: {}, tz: 'America/Los_Angeles', hours: 'CA',
+    vailIds: [], liftSources: LIFT_SOURCES, cams: {},
+    offices: [{ id: 'REV', name: 'Reno', covers: 'the Eastern Sierra, Mammoth and June' }],
+    alertArea: 'CA', alertPoints: [[37.68, -119.03]],
+  },
+  SOCAL: {
+    code: 'SOCAL', name: 'SoCal', resorts: SOCAL_RESORTS, planned: {}, tz: 'America/Los_Angeles', hours: 'CA',
+    vailIds: [], liftSources: LIFT_SOURCES, cams: {},
+    offices: [
+      { id: 'SGX', name: 'San Diego', covers: 'the San Bernardino Mountains: Big Bear and Snow Valley' },
+      { id: 'LOX', name: 'Los Angeles', covers: 'the San Gabriels: Mountain High and Baldy' },
+    ],
+    alertArea: 'CA', alertPoints: [[34.23, -116.9], [34.33, -117.65]],
   },
 };
 
@@ -481,6 +513,7 @@ export const REGIONS = {
 const ENSEMBLE_EVERY_MS = 6 * 3_600_000;
 // prevResorts: last published resorts by id (their surface weather and terrain log carry forward).
 export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fetch, now = new Date(), log = () => {}, backoff = 2000, skipModels = false, prevLifts = {}, prevEnsemble = null, prevResorts = {} } = {}) {
+  setZone(R.tz ?? 'America/Denver');
   const RESORTS = R.resorts;
   const LIFT_SOURCES = R.liftSources;
   const CAMS = R.cams;
@@ -516,16 +549,17 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
 
   // Each model is one request covering every resort; NWS is two requests per resort (gridded
   // numbers + the text forecast); SNOTEL is two requests for every station (this season, normals).
-  const stations = [...new Set(RESORTS.flatMap((r) => [r.snotel[0], ...(r.snotelMore ?? []).map((x) => x[0])]))];
-  const stationName = (t) => RESORTS.flatMap((r) => [r.snotel, ...(r.snotelMore ?? [])]).find((x) => x[0] === t)[1];
+  // (Not every resort has a SNOTEL station near enough: Mammoth's and Southern California's don't.)
+  const stations = [...new Set(RESORTS.filter((r) => r.snotel).flatMap((r) => [r.snotel[0], ...(r.snotelMore ?? []).map((x) => x[0])]))];
+  const stationName = (t) => RESORTS.filter((r) => r.snotel).flatMap((r) => [r.snotel, ...(r.snotelMore ?? [])]).find((x) => x[0] === t)[1];
   const wy = waterYear(today);
   const lastSeasonEnd = `${wy.startYear}-07-31`;
-  const liftIds = Object.keys(LIFT_SOURCES);
+  const liftIds = Object.keys(LIFT_SOURCES).filter((id) => RESORTS.some((r) => r.id === id)); // (this area's)
   const [modelData, nwsData, nwsText, snowNow, snowNormal, liftData, noaaSnow] = await Promise.all([
     Promise.all(MODELS.map(async (m) => {
       if (skipModels) return null;
       try {
-        const data = await getJson(fetchFn, modelUrl(m.id, RESORTS, Math.min(m.days ?? MODEL_DAYS, MODEL_DAYS)), { backoff });
+        const data = await getJson(fetchFn, modelUrl(m.id, RESORTS, Math.min(m.days ?? MODEL_DAYS, MODEL_DAYS), TZ), { backoff });
         return Array.isArray(data) ? data : [data];
       } catch (err) {
         log(`Model ${m.label} failed: ${err.message}${err.cause ? ` (${err.cause.code ?? err.cause.message})` : ''}`);
@@ -548,11 +582,11 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
         return null;
       }
     }),
-    getJson(fetchFn, snotelUrl(stations, wy.start, today), { backoff }).then(parseSnotel).catch((err) => {
+    !stations.length ? null : getJson(fetchFn, snotelUrl(stations, wy.start, today), { backoff }).then(parseSnotel).catch((err) => {
       log(`SNOTEL (this season) failed: ${err.message}`);
       return null;
     }),
-    getJson(fetchFn, snotelUrl(stations, `${wy.startYear - 1}-10-01`, lastSeasonEnd), { backoff }).then(parseSnotel).catch((err) => {
+    !stations.length ? null : getJson(fetchFn, snotelUrl(stations, `${wy.startYear - 1}-10-01`, lastSeasonEnd), { backoff }).then(parseSnotel).catch((err) => {
       log(`SNOTEL (normals) failed: ${err.message}`);
       return null;
     }),
@@ -560,7 +594,7 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
     // Outside the ski day the last check stands (lift-hours.js).
     pool(liftIds, 4, async (id) => {
       const src = LIFT_SOURCES[id];
-      if (!liftsDue('CO', now, prevLifts[id]?.checked)) return prevLifts[id] ?? null;
+      if (!liftsDue(R.hours ?? 'CO', now, prevLifts[id]?.checked)) return prevLifts[id] ?? null;
       try {
         const body = src.type === 'json' ? await getJson(fetchFn, src.url, { backoff }) : await getText(fetchFn, src.url, { backoff });
         const lifts = src.parse(body);
@@ -596,7 +630,7 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
       log(`Snow report failed for ${id}: ${err.message}`);
     }
     const prev = prevLifts[id];
-    if (liftsDue('CO', now, prev?.checked)) {
+    if (liftsDue(R.hours ?? 'CO', now, prev?.checked)) {
       try {
         const t = parseVailTerrain(await getText(fetchFn, liftPage(site), { backoff }));
         if (t?.lifts.length) terrain = { ...summarizeLifts(t.lifts, liftPage(site), now.toISOString()), runs: t.trails };
@@ -633,7 +667,7 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
   if (!ensemble && !skipModels) {
     ensembleTriedAt = now.toISOString();
     try {
-      const data = await getJson(fetchFn, ensembleUrl(RESORTS), { backoff });
+      const data = await getJson(fetchFn, ensembleUrl(RESORTS, TZ), { backoff });
       const locs = Array.isArray(data) ? data : [data];
       const byId = {};
       RESORTS.forEach((r, i) => {
@@ -682,7 +716,7 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
   // UV index for each forecast day (with the model forecasts: reused between their hourly runs).
   if (!skipModels) {
     try {
-      const uv = await getJson(fetchFn, uvUrl(RESORTS, FORECAST_DAYS), { backoff });
+      const uv = await getJson(fetchFn, uvUrl(RESORTS, FORECAST_DAYS, TZ), { backoff });
       (Array.isArray(uv) ? uv : [uv]).forEach((u, i) => {
         const byDate = new Map((u?.daily?.time ?? []).map((t, k) => [t, u.daily.uv_index_max[k]]));
         for (const d of forecasts[i]?.days ?? []) {
@@ -716,7 +750,7 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
   });
 
   // The forecasters' key messages and active alerts (see insights.js).
-  const insights = await fetchInsights(getJson, fetchFn, { backoff, log, offices: R.offices, area: R.alertArea });
+  const insights = await fetchInsights(getJson, fetchFn, { backoff, log, offices: R.offices, area: R.alertArea, points: R.alertPoints ?? null });
 
   const resorts = RESORTS.map((r, i) => {
     let c = r.csc ? csc.get(r.csc) : undefined;
@@ -739,6 +773,9 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
       const report = { ...wolf, lifts: wolf.lifts != null ? { open: fresh && wolf.openPct > 0 ? wolf.lifts : 0, total: null } : undefined };
       c = { isOpen: Boolean(fresh && wolf.updated === today && wolf.openPct > 0), report, own: true };
     }
+    // No status anywhere else, but the resort's own lift feed says a lift is running today: open
+    // (California's resorts besides Vail's).
+    if (!c && liftsById[r.id]?.total) c = { isOpen: liftsToday(liftsById[r.id]) > 0, report: {}, own: true };
     const live = Boolean(c);
     const p = planned[r.id] ?? {};
     const facts = live
@@ -778,15 +815,16 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
       // each was last taken where the camera's server says (see camTimes below).
       cams: camsWithTimes[r.id] ?? null,
       // Key into `snowpack` (resorts can share a station).
-      station: snowpack[r.snotel[0]] ? r.snotel[0] : null,
+      station: r.snotel && snowpack[r.snotel[0]] ? r.snotel[0] : null,
       // Every station averaged for this resort (the main one first), when there's more than one.
-      ...(r.snotelMore?.length ? { stations: [r.snotel[0], ...r.snotelMore.map((x) => x[0])].filter((t) => snowpack[t]) } : {}),
+      ...(r.snotel && r.snotelMore?.length ? { stations: [r.snotel[0], ...r.snotelMore.map((x) => x[0])].filter((t) => snowpack[t]) } : {}),
     };
   });
 
   return {
     state: R.code,
     stateName: R.name,
+    tz: TZ, // (times in the app show in the area's own time)
     insights,
     ensemble,
     generated: now.toISOString(),

@@ -20,7 +20,9 @@ export function keyMessages(text) {
 }
 
 // offices / area: which forecast offices and which state's alerts (Colorado's by default).
-export async function fetchInsights(getJson, fetchFn, { backoff = 2000, log = () => {}, offices = OFFICES, area = 'CO' } = {}) {
+// points: [[lat, lon]…] instead of a whole state's alerts, just those in force at these spots (an area
+// that's a small part of a big state: Tahoe shouldn't list a Southern California warning).
+export async function fetchInsights(getJson, fetchFn, { backoff = 2000, log = () => {}, offices = OFFICES, area = 'CO', points = null } = {}) {
   const discussions = (await Promise.all(offices.map(async (o) => {
     try {
       const list = await getJson(fetchFn, `${NWS}/products/types/AFD/locations/${o.id}`, { backoff });
@@ -41,9 +43,10 @@ export async function fetchInsights(getJson, fetchFn, { backoff = 2000, log = ()
 
   let alerts = [];
   try {
-    const res = await getJson(fetchFn, `${NWS}/alerts/active?area=${area}`, { backoff });
+    const queries = points ? points.map(([lat, lon]) => `point=${lat},${lon}`) : [`area=${area}`];
+    const features = (await Promise.all(queries.map((q) => getJson(fetchFn, `${NWS}/alerts/active?${q}`, { backoff })))).flatMap((res) => res.features ?? []);
     const seen = new Set();
-    alerts = (res.features ?? []).map((f) => f.properties).filter((p) => ALERT_EVENTS.test(p.event ?? ''))
+    alerts = features.map((f) => f.properties).filter((p) => ALERT_EVENTS.test(p.event ?? ''))
       // The same alert is often issued for several zones: one entry per event and wording.
       .filter((p) => { const k = `${p.event}|${p.headline}`; if (seen.has(k)) return false; seen.add(k); return true; })
       .map((p) => ({
