@@ -172,7 +172,9 @@ export function surfaceWeather(locs, today) {
 export function blendForecast({ sources, nws, periods, ens = null }, now) {
   const today = localDate(now);
   const dates = Array.from({ length: OUTLOOK_DAYS }, (_, i) => addDays(today, i));
-  const pastDates = [5, 4, 3, 2, 1].map((n) => addDays(today, -n));
+  // (A week back: the −7d view and a resort's "last 7 days" bars, the models' estimate filling any day
+  // the resort didn't report.)
+  const pastDates = [7, 6, 5, 4, 3, 2, 1].map((n) => addDays(today, -n));
   const usable = sources.filter((s) => s.hours?.length);
   if (!usable.length) return null;
   const nowMs = now.getTime();

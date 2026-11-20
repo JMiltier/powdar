@@ -51,7 +51,7 @@ export function modelUrl(model, resorts, days, tz = 'America/Denver') {
     wind_speed_unit: 'mph',
     models: model,
     forecast_days: String(days),
-    past_days: '6', // the last few days too: "last 24 hours" where resorts don't report, and the past-5-days bars
+    past_days: '8', // the last week too: "last 24 hours" where resorts don't report, −3d and −7d, the past-7-days bars
     timeformat: 'unixtime',
     timezone: tz,
   });
