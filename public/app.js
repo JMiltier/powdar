@@ -2377,8 +2377,8 @@ setInterval(() => {
 const AREA_SOURCES = {
   CO: 'Open status, lifts and snow totals: Colorado Ski Country USA and the resorts’ own reports; Vail Resorts’ mountains (Vail, Beaver Creek, Breckenridge, Keystone, Crested Butte) from their own pages. Typical season snowfall: ZRankings.',
   UT: 'Open status and snow totals: Ski Utah; Park City from Vail Resorts’ own pages.',
-  TAHOE: 'Heavenly, Northstar and Kirkwood: Vail Resorts’ own pages. Palisades, Alpine Meadows and Boreal: their live lift status (open when a lift is running). The rest: forecasts and NOAA’s snow estimate, with no live status yet.',
-  MAMMOTH: 'Mammoth and June: their live lift status (open when a lift is running).',
+  TAHOE: 'Heavenly, Northstar and Kirkwood: Vail Resorts’ own pages. Palisades: its own snow report and lift status; Alpine Meadows and Boreal: live lift status (open when a lift is running). The rest: forecasts and NOAA’s snow estimate, with announced opening dates where there are any.',
+  MAMMOTH: 'Mammoth and June: their own snow reports and live lift status (open when a lift is running).',
   SOCAL: 'No live status feed yet: forecasts and NOAA’s snow-on-the-ground estimate.',
 };
 function footText() {

@@ -10,6 +10,7 @@ import { parseSnotel, snotelUrl, stationSeason, waterYear } from './snotel.js';
 import { LIFT_SOURCES, summarizeLifts } from './lifts.js';
 import { liftsDue } from './lift-hours.js';
 import { VAIL_SITES, snowPage, liftPage, parseVailSnow, parseVailTerrain } from './vail.js';
+import { mtnpowderUrl, parseMtnPowderSnow } from './mtnpowder.js';
 import { fetchInsights, OFFICES } from './insights.js';
 import { WOLF_CREEK_REPORT, parseWolfCreek } from './wolfcreek.js';
 import CAMS from './cams.json' with { type: 'json' };
@@ -485,6 +486,7 @@ export const REGIONS = {
   TAHOE: {
     code: 'TAHOE', name: 'Tahoe', resorts: TAHOE_RESORTS, planned: {}, tz: 'America/Los_Angeles', hours: 'CA',
     vailIds: ['heavenly', 'northstar', 'kirkwood'], liftSources: LIFT_SOURCES, cams: {},
+    mtnpowder: { palisades: 61 }, // (Alpine Meadows' own feed carries no snow report now: Palisades reports for both)
     offices: [
       { id: 'REV', name: 'Reno', covers: 'the Tahoe basin, Truckee and Mt Rose' },
       { id: 'STO', name: 'Sacramento', covers: 'the west slope: Donner Summit, Highway 50, Kirkwood to Dodge Ridge' },
@@ -494,6 +496,7 @@ export const REGIONS = {
   MAMMOTH: {
     code: 'MAMMOTH', name: 'Mammoth', resorts: MAMMOTH_RESORTS, planned: {}, tz: 'America/Los_Angeles', hours: 'CA',
     vailIds: [], liftSources: LIFT_SOURCES, cams: {},
+    mtnpowder: { 'mammoth-mountain': 60, june: 59 },
     offices: [{ id: 'REV', name: 'Reno', covers: 'the Eastern Sierra, Mammoth and June' }],
     alertArea: 'CA', alertPoints: [[37.68, -119.03]],
   },
@@ -616,6 +619,16 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
     }),
   ]);
   const liftsById = Object.fromEntries(liftIds.map((id, i) => [id, liftData[i]]));
+
+  // Alterra's mountains on MtnPowder: their full snow report (new snow, base, trails), every update.
+  const mtnpowder = Object.fromEntries(await pool(Object.entries(R.mtnpowder ?? {}), 2, async ([id, n]) => {
+    try {
+      return [id, parseMtnPowderSnow(await getJson(fetchFn, mtnpowderUrl(n), { backoff }))];
+    } catch (err) {
+      log(`Snow report failed for ${id}: ${err.message}`);
+      return [id, null];
+    }
+  }));
 
   // Vail Resorts' mountains: their own snow reports (every update) and lift/run status (ski hours,
   // like the other lift feeds; otherwise the last reading stands). See vail.js.
@@ -774,8 +787,12 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
       c = { isOpen: Boolean(fresh && wolf.updated === today && wolf.openPct > 0), report, own: true };
     }
     // No status anywhere else, but the resort's own lift feed says a lift is running today: open
-    // (California's resorts besides Vail's).
-    if (!c && liftsById[r.id]?.total) c = { isOpen: liftsToday(liftsById[r.id]) > 0, report: {}, own: true };
+    // (California's resorts besides Vail's), with its own snow report where it publishes one.
+    const mp = mtnpowder[r.id];
+    if (!c && (liftsById[r.id]?.total || mp)) {
+      const isOpen = liftsById[r.id]?.total ? liftsToday(liftsById[r.id]) > 0 : (mp?.trails?.open ?? 0) > 0;
+      c = { isOpen, report: mp ? { ...mp, source: LIFT_SOURCES[r.id]?.page ?? r.url } : {}, own: true };
+    }
     const live = Boolean(c);
     const p = planned[r.id] ?? {};
     const facts = live
