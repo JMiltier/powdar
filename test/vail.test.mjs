@@ -62,3 +62,10 @@ test('Ski Utah list: opening dates, TBA, closed for the season, and open with nu
   assert.equal(m.get('eagle-point').closedSeason, true);
   assert.deepEqual(m.get('brian-head'), { open: true, new24: 3, depth: 24 });
 });
+
+test('Vail snow report: Pacific time stamps, and a page of zeros is no report', () => {
+  const pst = parseVailSnow(page('snowReportData', { TwentyFourHourSnowfall: { Inches: '15' }, BaseDepth: { Inches: '8' }, CurrentSeason: { Inches: '41' }, LastUpdatedText: 'Updated November 19, 2026 at 6:00 AM PST' }));
+  assert.equal(pst.updated, '2026-11-19T14:00:00.000Z');
+  const zeros = { Inches: '0', Centimeters: '0' };
+  assert.equal(parseVailSnow(page('snowReportData', { TwentyFourHourSnowfall: zeros, FortyEightHourSnowfall: zeros, SevenDaySnowfall: zeros, BaseDepth: zeros, CurrentSeason: zeros, LastUpdatedText: 'Updated November 01, 2026 at 10:00 AM PST' })), null);
+});

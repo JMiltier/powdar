@@ -360,7 +360,9 @@ export function freshSnow(report, now) {
   if (!report?.updated) return report;
   const t = /^\d{4}-\d{2}-\d{2}$/.test(report.updated) ? Date.parse(`${report.updated}T14:00:00Z`) : Date.parse(report.updated);
   if (!Number.isFinite(t) || now - t <= 48 * 3_600_000) return report;
-  return { ...report, new24: null, new48: null, new7d: null, staleSince: report.updated };
+  // (A week or more old: its base and season total are stale too.)
+  const old = now - t > 7 * 24 * 3_600_000 ? { depth: null, seasonTotal: null } : {};
+  return { ...report, new24: null, new48: null, new72: null, new7d: null, ...old, staleSince: report.updated };
 }
 
 // The lifts number, meaning "lifts running today" the way the resorts' own reports do: those turning
@@ -432,8 +434,10 @@ export function snowLog(prev, today, report, modelPast = {}) {
 // weeks: reported ÷ modeled (each +1″, so a dry spell doesn't make wild ratios), capped at ½–3×, and
 // only partly trusted until there's plenty of snow to judge by (full weight from about 40″ reported
 // plus modeled: one storm is a hint, a few make a pattern). → { factor, reported, modeled, days } (factor 1 = no change).
+// (A day the resort logged 0″ while the models saw half a foot or more is a resort not measuring yet,
+// not a model gone wrong: it doesn't count.)
 export function modelCorrection(log) {
-  const both = (log ?? []).filter((e) => e.snow != null && e.model != null);
+  const both = (log ?? []).filter((e) => e.snow != null && e.model != null && !(e.snow === 0 && e.model >= 6));
   const reported = both.reduce((a, e) => a + e.snow, 0);
   const modeled = both.reduce((a, e) => a + e.model, 0);
   if (both.length < 2 || reported + modeled < 2) return { factor: 1, reported, modeled, days: both.length };

@@ -257,3 +257,11 @@ test('snowcast: WPC probability KML → 10/40/70 % polygons near Colorado, with 
   assert.equal(c.features.length, 1); // the 5 % contour and the far-away one are left out
   assert.equal(c.features[0].properties.prob, 10);
 });
+
+test('modelCorrection: a 0″ day under half a foot of model snow is a resort not measuring yet', async () => {
+  const { modelCorrection } = await import('../src/report.js');
+  // Kirkwood before its season: its page read 0 while the models (and its neighbors) had 2 feet.
+  const c = modelCorrection([{ date: '2026-11-17', snow: 0, model: 0 }, { date: '2026-11-18', snow: 0, model: 25.6 }, { date: '2026-11-19', snow: 3, model: 2.5 }]);
+  assert.equal(c.days, 2);
+  assert.ok(c.factor >= 1);
+});

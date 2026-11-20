@@ -63,9 +63,14 @@ const inches = (v) => {
 export function parseVailSnow(html) {
   const d = embedded(html, 'snowReportData');
   if (!d) return null;
-  // "Updated November 13, 2026 at 6:02 AM MST" → ISO time.
-  const m = /Updated (\w+ \d+, \d{4}) at (\d+:\d+ [AP]M) (M[SD]T)/.exec(d.LastUpdatedText ?? '');
-  const updated = m ? new Date(`${m[1]} ${m[2]} GMT${m[3] === 'MDT' ? '-0600' : '-0700'}`) : null;
+  // "Updated November 13, 2026 at 6:02 AM MST" (or PST: California's) → ISO time.
+  const m = /Updated (\w+ \d+, \d{4}) at (\d+:\d+ [AP]M) ([ECMP][SD]T)/.exec(d.LastUpdatedText ?? '');
+  const ZONES = { EST: '-0500', EDT: '-0400', CST: '-0600', CDT: '-0500', MST: '-0700', MDT: '-0600', PST: '-0800', PDT: '-0700' };
+  const updated = m ? new Date(`${m[1]} ${m[2]} GMT${ZONES[m[3]]}`) : null;
+  // A page of zeros (new snow, base and season all 0) is a mountain not reporting yet, not a report
+  // of no snow: Kirkwood's, before its season, read 0 under a storm that left its neighbors 2–4 feet.
+  const vals = [d.TwentyFourHourSnowfall, d.FortyEightHourSnowfall, d.SevenDaySnowfall, d.BaseDepth, d.CurrentSeason].map(inches);
+  if (vals.every((v) => !v)) return null;
   return {
     depth: inches(d.BaseDepth),
     new24: inches(d.TwentyFourHourSnowfall),
