@@ -37,3 +37,29 @@ export const SOCAL_RESORTS = [
   {id: 'mountain-high', name: 'Mountain High', short: 'Mtn High', at: [34.3701,-117.6895], elev: 7385, aspect: 'N', snotel: null, region: 'San Gabriels', nws: ['LOX',177,55], url: 'https://www.mthigh.com'},
   {id: 'mt-baldy', name: 'Mt. Baldy', short: 'Baldy', at: [34.2724,-117.6102], elev: 7521, aspect: 'N', snotel: null, region: 'San Gabriels', nws: ['SGX',52,85], url: 'https://www.mtbaldyresort.com'},
 ];
+
+// Announced opening days, 2026–27 (checked Nov 20, 2026 against each resort's own site, or news quoting
+// it; all "weather permitting"). Live status overrides these: a resort's lifts running says open, and
+// a planned day that passes without live confirmation reads "probably open". Not announced yet (TBA):
+// Alpine Meadows, Tahoe Donner, Sierra-at-Tahoe, Bear Mountain, Snow Summit, Snow Valley, Mt. Baldy.
+// Re-check each fall, and when a resort moves its date.
+export const CA_PLANNED = {
+  '2026-27': {
+    'mammoth-mountain': { open: '2026-11-05', opened: true }, // mammothmountain.com: opened 8 days early
+    'mt-rose': { open: '2026-11-06', opened: true }, // carsonnow.org: first West Coast opening
+    heavenly: { open: '2026-11-20' }, // skiheavenly.com hours page (California side)
+    northstar: { open: '2026-11-20' }, // northstarcalifornia.com hours page
+    boreal: { open: '2026-11-20' }, // rideboreal.com banner (moved up from Nov 27)
+    'soda-springs': { open: '2026-11-20' }, // skisodasprings.com
+    palisades: { open: '2026-11-21' }, // palisadestahoe.com (moved up from Nov 25)
+    'bear-valley': { open: '2026-11-21' }, // bearvalley.com blog
+    'dodge-ridge': { open: '2026-11-21' }, // dodgeridge.com
+    'sugar-bowl': { open: '2026-11-22', when: 'Nov 22 (passholders)' }, // sugarbowl.com; public Nov 27
+    'donner-ski-ranch': { open: '2026-11-28' }, // donnerskiranch.com lift status page
+    'mountain-high': { open: '2026-11-28' }, // mthigh.com snow report
+    'diamond-peak': { open: '2026-12-03' }, // diamondpeak.com news (conditions permitting)
+    kirkwood: { open: '2026-12-04' }, // kirkwood.com hours page
+    homewood: { open: '2026-12-11' }, // skihomewood.com
+    june: { open: '2026-12-19' }, // mammothmountain.com June opening day page
+  },
+};

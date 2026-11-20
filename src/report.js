@@ -2,7 +2,7 @@
 // so it runs the same in the GitHub Action, the local preview server and tests.
 import { RESORTS, PLANNED } from './resorts.js';
 import { UT_RESORTS } from './resorts-ut.js';
-import { TAHOE_RESORTS, MAMMOTH_RESORTS, SOCAL_RESORTS } from './resorts-ca.js';
+import { TAHOE_RESORTS, MAMMOTH_RESORTS, SOCAL_RESORTS, CA_PLANNED } from './resorts-ca.js';
 import { SKI_UTAH, parseSkiUtah } from './skiutah.js';
 import { MODELS, modelUrl, snowHours, uvUrl } from './models.js';
 import { ensembleUrl, summarizeEnsemble } from './ensemble.js';
@@ -484,7 +484,7 @@ export const REGIONS = {
   // California's three areas (src/resorts-ca.js), on Pacific time. No status feed like Colorado's or
   // Utah's: Vail Resorts' own pages, and the resorts' live lift feeds (a lift running: open).
   TAHOE: {
-    code: 'TAHOE', name: 'Tahoe', resorts: TAHOE_RESORTS, planned: {}, tz: 'America/Los_Angeles', hours: 'CA',
+    code: 'TAHOE', name: 'Tahoe', resorts: TAHOE_RESORTS, planned: CA_PLANNED, tz: 'America/Los_Angeles', hours: 'CA',
     vailIds: ['heavenly', 'northstar', 'kirkwood'], liftSources: LIFT_SOURCES, cams: {},
     mtnpowder: { palisades: 61 }, // (Alpine Meadows' own feed carries no snow report now: Palisades reports for both)
     offices: [
@@ -494,14 +494,14 @@ export const REGIONS = {
     alertArea: 'CA,NV', alertPoints: [[39.24, -120.2], [39.31, -120.34], [38.8, -120.03]],
   },
   MAMMOTH: {
-    code: 'MAMMOTH', name: 'Mammoth', resorts: MAMMOTH_RESORTS, planned: {}, tz: 'America/Los_Angeles', hours: 'CA',
+    code: 'MAMMOTH', name: 'Mammoth', resorts: MAMMOTH_RESORTS, planned: CA_PLANNED, tz: 'America/Los_Angeles', hours: 'CA',
     vailIds: [], liftSources: LIFT_SOURCES, cams: {},
     mtnpowder: { 'mammoth-mountain': 60, june: 59 },
     offices: [{ id: 'REV', name: 'Reno', covers: 'the Eastern Sierra, Mammoth and June' }],
     alertArea: 'CA', alertPoints: [[37.68, -119.03]],
   },
   SOCAL: {
-    code: 'SOCAL', name: 'SoCal', resorts: SOCAL_RESORTS, planned: {}, tz: 'America/Los_Angeles', hours: 'CA',
+    code: 'SOCAL', name: 'SoCal', resorts: SOCAL_RESORTS, planned: CA_PLANNED, tz: 'America/Los_Angeles', hours: 'CA',
     vailIds: [], liftSources: LIFT_SOURCES, cams: {},
     offices: [
       { id: 'SGX', name: 'San Diego', covers: 'the San Bernardino Mountains: Big Bear and Snow Valley' },
