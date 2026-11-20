@@ -68,12 +68,6 @@ const METRICS = {
   },
   next72: { kind: 'snow', get: (r) => r.forecast?.next72, range: (r) => r.forecast?.next72Range, steps: [1, 3, 6, 12], top: 'Most snow, next 3 days' },
   next7: { kind: 'snow', get: (r) => r.forecast?.next7, range: (r) => r.forecast?.next7Range, steps: [1, 3, 6, 12], top: 'Most snow, next 7 days' },
-  // Two weeks: the 7-day forecast plus days 8–14 (only the models that reach that far; rougher).
-  next14: {
-    kind: 'snow', get: (r) => (r.forecast?.week2 && r.forecast.next7 != null ? r.forecast.next7 + r.forecast.week2.mid : null),
-    range: (r) => (r.forecast?.week2 && r.forecast.next7Range ? [r.forecast.next7Range[0] + r.forecast.week2.range[0], r.forecast.next7Range[1] + r.forecast.week2.range[1]] : null),
-    steps: [2, 6, 12, 24], top: 'Most snow, next 14 days',
-  },
   // Snowpack at the nearest SNOTEL station as a % of normal for the date.
   season: { kind: 'season', get: (r) => station(r)?.pct ?? null },
   // Base depth: the resort's own report when it gives one (usually once open), otherwise NOAA's
@@ -570,11 +564,14 @@ function availableMetrics() {
   const rs = state.data?.resorts ?? [];
   const hasDates = rs.some((r) => r.dates?.open || r.dates?.close);
   // (Snowpack vs normal isn't a map view any more: it's on every resort row and page, and the overview.)
-  return ['past72', 'new24', 'next72', 'next7', 'next14', 'base', ...(hasDates ? ['dates'] : [])];
+  // (No 14-day view: past a week, the forecast can tell a stormy pattern from a dry one but not the
+  // inches at a resort. That signal is the "stormy pattern" note instead: see stormy().)
+  return ['past72', 'new24', 'next72', 'next7', 'base', ...(hasDates ? ['dates'] : [])];
 }
 function syncRibbon() {
   const avail = availableMetrics();
   if (state.metric === 'depth') state.metric = 'base'; // its old name
+  if (state.metric === 'next14') state.metric = 'next7'; // (the old 14-day view)
   if (!avail.includes(state.metric)) state.metric = 'new24';
   document.querySelector('[data-metric="dates"]').hidden = !avail.includes('dates');
 }
@@ -595,8 +592,24 @@ function ordered(all = false) {
 
 // ---------- rendering ----------
 
+// A stormy pattern next week (days 8–14): three-quarters of the ensemble runs (the European, American
+// and Canadian models each run 20–50 times) bring this resort at least 6″ that week. Amounts that far
+// out aren't trustworthy, but agreement on a storm cycle is.
+const STORMY_IN = 6;
+const stormy = (r) => r.forecast?.week2?.sources === 'ensemble' && (r.forecast.week2.range?.[0] ?? 0) >= STORMY_IN;
+// An area's: most of its resorts (with a week-2 outlook) stormy.
+function areaStormy(d) {
+  const known = (d?.resorts ?? []).filter((r) => r.forecast?.week2?.sources === 'ensemble');
+  return known.length > 0 && known.filter(stormy).length / known.length >= 0.5;
+}
+
+const legendHtml = (layer) => legendFor(layer);
+
 function renderHeadline() {
   const data = state.data;
+  // (The area's stormy-pattern chip, beside the name in the sheet's header: always in view, never cut
+  // off, and nothing on the map moves for it. On the West, each area's row says it instead.)
+  $('#stormy').hidden = !areaStormy(data);
   const m = METRICS[state.metric];
   let text;
   if (m.kind === 'dates') {
@@ -616,7 +629,7 @@ function renderHeadline() {
         ? `<strong>${above} above normal</strong> · ${below} below · top: <strong>${esc(best.name)} ${v}%</strong>`
         : 'Too early in the season to compare snowpack with normal';
     } else {
-      const quiet = { new24: 'No new snow in the last 24 hrs', next72: 'No real snow in the next 3 days', past72: 'No new snow in the last 3 days', next7: 'No real snow in the next 7 days', next14: 'No real snow in the next 14 days' };
+      const quiet = { new24: 'No new snow in the last 24 hrs', next72: 'No real snow in the next 3 days', past72: 'No new snow in the last 3 days', next7: 'No real snow in the next 7 days' };
       text = v >= 1 ? `${m.top}: <strong>${esc(best.name)} ${inches(v)}</strong>` : quiet[state.metric];
     }
   }
@@ -647,7 +660,7 @@ function shortStatus(r) {
   if (s.state === 'done') return 'Closed';
   return 'Opens TBA';
 }
-const METRIC_LABEL = { new24: 'Most −1d', past72: 'Most −3d', next72: 'Most +3d', next7: 'Most +7d', next14: 'Most +14d', base: 'Deepest', season: 'Snowpack', dates: 'Opening' };
+const METRIC_LABEL = { new24: 'Most −1d', past72: 'Most −3d', next72: 'Most +3d', next7: 'Most +7d', base: 'Deepest', season: 'Snowpack', dates: 'Opening' };
 
 function rowSub(r) {
   const s = r.status;
@@ -756,7 +769,7 @@ function renderList() {
     const lifts = r.report?.lifts?.total || r.report?.lifts?.open ? r.report.lifts : r.lifts?.total ? r.lifts : null;
     const lead = ['dates', 'base'].includes(state.metric) ? 'new24' : state.metric;
     const v = valueFor(r, lead);
-    const LABEL = { new24: '24 hr', past72: 'Last 3d', next72: 'Next 3d', next7: 'Next 7d', next14: 'Next 14d', season: 'Pack' };
+    const LABEL = { new24: '24 hr', past72: 'Last 3d', next72: 'Next 3d', next7: 'Next 7d', season: 'Pack' };
     const base = valueFor(r, 'base');
     const third = open
       ? { text: lifts ? (lifts.total ? `${lifts.open}/${lifts.total}` : `${lifts.open}`) : '–', label: 'Lifts', on: false }
@@ -834,7 +847,7 @@ function renderDetail(r) {
     }).join('')}
     </div>
     ${dayMore(f.days.find((d) => d.date === state.openDay))}
-    ${f.week2 ? `<p class="week2"><b>Days 8–14</b> about ${inches(f.week2.mid)} more${rangeText(f.week2.range) ? ` <span class="muted">(${rangeText(f.week2.range)})</span>` : ''}</p>` : ''}
+    ${f.week2 ? `<p class="week2"><b>Days 8–14</b> about ${inches(f.week2.mid)} more${rangeText(f.week2.range) ? ` <span class="muted">(${rangeText(f.week2.range)})</span>` : ''}${stormy(r) ? ' · <span class="stormy-note">stormy pattern likely</span>' : ''}</p>` : ''}
     <p class="fine">${unitLabel()} · wind ${windUnit()}${f.days.some((d) => d.uv != null) ? ' · UV at the day’s peak' : ''} · Tap a day for more</p>` : '<p class="muted">Forecast unavailable right now.</p>';
 
   // Where every number comes from, gathered at the very bottom for anyone curious.
@@ -1790,7 +1803,8 @@ function render() {
   $('#legend').classList.toggle('off', state.layer === 'none');
   $('#map').dataset.layer = state.layer; // (the light map dims a little under white snow)
   $('#map').dataset.snowStyle = state.snowStyle;
-  $('#legend').innerHTML = legendFor(state.layer);
+  // (The area's stormy-pattern note rides along with every layer's key: always on the map, never cut off.)
+  $('#legend').innerHTML = legendHtml(state.layer);
   $('#legend').classList.remove('pending');
   $('#updated').textContent = `Updated ${timeAgo(state.data.generated)}`;
 
@@ -1812,6 +1826,7 @@ function render() {
     $('#list').hidden = false;
     $('#detail').hidden = true;
     renderWestSheet();
+    $('#stormy').hidden = true;
   } else {
     if (overview) renderOverview();
     else if (r) renderDetail(r);
@@ -2272,7 +2287,7 @@ function startMap() {
     onOutlook: (season) => { state.outlookSeason = season; render(); },
     // Each radar frame: just update the key's button and time (no full re-render while playing).
     onRadar: (r) => { state.radar = r; syncRadarKey(); },
-    onCast: (c) => { state.cast = { ...state.cast, ...c }; if (state.layer === 'snowcast') $('#legend').innerHTML = legendFor('snowcast'); },
+    onCast: (c) => { state.cast = { ...state.cast, ...c }; if (state.layer === 'snowcast') $('#legend').innerHTML = legendHtml('snowcast'); },
     places: [...({ CO: CO_TOWNS, UT: UT_TOWNS, TAHOE: TAHOE_TOWNS, MAMMOTH: MAMMOTH_TOWNS, SOCAL: SOCAL_TOWNS }[state.code] ?? []), ...STATE_NAMES],
     // The labels and ⓘ buttons in the map's bottom-right corner (style.css: 30 px, 10 px from the right,
     // 10 and 48 px above the collapsed sheet; 12 and 50 on wide screens).
@@ -2401,7 +2416,7 @@ function renderWestSheet() {
   $('#list').innerHTML = `<p class="west-head">Ski areas <span class="muted">· tap one to go there</span></p>${all.map((x) => `
     <button type="button" class="row area-row${x.area.code === state.code ? ' is-current' : ''}" data-area-pick="${x.area.code}">
       <span class="area-main"><span class="row-name">${esc(x.area.name)}</span>
-        <span class="row-sub">${x.best ? `${esc(x.best.r.name)} · ` : ''}${x.open} of ${x.data.resorts.length} open</span></span>
+        <span class="row-sub">${x.best ? `${esc(x.best.r.name)} · ` : ''}${x.open} of ${x.data.resorts.length} open${areaStormy(x.data) ? ' · <span class="stormy-note">stormy next week</span>' : ''}</span></span>
       <b class="val lvl-${x.level}">${x.text}</b>
     </button>`).join('')}`;
 }
@@ -2414,7 +2429,7 @@ function openWest() {
       resorts: [], frame: AREAS.flatMap((a) => [a.at, ...a.box]), places: WEST_PLACES, getPadding: coveredPadding,
       onSelect: () => {}, onOutlook: (season) => { state.outlookSeason = season; render(); },
       onRadar: (r) => { state.radar = r; syncRadarKey(); },
-      onCast: (c) => { state.cast = { ...state.cast, ...c }; if (state.layer === 'snowcast') $('#legend').innerHTML = legendFor('snowcast'); },
+      onCast: (c) => { state.cast = { ...state.cast, ...c }; if (state.layer === 'snowcast') $('#legend').innerHTML = legendHtml('snowcast'); },
       west: { areas: AREAS, onPick: pickArea, onDismiss: closeWest },
     });
   } else west.refit();
@@ -2641,7 +2656,7 @@ document.addEventListener('click', (e) => {
     if (castDay) c.day = Math.min(3, Math.max(1, c.day + Number(castDay.dataset.castDay)));
     else c.amount = CAST_AMOUNTS[(CAST_AMOUNTS.indexOf(c.amount) + 1) % CAST_AMOUNTS.length];
     shownMap()?.setCast(c.day, c.amount);
-    $('#legend').innerHTML = legendFor('snowcast');
+    $('#legend').innerHTML = legendHtml('snowcast');
     return;
   }
   if (t.closest('[data-snow-cycle]')) {

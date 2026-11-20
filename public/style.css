@@ -481,8 +481,8 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 }
 @media (max-width: 380px) {
   .ribbon button { padding: 7px 7px; font-size: 0.82rem; }
-  .brand { flex-direction: column; align-items: flex-start; gap: 0; }
   h1 { font-size: 1.1rem; }
+  .stormy-more { display: none; } /* ("❄ Stormy": it fits beside the name) */
   .row { gap: 10px; padding: 10px 2px; }
   .val { min-width: 52px; padding: 4px 8px; font-size: 0.98rem; }
   .stat b { font-size: 1.35rem; }
@@ -1227,3 +1227,10 @@ body.west-open #filter-btn { display: none; }
 .install-hint { cursor: default; }
 .install-hint b { font-weight: 700; }
 .share-ic { width: 13px; height: 13px; vertical-align: -2px; }
+
+/* A stormy pattern next week: noticeable, not loud. */
+.stormy-note { font-weight: 700; color: #6a3fc1; white-space: nowrap; }
+:root[data-theme="dark"] .stormy-note { color: #b69cff; }
+.stormy-chip { padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, #6a3fc1 14%, transparent); }
+:root[data-theme="dark"] .stormy-chip { background: color-mix(in srgb, #b69cff 18%, transparent); }
+#stormy { font-size: 0.72rem; flex: none; }

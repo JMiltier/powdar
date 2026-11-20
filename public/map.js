@@ -872,7 +872,7 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
   // same for the same screen, padding and labels): a reload or a view switch is then instant. Bump
   // the version whenever the layout itself changes.
   const SAVED = 'powdar:layouts';
-  const LAYOUT_VERSION = 10;
+  const LAYOUT_VERSION = 11;
   const savedLayout = (key) => {
     try {
       const entry = JSON.parse(localStorage.getItem(SAVED) ?? '{}')[key];
@@ -935,15 +935,21 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
     }
     // Still a name squeezed to its number (a small or slow phone): the next size down too, kept if it
     // shows every name. (A hidden name is worse than slightly smaller text.)
-    for (let i = LABEL_SCALES.indexOf(scale) + 1; best.misses > 0 && i < LABEL_SCALES.length; i++) {
-      el.style.setProperty('--label-scale', LABEL_SCALES[i]);
-      const attempt = { ...computeLayout(size, pad, performance.now() + BUDGET_MS / 2, true, 7), scale: LABEL_SCALES[i] };
-      if (attempt.misses < best.misses) best = attempt;
+    // (First two more tries at this size, then each smaller size: three tries apiece, as above. Only
+    // when a name would otherwise go missing, so it costs nothing the rest of the time.)
+    const tries = [[scale, 31], [scale, 4099], ...LABEL_SCALES.slice(LABEL_SCALES.indexOf(scale) + 1).flatMap((k) => [[k, 7], [k, 101], [k, 2027]])];
+    for (const [k, seed] of tries) {
+      if (best.misses === 0) break;
+      el.style.setProperty('--label-scale', k);
+      const attempt = { ...computeLayout(size, pad, performance.now() + BUDGET_MS / 3, true, seed), scale: k };
+      if (attempt.misses < best.misses || (attempt.misses === best.misses && attempt.scale === best.scale && attempt.score < best.score)) best = attempt;
     }
     el.style.setProperty('--label-scale', best.scale);
     if (layoutCache.size > 40) layoutCache.clear();
     layoutCache.set(key, best);
-    saveLayout(key, best);
+    // (Kept on the device only when every name fits: one squeezed by a busy moment gets another try
+    // next time, instead of being kept for good.)
+    if (best.misses === 0) saveLayout(key, best);
     apply(best.result);
   }
 
