@@ -12,25 +12,28 @@ const num = (v) => {
 };
 
 // The feed → a report like the others (src/vail.js parseVailSnow): mid-mountain's figures where it has
-// them (what resorts usually quote), else the base area's, else the summit's.
-export function parseMtnPowderSnow(feed) {
+// them (what resorts usually quote), else the base area's, else the summit's. stations: other
+// measuring spots to read instead, for a mountain that shares its feed (Alpine Meadows' are Station5,
+// its mid-mountain, and Station4, its base, in Palisades'); then the resort-wide figures (season total,
+// runs) are left out, as they're the other mountain's.
+export function parseMtnPowderSnow(feed, stations = null) {
   const sr = feed?.SnowReport;
   if (!sr) return null;
-  const spots = [sr.MidMountainArea, sr.BaseArea, sr.SummitArea].filter(Boolean);
+  const spots = (stations ? stations.map((k) => sr[k]) : [sr.MidMountainArea, sr.BaseArea, sr.SummitArea]).filter(Boolean);
   const pick = (k) => spots.map((s) => num(s[k])).find((v) => v != null) ?? null;
   // "25 - 35" (base range): its middle, when no spot gives a depth.
   const range = String(sr.SnowBaseRangeIn ?? '').match(/(\d+)\s*-\s*(\d+)/);
-  const depth = pick('BaseIn') || (range ? Math.round((Number(range[1]) + Number(range[2])) / 2) : null);
+  const depth = pick('BaseIn') || (range && !stations ? Math.round((Number(range[1]) + Number(range[2])) / 2) : null);
   // "2026-11-19T13:25:39-0800" (no colon in the offset).
   const updated = sr.LastUpdate ? new Date(String(sr.LastUpdate).replace(/([+-]\d\d)(\d\d)$/, '$1:$2')) : null;
-  const trails = num(sr.TotalTrails) ? { open: num(sr.TotalOpenTrails) ?? 0, total: num(sr.TotalTrails) } : undefined;
+  const trails = !stations && num(sr.TotalTrails) ? { open: num(sr.TotalOpenTrails) ?? 0, total: num(sr.TotalTrails) } : undefined;
   return {
     depth,
     new24: pick('Last24HoursIn'),
     new48: pick('Last48HoursIn'),
     new72: pick('Last72HoursIn'),
     new7d: pick('Last7DaysIn'),
-    seasonTotal: num(sr.SeasonTotalIn),
+    seasonTotal: stations ? null : num(sr.SeasonTotalIn),
     surface: sr.BaseConditions && sr.BaseConditions !== '--' ? sr.BaseConditions : null,
     updated: updated && !Number.isNaN(updated.getTime()) ? updated.toISOString() : null,
     ...(trails ? { trails } : {}),

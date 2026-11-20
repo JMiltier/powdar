@@ -30,3 +30,13 @@ test('MtnPowder: falls back to the base area, and the base range for depth', () 
   assert.equal(r.new24, 4);
   assert.equal(r.depth, 25);
 });
+
+test("MtnPowder: a mountain read from another's feed (Alpine Meadows in Palisades')", () => {
+  const r = parseMtnPowderSnow({ SnowReport: { SeasonTotalIn: '69', SnowBaseRangeIn: '20 - 30', TotalTrails: 296, TotalOpenTrails: 0,
+    MidMountainArea: { Last7DaysIn: '63' }, Station5: { Last24HoursIn: '18', Last7DaysIn: '63' }, Station4: { Last24HoursIn: '14', Last7DaysIn: '52' } } }, ['Station5', 'Station4']);
+  assert.equal(r.new24, 18);
+  assert.equal(r.new7d, 63);
+  assert.equal(r.seasonTotal, null);
+  assert.equal(r.depth, null);
+  assert.equal(r.trails, undefined);
+});

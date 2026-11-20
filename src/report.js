@@ -416,17 +416,17 @@ export function reportDay(updated, today) {
 }
 
 // open: the resort is open now; openedOn: the day it opened. A resort that isn't open isn't measuring:
-// its 0″ isn't logged (snow it does report, is), and 0″ days from before it opened are dropped, so
-// the models' estimate stands for those (Purgatory's feed said 0″ under a 5″ storm the week before it
-// opened).
+// its 0″ isn't logged (snow it does report, is), and its logged 0″ days, and any from before it
+// opened, are dropped, so the models' estimate stands for those (Purgatory's feed said 0″ under a 5″
+// storm the week before it opened; Kirkwood's placeholder page, 0″ under two feet).
 export function snowLog(prev, today, report, modelPast = {}, { open = true, openedOn = null } = {}) {
   const log = new Map((prev ?? [])
-    .filter((e) => e.date >= addDays(today, -14) && !(e.snow === 0 && openedOn && e.date < openedOn))
+    .filter((e) => e.date >= addDays(today, -14) && !(e.snow === 0 && (!open || (openedOn && e.date < openedOn))))
     .map((e) => [e.date, { ...e }]));
   const put = (date, v) => {
     if (v == null || v < 0) return;
     const e = log.get(date) ?? { date, snow: 0 };
-    e.snow = Math.max(v, e.snow);
+    e.snow = Math.round(Math.max(v, e.snow) * 10) / 10; // (48 h − 24 h: 22.099999… → 22.1)
     if (modelPast[date] != null) e.model = modelPast[date];
     log.set(date, e);
   };
@@ -500,7 +500,12 @@ export const REGIONS = {
   TAHOE: {
     code: 'TAHOE', name: 'Tahoe', resorts: TAHOE_RESORTS, planned: CA_PLANNED, tz: 'America/Los_Angeles', hours: 'CA',
     vailIds: ['heavenly', 'northstar', 'kirkwood'], liftSources: LIFT_SOURCES, cams: {},
-    mtnpowder: { palisades: 61 }, // (Alpine Meadows' own feed carries no snow report now: Palisades reports for both)
+    // (Alpine Meadows' own feed carries no snow report now: its measuring spots are in Palisades'.)
+    mtnpowder: { palisades: 61, 'alpine-meadows': [61, ['Station5', 'Station4', 'Station6']] },
+    // One-time: these three's logged days before Nov 20, 2026 came from reports whose Pacific-time
+    // stamp wasn't read, so each update logged the same report as "yesterday" (Northstar's 21.7″ twice,
+    // Kirkwood's placeholder zeros). The models' estimate stands for those days instead.
+    logsFrom: { heavenly: '2026-11-20', northstar: '2026-11-20', kirkwood: '2026-11-20' },
     offices: [
       { id: 'REV', name: 'Reno', covers: 'the Tahoe basin, Truckee and Mt Rose' },
       { id: 'STO', name: 'Sacramento', covers: 'the west slope: Donner Summit, Highway 50, Kirkwood to Dodge Ridge' },
@@ -635,9 +640,11 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
   const liftsById = Object.fromEntries(liftIds.map((id, i) => [id, liftData[i]]));
 
   // Alterra's mountains on MtnPowder: their full snow report (new snow, base, trails), every update.
+  // (An entry is the feed's resort id, or [id, stations] for a mountain read from another's feed.)
   const mtnpowder = Object.fromEntries(await pool(Object.entries(R.mtnpowder ?? {}), 2, async ([id, n]) => {
+    const [feedId, stations] = Array.isArray(n) ? n : [n, null];
     try {
-      return [id, parseMtnPowderSnow(await getJson(fetchFn, mtnpowderUrl(n), { backoff }))];
+      return [id, parseMtnPowderSnow(await getJson(fetchFn, mtnpowderUrl(feedId), { backoff }), stations)];
     } catch (err) {
       log(`Snow report failed for ${id}: ${err.message}`);
       return [id, null];
@@ -839,7 +846,7 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
       // Runs and lifts open each day (the last 8 days), to see new terrain opening.
       terrainLog: terrainLog(prevResorts[r.id]?.terrainLog, today, report?.trails?.open ?? null, (liftsById[r.id] ?? report?.lifts)?.open ?? null),
       // What the resort reported falling, day by day (see snowLog).
-      snowLog: snowLog(prevResorts[r.id]?.snowLog, today, report, rawPast[i], { open: Boolean(facts.isOpen || (facts.opened && facts.open && facts.open <= today)), openedOn: facts.open && facts.open <= today ? facts.open : null }),
+      snowLog: snowLog((prevResorts[r.id]?.snowLog ?? []).filter((e) => !R.logsFrom?.[r.id] || e.date >= R.logsFrom[r.id]), today, report, rawPast[i], { open: Boolean(facts.isOpen || (facts.opened && facts.open && facts.open <= today)), openedOn: facts.open && facts.open <= today ? facts.open : null }),
       aspect: r.aspect ?? null,
       noaa: noaaSnow[i] ?? null,
       avgSnow: r.avgSnow ?? null,
