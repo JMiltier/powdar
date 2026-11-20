@@ -431,7 +431,10 @@ export function snowLog(prev, today, report, modelPast = {}, { open = true, open
     log.set(date, e);
   };
   const day = report?.new24 != null && (open || report.new24 > 0) ? reportDay(report.updated, today) : null;
-  if (day) {
+  // (A report with no time on it, Ski Utah's, that still says what yesterday's said is most likely the
+  // same report, not the same snow again: it isn't logged twice.)
+  const stale = day && !report.updated && report.new24 > 0 && !log.has(day) && log.get(addDays(day, -1))?.snow === report.new24;
+  if (day && !stale) {
     put(day, report.new24);
     if (report.new48 != null && !log.has(addDays(day, -1))) put(addDays(day, -1), Math.max(0, report.new48 - report.new24));
   }

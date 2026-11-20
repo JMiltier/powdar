@@ -208,6 +208,17 @@ test('snowLog: the 24-hour report is the day before, 48-hour fills the day befor
   assert.deepEqual(log.map((e) => e.snow), [3, 5, 0]);
 });
 
+test("snowLog: an untimed report that hasn't changed since yesterday isn't logged again", async () => {
+  const { snowLog } = await import('../src/report.js');
+  let log = snowLog([], '2026-11-20', { new24: 10 }); // Ski Utah: no time on it
+  log = snowLog(log, '2026-11-21', { new24: 10 }); // the same report, a day on
+  assert.deepEqual(log, [{ date: '2026-11-19', snow: 10 }]);
+  log = snowLog(log, '2026-11-21', { new24: 4 }); // updated
+  assert.deepEqual(log.map((e) => e.snow), [10, 4]);
+  // (A timed report that happens to match is logged.)
+  assert.equal(snowLog(log.slice(0, 1), '2026-11-21', { new24: 10, updated: '2026-11-21T14:00:00Z' }).length, 2);
+});
+
 test('modelCorrection: learns how far off the models run at a resort, cautiously', async () => {
   const { modelCorrection } = await import('../src/report.js');
   assert.equal(modelCorrection([]).factor, 1);
