@@ -2498,7 +2498,7 @@ const AREA_SOURCES = {
 function footText() {
   const snowpack = state.data?.resorts?.some((r) => r.station);
   return `Last 24 hrs: the resort’s own report when it has one, otherwise a weather-model estimate (est.).
-    A ring pulsing around a resort’s dot (and a flake by its name in the list): snowing there now, by the forecasts; its page says about how much has fallen since its morning report.
+    A small snowflake on a resort’s dot (and by its name in the list): snowing there now, by the forecasts; its page says about how much has fallen since its morning report.
     Forecast: a blend of the National Weather Service and five weather models (European, American GFS/HRRR, Canadian,
     NOAA’s National Blend and the UK Met Office), run for each resort’s mid-mountain elevation; days 8–14 from about 100
     ensemble runs. Weather: National Weather Service.${snowpack ? ' Snowpack: the nearest NRCS SNOTEL snow station against its normal.' : ''}
