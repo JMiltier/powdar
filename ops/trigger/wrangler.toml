@@ -1,0 +1,9 @@
+name = "powdar-trigger"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[observability]
+enabled = true
