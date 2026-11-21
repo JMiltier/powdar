@@ -723,18 +723,12 @@ function sinceReport(r) {
   const s = modelSnowBetween(r, t, Date.now());
   return s != null && s >= 0.5 ? { v: s, at: u } : null;
 }
-// The two together, in words: long ("Snowing now · about 2″ more since the 6:54 AM report (est.)") for
-// a row's flake, short ("snowing now · +2″ since 6:54 AM") under the resort page's 24-hour number.
-function snowNowText(r, short = false) {
+// The two together, under the resort page's 24-hour number ("snowing now · +2″ since 6:54 AM"), or ''.
+function snowNowText(r) {
   const more = sinceReport(r);
   const now = snowingNow(r);
-  if (!more && !now) return '';
-  const amount = more && inches(Math.max(1, Math.round(more.v)));
-  const at = more && /T/.test(more.at) ? clock(more.at) : null;
-  const parts = short
-    ? [now ? 'snowing now' : '', more ? `+${amount} since ${at ?? 'the report'}` : '']
-    : [now ? 'Snowing now' : '', more ? `about ${amount} more since ${at ? `the ${at} report` : 'the report'}` : ''];
-  return parts.filter(Boolean).join(' · ') + (short ? '' : ' (est.)');
+  const at = more && /T/.test(more.at) ? clock(more.at) : 'the report';
+  return [now ? 'snowing now' : '', more ? `+${inches(Math.max(1, Math.round(more.v)))} since ${at}` : ''].filter(Boolean).join(' · ');
 }
 
 function pastSnow(r, n) {
@@ -812,10 +806,9 @@ function renderList() {
   const rows = ordered().map(({ r }) => {
     const fav = state.favs.has(r.id);
     const open = r.status.state === 'open';
-    const snowNow = snowNowText(r);
     const head = `
       <span class="rr-head">
-        <span class="row-name">${esc(r.name)}</span>${fav ? `<span class="card-fav" aria-label="Favorite">${UI.starFilled}</span>` : ''}${r.night ? `<span class="row-night" title="Night skiing to ${esc(hourText(r.night.until))}" aria-label="Night skiing to ${esc(hourText(r.night.until))}">${UI.moon}</span>` : ''}${snowNow ? `<span class="row-snowing" title="${esc(snowNow)}" aria-label="${esc(snowNow)}">${UI.flake}</span>` : ''}
+        <span class="row-name">${esc(r.name)}</span>${fav ? `<span class="card-fav" aria-label="Favorite">${UI.starFilled}</span>` : ''}${r.night ? `<span class="row-night" title="Night skiing to ${esc(hourText(r.night.until))}" aria-label="Night skiing to ${esc(hourText(r.night.until))}">${UI.moon}</span>` : ''}
         <span class="pill pill-${esc(r.status.state)}">${esc(shortStatus(r))}</span>
       </span>`;
     // Three numbers on every row, the first following the map's view (highlighted), then base, then
@@ -962,7 +955,7 @@ function renderDetail(r) {
     </div>`;
   const top = `
     <div class="stats">
-      ${stat(inches(new24), new24Label, esc(snowNowText(r, true)))}
+      ${stat(inches(new24), new24Label, esc(snowNowText(r)))}
       ${stat(inches(f?.next72), 'next 3 days', rangeText(f?.next72Range))}
       ${stat(inches(f?.next7), 'next 7 days', rangeText(f?.next7Range))}
     </div>
@@ -1823,7 +1816,7 @@ function renderMap() {
     const fav = state.favs.has(r.id);
     const open = r.status.state === 'open';
     return {
-      r, text: v.text, label: v.long ?? v.text, level: v.level, selected, match: matches(r), snowing: snowingNow(r),
+      r, text: v.text, label: v.long ?? v.text, level: v.level, selected, match: matches(r),
       // Every number this resort shows in any view: labels are laid out for the widest of all of them,
       // so they never move from one view to another.
       texts: availableMetrics().map((m) => valueFor(r, m).text),
@@ -2498,7 +2491,7 @@ const AREA_SOURCES = {
 function footText() {
   const snowpack = state.data?.resorts?.some((r) => r.station);
   return `Last 24 hrs: the resort’s own report when it has one, otherwise a weather-model estimate (est.).
-    A small snowflake on a resort’s dot (and by its name in the list): snowing there now, by the forecasts; its page says about how much has fallen since its morning report.
+    On a resort’s page, “snowing now” and “+N″ since” the report: the forecasts’ estimate of what’s falling after the resort’s morning report.
     Forecast: a blend of the National Weather Service and five weather models (European, American GFS/HRRR, Canadian,
     NOAA’s National Blend and the UK Met Office), run for each resort’s mid-mountain elevation; days 8–14 from about 100
     ensemble runs. Weather: National Weather Service.${snowpack ? ' Snowpack: the nearest NRCS SNOTEL snow station against its normal.' : ''}

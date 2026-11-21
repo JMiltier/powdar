@@ -356,14 +356,6 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 }
 .pin-dot.is-empty { background: #9aa4b1; }
 .pin-dot.is-selected { background: #e8a400; transform: scale(1.3); }
-.pin-dot.is-snowing::before {
-  content: ""; position: absolute; right: -12px; top: -12px; width: 15px; height: 15px; border-radius: 50%; pointer-events: none;
-  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9M9.5 4.5 12 7l2.5-2.5M9.5 19.5 12 17l2.5 2.5' fill='none' stroke='%232f7be0' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 11px no-repeat; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22);
-  animation: snowing 2.4s ease-in-out infinite;
-}
-:root[data-theme="dark"] .pin-dot.is-snowing::before { background-color: #1b2433; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9M9.5 4.5 12 7l2.5-2.5M9.5 19.5 12 17l2.5 2.5' fill='none' stroke='%238cc0ff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25); }
-@keyframes snowing { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(30deg); } }
-@media (prefers-reduced-motion: reduce) { .pin-dot.is-snowing::before { animation: none; } }
 /* Bigger invisible tap target around the dot. */
 .pin-dot::after { content: ""; position: absolute; inset: -9px; }
 .pin.hidden .pin-bubble, .pin.hidden .pin-tail, .pin-bubble.is-empty { display: none; }
@@ -1084,10 +1076,6 @@ body.reordering, body.reordering * { user-select: none; cursor: grabbing; }
 /* Night skiing: a small moon by the name, and the hours under it on the resort's page. */
 .row-night { display: inline-grid; color: #6d5bd0; }
 .row-night .ic { width: 13px; height: 13px; }
-/* Snowing there now (by the forecasts): a flake by the name in the list, and one on its map dot. */
-.row-snowing { display: inline-grid; color: #2f7be0; }
-.row-snowing .ic { width: 13px; height: 13px; }
-:root[data-theme="dark"] .row-snowing { color: #8cc0ff; }
 .night { display: inline-flex; align-items: center; gap: 3px; color: #6d5bd0; font-weight: 600; }
 .night .ic { width: 12px; height: 12px; }
 :root[data-theme="dark"] .row-night, :root[data-theme="dark"] .night { color: #b3a6ff; }

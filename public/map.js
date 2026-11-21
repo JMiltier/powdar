@@ -1551,7 +1551,6 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
       pin.val.className = `pin-val lvl-${item.level}`;
       pin.dot.classList.toggle('is-empty', empty);
       pin.dot.classList.toggle('is-selected', item.selected);
-      pin.dot.classList.toggle('is-snowing', Boolean(item.snowing)); // (the forecasts have it snowing there now)
       pin.bubble.setAttribute('aria-label', `${item.r.name}: ${item.label}`);
       pin.marker.setZIndexOffset(item.selected ? 1000 : -i);
       if (item.selected) selectedPin = pin;
