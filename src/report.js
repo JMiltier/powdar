@@ -375,6 +375,15 @@ export async function getText(fetchFn, url, { tries = 3, backoff = 2000 } = {}) 
 // The resort's live lift feed beats the once-a-morning snow report for lift counts.
 // A report not updated in over two days: its 24-hour / 48-hour / 7-day snow is old news, not today's
 // (the depth, surface and season total still stand). Marked so the app can say how old it is.
+// ("2026-11-21T06:54:18.757032-07:00": Colorado Ski Country's six-digit seconds, trimmed to read safely.)
+export const isoMs = (iso) => Date.parse(String(iso ?? '').replace(/(\.\d{3})\d+/, '$1'));
+// A resort's own report's snow numbers, to lay over another source's (nulls don't erase what's there).
+export function newerSnow(mp) {
+  const out = { new24: mp.new24, new48: mp.new48, new72: mp.new72, new7d: mp.new7d, updated: mp.updated };
+  for (const k of ['depth', 'seasonTotal', 'surface']) if (mp[k] != null) out[k] = mp[k];
+  return out;
+}
+
 export function freshSnow(report, now) {
   if (!report?.updated) return report;
   const t = /^\d{4}-\d{2}-\d{2}$/.test(report.updated) ? Date.parse(`${report.updated}T14:00:00Z`) : Date.parse(report.updated);
@@ -507,6 +516,9 @@ export const REGIONS = {
     code: 'CO', name: 'Colorado', resorts: RESORTS, planned: PLANNED, csc: true,
     vailIds: ['vail', 'beaver-creek', 'breckenridge', 'keystone', 'crested-butte'], liftSources: LIFT_SOURCES, cams: CAMS,
     offices: OFFICES, alertArea: 'CO', wolfCreek: true,
+    // Their own snow reports too (Alterra's, on MtnPowder): they often update after posting to
+    // Colorado Ski Country in the morning (A-Basin, Nov 21: 0″ at 6 AM there, 3″ at noon on its own).
+    mtnpowder: { 'arapahoe-basin': 93, steamboat: 6, 'winter-park': 5 },
   },
   UT: {
     code: 'UT', name: 'Utah', resorts: UT_RESORTS, planned: {}, skiUtah: true, hours: 'UT',
@@ -831,6 +843,11 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
     if (!c && (liftsById[r.id]?.total || mp)) {
       const isOpen = liftsById[r.id]?.total ? liftsToday(liftsById[r.id]) > 0 : (mp?.trails?.open ?? 0) > 0;
       c = { isOpen, report: mp ? { ...mp, source: LIFT_SOURCES[r.id]?.page ?? r.url } : {}, own: true };
+    }
+    // A resort on Colorado Ski Country's feed that also publishes its own report: its snow numbers from
+    // whichever was updated last (lifts and runs stay with the live feeds).
+    if (c && !c.vail && !c.own && mp?.updated && Date.parse(mp.updated) > (isoMs(c.report?.updated) || 0)) {
+      c = { ...c, report: { ...c.report, ...newerSnow(mp), source: LIFT_SOURCES[r.id]?.page ?? r.url } };
     }
     const live = Boolean(c);
     const p = planned[r.id] ?? {};

@@ -2489,7 +2489,7 @@ setInterval(() => {
 
 // Where the list's numbers come from, for the area showing (at the bottom of the list).
 const AREA_SOURCES = {
-  CO: 'Open status, lifts and snow totals: Colorado Ski Country USA and the resorts’ own reports; Vail Resorts’ mountains (Vail, Beaver Creek, Breckenridge, Keystone, Crested Butte) from their own pages. Typical season snowfall: ZRankings.',
+  CO: 'Open status, lifts and snow totals: Colorado Ski Country USA and the resorts’ own reports (A-Basin, Winter Park and Steamboat: whichever was updated last); Vail Resorts’ mountains (Vail, Beaver Creek, Breckenridge, Keystone, Crested Butte) from their own pages. Typical season snowfall: ZRankings.',
   UT: 'Open status and snow totals: Ski Utah; Park City from Vail Resorts’ own pages.',
   TAHOE: 'Heavenly, Northstar and Kirkwood: Vail Resorts’ own pages. Palisades: its own snow report and lift status; Alpine Meadows and Boreal: live lift status (open when a lift is running). The rest: forecasts and NOAA’s snow estimate, with announced opening dates where there are any.',
   MAMMOTH: 'Mammoth and June: their own snow reports and live lift status (open when a lift is running).',

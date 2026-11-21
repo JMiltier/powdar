@@ -230,6 +230,14 @@ test("snowLog: an untimed report that hasn't changed since yesterday isn't logge
   assert.equal(snowLog(log.slice(0, 1), '2026-11-21', { new24: 10, updated: '2026-11-21T14:00:00Z' }).length, 2);
 });
 
+test("newerSnow: a resort's own later report replaces the snow numbers, keeping what it leaves blank", async () => {
+  const { newerSnow, isoMs } = await import('../src/report.js');
+  const csc = { new24: 0, new48: 0, depth: 18, surface: 'P/PP', updated: '2026-11-21T06:00:00-07:00' };
+  const own = { new24: 3, new48: 3, new72: 3, new7d: 3, depth: null, seasonTotal: 10, surface: null, updated: '2026-11-21T19:03:39.000Z' };
+  assert.deepEqual({ ...csc, ...newerSnow(own) }, { new24: 3, new48: 3, new72: 3, new7d: 3, depth: 18, seasonTotal: 10, surface: 'P/PP', updated: own.updated });
+  assert.equal(isoMs('2026-11-21T06:54:18.757032-07:00'), Date.parse('2026-11-21T13:54:18.757Z'));
+});
+
 test('modelCorrection: learns how far off the models run at a resort, cautiously', async () => {
   const { modelCorrection } = await import('../src/report.js');
   assert.equal(modelCorrection([]).factor, 1);
