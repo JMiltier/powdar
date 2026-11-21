@@ -32,7 +32,7 @@ async function published(file) {
 }
 const liveCo = (process.env.LIVE_URL || DATA_BRANCH) ? await published('data/co.json') : null;
 // (Not when the saved forecast predates a field the app now reads: then it's fetched fresh.)
-const currentShape = (d) => d?.resorts?.every((r) => !r.forecast || r.forecast.pastDays)
+const currentShape = (d) => d?.resorts?.every((r) => !r.forecast || (r.forecast.pastDays && 'hourly' in r.forecast))
   && d.resorts.some((r) => r.forecast?.days?.some((x) => x.detail || x.nightDetail))
   // Ensembles there, or tried within the hour (so a failing ensemble service doesn't mean refetching
   // every model on every run).
@@ -115,7 +115,8 @@ async function buildArea(code) {
   try {
     const prev = await published(file);
     const age = Date.now() - Date.parse(prev?.sources?.modelsAt ?? 0);
-    const skip = Boolean(prev && age < 2 * 3_600_000);
+    // (Forecasts from before the hour-by-hour estimate was added are refetched.)
+    const skip = Boolean(prev && age < 2 * 3_600_000 && prev.resorts?.every((r) => !r.forecast || 'hourly' in r.forecast));
     const rep = await buildReport({
       region: R, log: (msg) => console.warn(`${R.name}: ${msg}`), skipModels: skip,
       prevLifts: Object.fromEntries((prev?.resorts ?? []).filter((r) => r.lifts).map((r) => [r.id, r.lifts])),
