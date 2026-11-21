@@ -52,6 +52,7 @@ export const UI = {
   star: stroke('M12 3.6l2.6 5.3 5.8.85-4.2 4.1 1 5.8L12 16.9l-5.2 2.75 1-5.8-4.2-4.1 5.8-.85z'),
   starFilled: svg('<path d="M12 3.6l2.6 5.3 5.8.85-4.2 4.1 1 5.8L12 16.9l-5.2 2.75 1-5.8-4.2-4.1 5.8-.85z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>', 'ic ic-ui'),
   moon: svg('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" fill="currentColor"/>', 'ic ic-ui ic-moon'),
+  flake: stroke('M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9'),
   info: svg('<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 11v5.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="7.6" r="1.35" fill="currentColor"/>', 'ic ic-ui'),
   // (index.html carries copies of info and layers, so they show before the script runs.)
   // Map layers: Powdar's snowflake (the logo's, one branch pair per arm) inside full radar rings that

@@ -42,6 +42,17 @@ test('NWS forecast is bucketed into Colorado days in inches and °F', () => {
   assert.deepEqual(f.sources, ['nws']);
 });
 
+test('blendForecast: the last and next 24 hours, hour by hour, the middle of the forecasts', () => {
+  const hr = 3_600_000;
+  const start = Math.floor(NOW.getTime() / hr) * hr;
+  const src = (id, v) => ({ id, hours: [-2, -1, 0, 1].map((k) => ({ t: start + k * hr + 1_800_000, v })) });
+  const { hourly } = blendForecast({ sources: [src('a', 0.1), src('b', 0.3), src('c', 0.2)] }, NOW);
+  assert.equal(hourly.from, start - 24 * hr);
+  assert.equal(hourly.v.length, 48);
+  assert.deepEqual(hourly.v.slice(22, 26), [0.2, 0.2, 0.2, 0.2]);
+  assert.equal(hourly.v[0], null);
+});
+
 test('blendForecast returns null with no usable source', () => {
   assert.equal(blendForecast({ nws: {}, sources: [{ id: 'nws', hours: nwsSnowHours({}) }] }, NOW), null);
 });

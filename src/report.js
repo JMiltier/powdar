@@ -249,8 +249,23 @@ export function blendForecast({ sources, nws, periods, ens = null }, now) {
     waterAhead.push(cum);
   }
 
+  // The last 24 hours and the next 24, hour by hour (the middle of the forecasts that have each hour):
+  // what's falling now, and how much has fallen since a resort's report, whenever the app is opened.
+  // { from: the first hour's start (ms), v: [inches in each hour] }.
+  const from = Math.floor(nowMs / HOUR) * HOUR - 24 * HOUR;
+  const byHour = Array.from({ length: 48 }, () => []);
+  for (const { hours } of usable) {
+    for (const { t, v } of hours) {
+      const k = Math.floor((t - from) / HOUR);
+      if (k >= 0 && k < 48) byHour[k].push(v);
+    }
+  }
+  const middle = (a) => { const s2 = [...a].sort((x, y) => x - y); const n = s2.length; return n % 2 ? s2[(n - 1) / 2] : (s2[n / 2 - 1] + s2[n / 2]) / 2; };
+  const hourly = byHour.some((a) => a.length) ? { from, v: byHour.map((a) => (a.length ? Math.round(middle(a) * 100) / 100 : null)) } : null;
+
   return {
     days,
+    hourly,
     past24: p24?.mid ?? null,
     pastDays,
     past24Range: p24 ? [p24.lo, p24.hi] : null,
@@ -840,6 +855,9 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
       // Opening and closing days for this season; null when unknown.
       dates: { open: facts.open ?? null, close: facts.close ?? null, when: facts.when ?? null, planned: !live || Boolean(c?.vail || c?.own) },
       report,
+      // Its key in Colorado Ski Country's feed, when that's where its report comes from: the app reads
+      // the feed itself too (it's open to browsers), so a report posted since this build shows at once.
+      ...(r.csc && c && !c.vail && !c.own ? { csc: r.csc } : {}),
       forecast: forecasts[i],
       lifts: liftsById[r.id] ?? null,
       night: nightFor(r, liftsById[r.id], today, live && (c?.isOpen ?? true)),

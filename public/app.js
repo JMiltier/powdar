@@ -170,7 +170,7 @@ const monthDay = (ymd) => new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US
 const weekday = (ymd, today) => (ymd === today ? 'Today' : new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short' }));
 
 // "10:42 AM" in Colorado time.
-const clock = (iso) => new Date(iso).toLocaleTimeString('en-US', { timeZone: areaZone(), hour: 'numeric', minute: '2-digit' });
+const clock = (iso) => new Date(isoMs(iso)).toLocaleTimeString('en-US', { timeZone: areaZone(), hour: 'numeric', minute: '2-digit' });
 
 function timeAgo(iso) {
   const mins = Math.round((Date.now() - Date.parse(iso)) / 60_000);
@@ -611,6 +611,8 @@ function areaStormy(d) {
 
 const legendHtml = (layer) => legendFor(layer);
 
+const buildStale = (data) => Date.now() - Date.parse(data?.generated ?? 0) > 3_600_000;
+
 function renderHeadline() {
   const data = state.data;
   // (The area's stormy-pattern chip, beside the name in the sheet's header: always in view, never cut
@@ -640,7 +642,8 @@ function renderHeadline() {
     }
   }
   // When the data is from rides along at the end (tap it to refresh, as the old "Updated" line did).
-  $('#headline').innerHTML = `${text} <button type="button" class="when" data-refresh title="Refresh now" aria-label="Updated ${esc(timeAgo(data.generated))}. Refresh now">· <span class="when-text">${esc(timeAgo(data.generated))}</span><svg class="refresh-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
+  // (Over an hour old, it says so in amber: the updates have stalled, so the forecasts are behind.)
+  $('#headline').innerHTML = `${text} <button type="button" class="when${buildStale(data) ? ' stale' : ''}" data-refresh title="Refresh now" aria-label="Updated ${esc(timeAgo(data.generated))}. Refresh now">· <span class="when-text">${esc(timeAgo(data.generated))}</span><svg class="refresh-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
 }
 
 // "Open · 3 of 24 lifts · 2% of runs", "Opens Fri, Nov 20", …
@@ -693,6 +696,46 @@ function pastTotal(r, n, own) {
 const past72 = (r) => pastTotal(r, 3, r.report?.new72);
 const past7 = (r) => pastTotal(r, 7, r.report?.new7d);
 const pastToday = (r) => ({ date: state.data.today, snow: r.snowLog.find((e) => e.date === state.data.today).snow, est: false });
+
+// Snow on the way down now and since the resort's report, from the forecasts' hour-by-hour estimate
+// (the build's, read at this moment, so it holds between updates): a resort's report comes once a
+// morning, and a storm keeps going after it.
+const HOUR_MS = 3_600_000;
+function modelSnowBetween(r, a, b) {
+  const h = r.forecast?.hourly;
+  if (!h || b > h.from + h.v.length * HOUR_MS || a < h.from) return null;
+  let s = 0;
+  h.v.forEach((v, i) => {
+    const t0 = h.from + i * HOUR_MS;
+    const o = Math.min(b, t0 + HOUR_MS) - Math.max(a, t0);
+    if (o > 0 && v) s += (v * o) / HOUR_MS;
+  });
+  return s;
+}
+// Snowing now: the hour just gone and the one coming bring 0.2″ or more between them.
+const snowingNow = (r) => (modelSnowBetween(r, Date.now() - HOUR_MS, Date.now() + HOUR_MS) ?? 0) >= 0.2;
+// More since the report (an hour or more old, current): half an inch or more by the forecasts.
+function sinceReport(r) {
+  const u = r.report?.updated;
+  if (!u || r.report.staleSince || r.report.new24 == null) return null;
+  const t = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(u) ? `${u}T14:00:00Z` : u);
+  if (!Number.isFinite(t) || Date.now() - t < HOUR_MS) return null;
+  const s = modelSnowBetween(r, t, Date.now());
+  return s != null && s >= 0.5 ? { v: s, at: u } : null;
+}
+// The two together, in words: long ("Snowing now · about 2″ more since the 6:54 AM report (est.)") for
+// a row's flake, short ("snowing now · +2″ since 6:54 AM") under the resort page's 24-hour number.
+function snowNowText(r, short = false) {
+  const more = sinceReport(r);
+  const now = snowingNow(r);
+  if (!more && !now) return '';
+  const amount = more && inches(Math.max(1, Math.round(more.v)));
+  const at = more && /T/.test(more.at) ? clock(more.at) : null;
+  const parts = short
+    ? [now ? 'snowing now' : '', more ? `+${amount} since ${at ?? 'the report'}` : '']
+    : [now ? 'Snowing now' : '', more ? `about ${amount} more since ${at ? `the ${at} report` : 'the report'}` : ''];
+  return parts.filter(Boolean).join(' · ') + (short ? '' : ' (est.)');
+}
 
 function pastSnow(r, n) {
   const today = state.data.today;
@@ -769,9 +812,10 @@ function renderList() {
   const rows = ordered().map(({ r }) => {
     const fav = state.favs.has(r.id);
     const open = r.status.state === 'open';
+    const snowNow = snowNowText(r);
     const head = `
       <span class="rr-head">
-        <span class="row-name">${esc(r.name)}</span>${fav ? `<span class="card-fav" aria-label="Favorite">${UI.starFilled}</span>` : ''}${r.night ? `<span class="row-night" title="Night skiing to ${esc(hourText(r.night.until))}" aria-label="Night skiing to ${esc(hourText(r.night.until))}">${UI.moon}</span>` : ''}
+        <span class="row-name">${esc(r.name)}</span>${fav ? `<span class="card-fav" aria-label="Favorite">${UI.starFilled}</span>` : ''}${r.night ? `<span class="row-night" title="Night skiing to ${esc(hourText(r.night.until))}" aria-label="Night skiing to ${esc(hourText(r.night.until))}">${UI.moon}</span>` : ''}${snowNow ? `<span class="row-snowing" title="${esc(snowNow)}" aria-label="${esc(snowNow)}">${UI.flake}</span>` : ''}
         <span class="pill pill-${esc(r.status.state)}">${esc(shortStatus(r))}</span>
       </span>`;
     // Three numbers on every row, the first following the map's view (highlighted), then base, then
@@ -918,7 +962,7 @@ function renderDetail(r) {
     </div>`;
   const top = `
     <div class="stats">
-      ${stat(inches(new24), new24Label)}
+      ${stat(inches(new24), new24Label, esc(snowNowText(r, true)))}
       ${stat(inches(f?.next72), 'next 3 days', rangeText(f?.next72Range))}
       ${stat(inches(f?.next7), 'next 7 days', rangeText(f?.next7Range))}
     </div>
@@ -1779,7 +1823,7 @@ function renderMap() {
     const fav = state.favs.has(r.id);
     const open = r.status.state === 'open';
     return {
-      r, text: v.text, label: v.long ?? v.text, level: v.level, selected, match: matches(r),
+      r, text: v.text, label: v.long ?? v.text, level: v.level, selected, match: matches(r), snowing: snowingNow(r),
       // Every number this resort shows in any view: labels are laid out for the widest of all of them,
       // so they never move from one view to another.
       texts: availableMetrics().map((m) => valueFor(r, m).text),
@@ -2346,6 +2390,62 @@ function startMap() {
   }
 }
 
+// Colorado Ski Country's feed, read here as well as at each build (it's small, and open to browsers):
+// a report a resort posts after the last build shows as soon as the app opens, however long the build
+// takes to come round. Only the snow numbers and base, and only where they're newer than the build's.
+const CSC_FEED = 'https://snow.coloradoski.com/view/publicreport-feed';
+// ("…06:54:18.757032-07:00": six digits of seconds, which not every browser reads.)
+const isoMs = (iso) => Date.parse(String(iso ?? '').replace(/(\.\d{3})\d+/, '$1'));
+async function liveCsc(data) {
+  if (!data?.resorts?.some((r) => r.csc && r.report)) return false;
+  let feed;
+  try {
+    const res = await fetch(CSC_FEED, { cache: 'no-store' });
+    if (!res.ok) return false;
+    feed = await res.json();
+  } catch {
+    return false;
+  }
+  const byKey = new Map((feed.open_resorts ?? []).map((e) => [e.resort?.key, e.snow_report]));
+  const n = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  let changed = false;
+  for (const r of data.resorts) {
+    const s = r.csc && r.report ? byKey.get(r.csc) : null;
+    if (!s?.updated || !(isoMs(s.updated) > (isoMs(r.report.updated) || 0))) continue;
+    const { staleSince, ...rest } = r.report;
+    r.report = {
+      ...rest,
+      new24: n(s.snow_total_24_hour),
+      new48: n(s.snow_total_48_hour),
+      depth: n(s.mid_mountain_snow_depth) ?? rest.depth ?? null,
+      surface: s.surface_conditions || rest.surface || null,
+      updated: s.updated,
+    };
+    logReport(r, data.today);
+    changed = true;
+  }
+  return changed;
+}
+// The report into the resort's day-by-day log, the way the build does it (src/report.js reportDay,
+// snowLog): an afternoon report covers today, a morning one yesterday; its 48 hours fill the day before.
+function logReport(r, today) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: areaZone(), year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', hourCycle: 'h23' })
+    .formatToParts(new Date(isoMs(r.report.updated))).map((x) => [x.type, x.value]));
+  const ymd = `${p.year}-${p.month}-${p.day}`;
+  const day = Number(p.hour) >= 15 ? ymd : addDays(ymd, -1);
+  if (day < addDays(today, -2) || r.report.new24 == null) return;
+  const log = new Map((r.snowLog ?? []).map((e) => [e.date, { ...e }]));
+  const put = (date, v) => {
+    if (v == null || v < 0) return;
+    const e = log.get(date) ?? { date, snow: 0 };
+    e.snow = Math.round(Math.max(v, e.snow) * 10) / 10;
+    log.set(date, e);
+  };
+  put(day, r.report.new24);
+  if (r.report.new48 != null && !log.has(addDays(day, -1))) put(addDays(day, -1), Math.max(0, r.report.new48 - r.report.new24));
+  r.snowLog = [...log.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
 async function load() {
   document.body.classList.add('refreshing');
   const code = state.code;
@@ -2372,6 +2472,9 @@ async function load() {
   startMap();
   render();
   hintWest();
+  // (Then any report posted since the build, straight from the source.)
+  const shown = state.data;
+  if (code === 'CO') liveCsc(shown).then((changed) => { if (changed && state.data === shown) render(); });
   // (The spin shows for at least a moment, so a quick refresh still reads as one.)
   setTimeout(() => document.body.classList.remove('refreshing'), 500);
 }
@@ -2381,6 +2484,7 @@ setInterval(() => {
   if (Date.now() - state.loadedAt > RELOAD_AFTER_MS) return load();
   const t = $('.when-text');
   if (t) t.textContent = timeAgo(state.data.generated);
+  $('.when')?.classList.toggle('stale', buildStale(state.data));
 }, 60_000);
 
 // Where the list's numbers come from, for the area showing (at the bottom of the list).
@@ -2394,10 +2498,11 @@ const AREA_SOURCES = {
 function footText() {
   const snowpack = state.data?.resorts?.some((r) => r.station);
   return `Last 24 hrs: the resort’s own report when it has one, otherwise a weather-model estimate (est.).
+    A ring pulsing around a resort’s dot (and a flake by its name in the list): snowing there now, by the forecasts; its page says about how much has fallen since its morning report.
     Forecast: a blend of the National Weather Service and five weather models (European, American GFS/HRRR, Canadian,
     NOAA’s National Blend and the UK Met Office), run for each resort’s mid-mountain elevation; days 8–14 from about 100
     ensemble runs. Weather: National Weather Service.${snowpack ? ' Snowpack: the nearest NRCS SNOTEL snow station against its normal.' : ''}
-    ${AREA_SOURCES[state.code] ?? ''} Live lift status comes straight from resorts that publish it.`;
+    ${AREA_SOURCES[state.code] ?? ''}${state.code === 'CO' ? ' Colorado Ski Country’s reports are also read live each time the app opens.' : ''} Live lift status comes straight from resorts that publish it.`;
 }
 
 // ---------- the West: every area at once ----------
