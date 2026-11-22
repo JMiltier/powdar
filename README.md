@@ -51,7 +51,7 @@ Colorado stays hand-curated in `src/resorts.js` (Colorado Ski Country feed, open
 A GitHub Action (`.github/workflows/update.yml`) runs every 15 minutes during lift hours and hourly overnight
 (triggered by a Cloudflare Worker on a 5-minute cron, `ops/trigger/`, which starts a run only once the published
 data is due for one; by the same check in a launchd job on the maintainer's Mac,
-`~/Library/LaunchAgents/com.powdar.trigger.plist`; and by GitHub's own scheduler, which can lag by hours): it runs the tests, fetches fresh data into
+`~/Library/LaunchAgents/com.powdar.trigger.plist` (every 5 minutes by the clock: StartCalendarInterval, since this Mac never fires StartInterval timers); and by GitHub's own scheduler, which can lag by hours): it runs the tests, fetches fresh data into
 `public/data.json` and publishes `public/` to GitHub Pages. Colorado refreshes fully every run; other states refresh forecasts,
 snowpack and NOAA snow depth about every 4 hours (a few states per run, to stay inside Open-Meteo's free
 allowance) and live lifts every run. Each state is written to `public/data/<state>.json`, with `public/states.json`
