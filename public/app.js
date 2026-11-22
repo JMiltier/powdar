@@ -55,9 +55,9 @@ const SOURCE_NAMES = {
 
 // What the map and list show. `steps` are the upper bounds of each color level.
 const METRICS = {
-  // The resort's own report when it has one, otherwise the weather models' estimate.
+  // The resort's own report while it's current, otherwise the weather models' estimate (last24).
   new24: {
-    kind: 'snow', get: (r) => r.report?.new24 ?? r.forecast?.past24, est: (r) => r.report?.new24 == null && r.forecast?.past24 != null,
+    kind: 'snow', get: (r) => last24(r).v, est: (r) => last24(r).est,
     steps: [1, 3, 6, 12], top: 'Most new snow, last 24 hrs',
   },
   // The last 3 days: the resort's own 72-hour figure where it gives one (Wolf Creek), otherwise its
@@ -170,7 +170,7 @@ const monthDay = (ymd) => new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US
 const weekday = (ymd, today) => (ymd === today ? 'Today' : new Date(`${ymd}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short' }));
 
 // "10:42 AM" in Colorado time.
-const clock = (iso) => new Date(isoMs(iso)).toLocaleTimeString('en-US', { timeZone: areaZone(), hour: 'numeric', minute: '2-digit' });
+const clock = (iso) => new Date(typeof iso === 'number' ? iso : isoMs(iso)).toLocaleTimeString('en-US', { timeZone: areaZone(), hour: 'numeric', minute: '2-digit' });
 
 function timeAgo(iso) {
   const mins = Math.round((Date.now() - Date.parse(iso)) / 60_000);
@@ -685,9 +685,56 @@ function rowSub(r) {
 // morning's 24-hour figure for yesterday), otherwise the weather models' estimate (est: true).
 // The last n days' total: the resort's own figure for them (own) when its report is current, else its
 // reported days added up, the models' estimate filling any day it didn't report.
+// This morning's report time: the latest 7 AM in the area's time zone. Resorts' morning reports give the
+// 24 hours to about then, and the models' estimates are reckoned to it too (src/report.js
+// reportAnchor), so every number on the map covers the same hours; what's fallen since is on each
+// resort's page ("+2″ since 7 AM").
+const REPORT_HOUR = 7;
+function reportAnchor(ms = Date.now()) {
+  const hourIn = (t) => Number(new Intl.DateTimeFormat('en-US', { timeZone: areaZone(), hour: 'numeric', hourCycle: 'h23' }).format(new Date(t)));
+  let t = Math.floor(ms / HOUR_MS) * HOUR_MS;
+  for (let i = 0; i < 26 && hourIn(t) !== REPORT_HOUR; i++) t -= HOUR_MS;
+  return t;
+}
+// The models' estimates to this morning's report time: { h24, h72, h168 } (the build gives today's
+// and tomorrow's; the one that matches now), or null.
+function modelPast(r) {
+  // (Adjusted to the neighbors' reports where the build could: src/report.js calibrateNearby.)
+  const list = r.forecast?.nearby?.past?.length ? r.forecast.nearby.past : r.forecast?.past;
+  if (!list?.length) return r.forecast?.past24 != null ? { h24: r.forecast.past24, h72: null, h168: null } : null;
+  const a = reportAnchor();
+  return list.find((p) => Math.abs(p.asOf - a) < HOUR_MS) ?? list[0];
+}
+// A resort's report while it's this morning's (or later): posted since 3 AM on the day of this
+// morning's report time. An older one is the day before's, not the last 24 hours.
+function reportCurrent(r) {
+  const rep = r.report;
+  if (!rep || rep.staleSince) return false;
+  if (!rep.updated) return true; // (Ski Utah's carry no time: its list only shows today's)
+  const t = isoMs(/^\d{4}-\d{2}-\d{2}$/.test(rep.updated) ? `${rep.updated}T14:00:00Z` : rep.updated);
+  return !Number.isFinite(t) || t >= reportAnchor() - 4 * HOUR_MS;
+}
+// The last 24 hours: the resort's current report, otherwise the models' estimate of the same hours (est.).
+function last24(r) {
+  if (reportCurrent(r) && r.report.new24 != null) return { v: r.report.new24, est: false };
+  const m = modelPast(r)?.h24;
+  return { v: m ?? null, est: m != null };
+}
+// The last 3 and 7 days. Each holds the span before it (the last 3 days include the last 24 hours, the
+// week the last 3 days), so they never read less than it: −1d ≤ −3d ≤ −7d.
 function pastTotal(r, n, own) {
-  if (own != null && !r.report?.staleSince) return { v: own, est: false };
+  const inner = n === 3 ? last24(r) : past72(r);
+  const span = pastSpan(r, n, own);
+  return inner.v != null && (span.v == null || inner.v > span.v) ? { v: inner.v, est: inner.est || span.est } : span;
+}
+// The resort's own 72-hour or 7-day figure while its report is current; with nothing it reported in the
+// span, the models' total for the same hours (to this morning's report time); otherwise its reported
+// days added up, the models' estimate of each report day (7 AM to 7 AM) filling any it didn't report (est.).
+function pastSpan(r, n, own) {
+  if (own != null && reportCurrent(r)) return { v: own, est: false };
   const today = state.data.today;
+  const rolling = n === 3 ? modelPast(r)?.h72 : modelPast(r)?.h168;
+  if (rolling != null && !(r.snowLog ?? []).some((e) => e.date >= addDays(today, -n))) return { v: rolling, est: true };
   // (A report updated this afternoon covers today, so the n days end today; otherwise yesterday.)
   const days = (r.snowLog ?? []).some((e) => e.date === today) ? [...pastSnow(r, n - 1), pastToday(r)] : pastSnow(r, n);
   if (days.every((d) => d.snow == null)) return { v: null, est: false };
@@ -714,20 +761,20 @@ function modelSnowBetween(r, a, b) {
 }
 // Snowing now: the hour just gone and the one coming bring 0.2″ or more between them.
 const snowingNow = (r) => (modelSnowBetween(r, Date.now() - HOUR_MS, Date.now() + HOUR_MS) ?? 0) >= 0.2;
-// More since the report (an hour or more old, current): half an inch or more by the forecasts.
+// More since this morning's report (the resort's, or 7 AM where it has none current): half an inch or
+// more by the forecasts, once it's an hour on.
 function sinceReport(r) {
-  const u = r.report?.updated;
-  if (!u || r.report.staleSince || r.report.new24 == null) return null;
-  const t = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(u) ? `${u}T14:00:00Z` : u);
-  if (!Number.isFinite(t) || Date.now() - t < HOUR_MS) return null;
+  const own = reportCurrent(r) && r.report.updated ? isoMs(/^\d{4}-\d{2}-\d{2}$/.test(r.report.updated) ? `${r.report.updated}T14:00:00Z` : r.report.updated) : null;
+  const t = Number.isFinite(own) ? own : reportAnchor();
+  if (Date.now() - t < HOUR_MS) return null;
   const s = modelSnowBetween(r, t, Date.now());
-  return s != null && s >= 0.5 ? { v: s, at: u } : null;
+  return s != null && s >= 0.5 ? { v: s, at: t } : null;
 }
 // The two together, under the resort page's 24-hour number ("snowing now · +2″ since 6:54 AM"), or ''.
 function snowNowText(r) {
   const more = sinceReport(r);
   const now = snowingNow(r);
-  const at = more && /T/.test(more.at) ? clock(more.at) : 'the report';
+  const at = more ? clock(more.at) : '';
   return [now ? 'snowing now' : '', more ? `+${inches(Math.max(1, Math.round(more.v)))} since ${at}` : ''].filter(Boolean).join(' · ');
 }
 
@@ -735,7 +782,8 @@ function pastSnow(r, n) {
   const today = state.data.today;
   // (The build puts each report on the day it covers; see reportDay in src/report.js.)
   const logged = new Map((r.snowLog ?? []).map((e) => [e.date, e.snow]));
-  const model = new Map((r.forecast?.pastDays ?? []).map((d) => [d.date, d.snow]));
+  const near = r.forecast?.nearby?.days ?? {};
+  const model = new Map((r.forecast?.pastDays ?? []).map((d) => [d.date, near[d.date] ?? d.snow]));
   return Array.from({ length: n }, (_, i) => {
     const date = addDays(today, i - n);
     if (logged.has(date)) return { date, snow: logged.get(date), est: false };
@@ -939,8 +987,8 @@ function renderDetail(r) {
     <p class="source">Checked ${esc(clock(L.checked))}${recent(L.updated) ? ` · changed ${esc(timeAgo(L.updated))}` : ''}</p>` : '';
   if (L) notes.push(`Lifts: live from ${sourceLink(L.page, `${r.name}’s lift status`)}.`);
 
-  const new24 = rep?.new24 ?? f?.past24;
-  const new24Label = rep?.new24 != null ? 'last 24 hrs' : f?.past24 != null ? 'last 24 hrs (est.)' : 'last 24 hrs';
+  const { v: new24, est: new24Est } = last24(r);
+  const new24Label = new24Est ? 'last 24 hrs (est.)' : 'last 24 hrs';
 
   const sources = f?.sources?.map((s) => SOURCE_NAMES[s] ?? s) ?? [];
   $('#grab-detail').innerHTML = `
@@ -964,7 +1012,11 @@ function renderDetail(r) {
     ${pastStrip(r)}
   `;
   if (f) notes.push(`Snow forecast: the middle of ${sources.length > 1 ? `${sources.length} forecasts (${esc(sources.join(', '))})` : 'the National Weather Service forecast'}${sources.length > 1 ? `, via ${sourceLink('https://www.weather.gov', 'NWS')} and ${sourceLink('https://open-meteo.com', 'Open-Meteo')}` : ''}. Small numbers are the likely range.${state.data.sources.modelsReused ? ` Model forecast from ${esc(timeAgo(state.data.sources.modelsAt))}.` : ''}`);
-  if (f?.correction?.factor && f.correction.factor !== 1) notes.push(`Model correction: the weather models (not the Weather Service forecast) are scaled ×${f.correction.factor} here, from ${esc(r.name)}’s own snow reports against the models’ estimates over the last ${f.correction.days} days (${inches(f.correction.reported)} reported, ${inches(f.correction.modeled)} modeled); trusted more as more snow falls, and kept between ½ and 3×.`);
+  const nameOf = (id) => state.data.resorts.find((x) => x.id === id)?.name ?? id;
+  const nameList = (ids) => ids.map(nameOf).join(ids.length > 2 ? ', ' : ' and ').replace(/, ([^,]*)$/, ', and $1');
+  if (f?.nearby?.from?.length) notes.push(`Estimates of past days here (marked est.) are scaled by how far off the weather models were at ${esc(nameList(f.nearby.from))} those same days, from their own snow reports (resorts within about 12 miles share storms, and the models’ misses).`);
+  if (f?.correction?.nearby?.length && f.correction.factor !== 1) notes.push(`Model correction: the weather models are scaled ×${f.correction.factor} here, borrowed from ${esc(nameList(f.correction.nearby))} nearby (from their own snow reports against the models), until ${esc(r.name)} reports its own.`);
+  else if (f?.correction?.factor && f.correction.factor !== 1) notes.push(`Model correction: the weather models (not the Weather Service forecast) are scaled ×${f.correction.factor} here, from ${esc(r.name)}’s own snow reports against the models’ estimates over the last ${f.correction.days} days (${inches(f.correction.reported)} reported, ${inches(f.correction.modeled)} modeled); trusted more as more snow falls, and kept between ½ and 3×.`);
   if (f?.week2?.runs) notes.push(`Days 4–14 also draw on ${f.week2.runs} ensemble runs (European, American and Canadian models, each run many times from slightly different starts; ${sourceLink('https://open-meteo.com/en/docs/ensemble-api', 'Open-Meteo')}): days 4–7 average their middle with the forecasts above, days 8–14 are their middle alone, the range the middle half of the runs.`);
   if (f?.days.some((d) => d.uv != null)) notes.push(`UV index: each day’s peak, from ${sourceLink('https://open-meteo.com', 'Open-Meteo')}. At ski-area elevations, with snow reflecting it back, sunburn comes fast even on cold days.`);
   if (f) notes.push(`Weather: ${sourceLink(`https://forecast.weather.gov/MapClick.php?lat=${r.at[0]}&lon=${r.at[1]}`, 'National Weather Service forecast')}.`);
@@ -1144,7 +1196,7 @@ function snowSurface(r, which) {
   const day = wx.find((d) => d.date === date);
   const before = wx.find((d) => d.date === addDays(date, -1));
   const f = r.forecast;
-  const fresh = which === 0 ? (r.report?.new24 ?? f?.past24 ?? 0) : (f?.days?.[0]?.snow ?? 0);
+  const fresh = which === 0 ? (last24(r).v ?? 0) : (f?.days?.[0]?.snow ?? 0);
 
   // Untouched terrain.
   const opened = r.dates?.open && r.status.state === 'open' ? Math.round((Date.parse(date) - Date.parse(r.dates.open)) / 864e5) : null;
@@ -1165,7 +1217,7 @@ function snowSurface(r, which) {
 
   // Refreshes: light snow on most of the last few days (the resort's 24-hour report for today).
   const past = (f?.pastDays ?? []).map((d) => d.snow ?? 0).reverse(); // yesterday first
-  const recent = which === 0 ? [r.report?.new24 ?? past[0] ?? 0, ...past.slice(1, 4)] : [f?.days?.[0]?.snow ?? 0, r.report?.new24 ?? past[0] ?? 0, ...past.slice(1, 3)];
+  const recent = which === 0 ? [last24(r).v ?? past[0] ?? 0, ...past.slice(1, 4)] : [f?.days?.[0]?.snow ?? 0, last24(r).v ?? past[0] ?? 0, ...past.slice(1, 3)];
   const snowyDays = recent.filter((v) => v >= 1).length;
   if (snowyDays >= 3) add(8, `light snow ${snowyDays} of the last 4 days: soft, refreshed`);
   else if (snowyDays === 2 && fresh < 6) add(4, 'refreshed by recent light snow');
@@ -1239,7 +1291,7 @@ function dayScore(r, which) {
   if (!day) return null;
   // Fresh snow on the slopes that morning: today, the last 24 hours (the resort's report first);
   // tomorrow, what falls today and overnight.
-  const fresh = which === 0 ? (r.report?.new24 ?? f.past24 ?? 0) : (f.days[0]?.snow ?? 0);
+  const fresh = which === 0 ? (last24(r).v ?? 0) : (f.days[0]?.snow ?? 0);
   const during = day.snow ?? 0;
   const trails = r.report?.trails;
   const runs = trails?.total ? trails.open / trails.total : null;
@@ -1329,7 +1381,7 @@ function highlights() {
   const out = [];
   const top = (key, min) => d.resorts.map((r) => ({ r, v: r.forecast?.[key] ?? 0, range: rangeText(r.forecast?.[`${key}Range`]) }))
     .filter((x) => x.v >= min).sort((a, b) => b.v - a.v).slice(0, 3);
-  const fresh = d.resorts.map((r) => ({ r, v: r.report?.new24 ?? 0 })).filter((x) => x.v >= 2).sort((a, b) => b.v - a.v).slice(0, 4);
+  const fresh = d.resorts.map((r) => ({ r, v: reportCurrent(r) ? r.report.new24 ?? 0 : 0 })).filter((x) => x.v >= 2).sort((a, b) => b.v - a.v).slice(0, 4);
   if (fresh.length) out.push(`<b>Fresh snow</b> in the last 24 hours (resort reports): ${listNames(fresh)}.`);
   const soon3 = top('next72', 3);
   if (soon3.length) out.push(`<b>Next 3 days</b>, the most snow: ${listNames(soon3)}.`);
@@ -2490,8 +2542,8 @@ const AREA_SOURCES = {
 };
 function footText() {
   const snowpack = state.data?.resorts?.some((r) => r.station);
-  return `Last 24 hrs: the resort’s own report when it has one, otherwise a weather-model estimate (est.).
-    On a resort’s page, “snowing now” and “+N″ since” the report: the forecasts’ estimate of what’s falling after the resort’s morning report.
+  return `−1d, −3d, −7d: the 24 hours, 3 days and week to this morning’s snow reports (about 7 AM), each holding the one before; the resort’s own report where it has a current one, otherwise the weather models’ estimate of the same hours (est.).
+    On a resort’s page, “snowing now” and “+N″ since” the report: the forecasts’ estimate of what’s fallen since.
     Forecast: a blend of the National Weather Service and five weather models (European, American GFS/HRRR, Canadian,
     NOAA’s National Blend and the UK Met Office), run for each resort’s mid-mountain elevation; days 8–14 from about 100
     ensemble runs. Weather: National Weather Service.${snowpack ? ' Snowpack: the nearest NRCS SNOTEL snow station against its normal.' : ''}

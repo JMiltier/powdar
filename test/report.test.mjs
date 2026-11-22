@@ -238,6 +238,36 @@ test("newerSnow: a resort's own later report replaces the snow numbers, keeping 
   assert.equal(isoMs('2026-11-21T06:54:18.757032-07:00'), Date.parse('2026-11-21T13:54:18.757Z'));
 });
 
+test('reportAnchor: the latest 7 AM in the area (Denver by default)', async () => {
+  const { reportAnchor } = await import('../src/report.js');
+  assert.equal(new Date(reportAnchor(Date.parse('2026-11-22T06:45:00Z'))).toISOString(), '2026-11-21T14:00:00.000Z'); // 11:45 PM
+  assert.equal(new Date(reportAnchor(Date.parse('2026-11-22T15:10:00Z'))).toISOString(), '2026-11-22T14:00:00.000Z'); // 8:10 AM
+});
+
+test("nearbyCorrection: a resort that hasn't reported borrows its neighbors' (within 20 km), nearer counting more", async () => {
+  const { nearbyCorrection } = await import('../src/report.js');
+  const resorts = [{ id: 'alta', at: [40.588, -111.638] }, { id: 'solitude', at: [40.62, -111.59] }, { id: 'park-city', at: [40.651, -111.508] }, { id: 'far', at: [41.2, -111.86] }];
+  const own = [{ factor: 1, days: 0 }, { factor: 1.1, days: 2 }, { factor: 1.9, days: 2 }, { factor: 3, days: 5 }];
+  const out = nearbyCorrection(resorts, own);
+  assert.deepEqual(out[0].nearby, ['solitude', 'park-city']); // ('far' is 70 km off)
+  assert.ok(out[0].factor > 1.1 && out[0].factor < 1.6);
+  assert.equal(out[1], own[1]); // (its own stands)
+});
+
+test("calibrateNearby: past days scaled by the neighbors' report-to-model ratio those days", async () => {
+  const { calibrateNearby } = await import('../src/report.js');
+  const fc = (snow) => ({ pastDays: [{ date: '2026-11-20', snow }], past: [{ asOf: Date.parse('2026-11-21T14:00:00Z'), h24: snow, h72: snow, h168: snow }], correction: { factor: 1 } });
+  const resorts = [
+    { id: 'alta', at: [40.588, -111.638], forecast: fc(2.3), snowLog: [] },
+    { id: 'solitude', at: [40.62, -111.59], forecast: fc(3.5), snowLog: [{ date: '2026-11-20', snow: 9 }] },
+  ];
+  calibrateNearby(resorts);
+  const n = resorts[0].forecast.nearby;
+  assert.deepEqual(n.from, ['solitude']);
+  assert.equal(n.days['2026-11-20'], 5.1); // 2.3 × (9+1)/(3.5+1)
+  assert.equal(n.past[0].h24, 5.1);
+});
+
 test('modelCorrection: learns how far off the models run at a resort, cautiously', async () => {
   const { modelCorrection } = await import('../src/report.js');
   assert.equal(modelCorrection([]).factor, 1);

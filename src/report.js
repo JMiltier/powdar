@@ -36,6 +36,16 @@ const setZone = (tz) => {
 
 // 'YYYY-MM-DD' in the area's own time.
 export const localDate = (d) => dateFmt.format(d);
+const localHour = (ms) => Number(new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', hourCycle: 'h23' }).format(new Date(ms)));
+// Resorts' morning snow reports give the 24 hours to about 7 AM, and a report day runs 7 AM to 7 AM
+// (src/report.js reportDay puts a morning report on the day before). The latest such 7 AM, at or
+// before `ms`: the estimates are reckoned to it too, so every number on the map covers the same hours.
+export const REPORT_HOUR = 7;
+export function reportAnchor(ms) {
+  let t = Math.floor(ms / 3_600_000) * 3_600_000;
+  for (let i = 0; i < 26 && localHour(t) !== REPORT_HOUR; i++) t -= 3_600_000;
+  return t;
+}
 
 const addDays = (ymd, n) => new Date(Date.parse(`${ymd}T12:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
 
@@ -178,6 +188,8 @@ export function blendForecast({ sources, nws, periods, ens = null }, now) {
   const usable = sources.filter((s) => s.hours?.length);
   if (!usable.length) return null;
   const nowMs = now.getTime();
+  const anchor = reportAnchor(nowMs);
+  const anchors = [anchor, anchor + 24 * HOUR];
 
   const per = usable.map(({ id, hours }) => {
     const snow = new Map(dates.map((d) => [d, 0]));
@@ -200,9 +212,15 @@ export function blendForecast({ sources, nws, periods, ens = null }, now) {
       }
       if (t >= nowMs - HOUR && t < nowMs + 72 * HOUR) next72 += v;
       if (t >= nowMs - 24 * HOUR && t < nowMs) past24 += v;
-      if (before.has(d)) before.set(d, before.get(d) + v);
+      // (Past days are report days, 7 AM to 7 AM, to line up with the resorts' reports.)
+      const rd = localDate(new Date(t - REPORT_HOUR * HOUR));
+      if (before.has(rd)) before.set(rd, before.get(rd) + v);
     }
-    return { id, snow, water, next72, past24, before, lastT, firstT, hasWater, coversPast: firstT <= nowMs - 23 * HOUR };
+    // The 24 hours, 3 days and week to this morning's report time, and to tomorrow's (so a forecast
+    // reused for an hour or two past 7 AM still has the right one).
+    const win = (a, h) => hours.reduce((sum, x) => (x.t >= a - h * HOUR && x.t < a ? sum + x.v : sum), 0);
+    const spans = anchors.map((a) => ({ a, h24: win(a, 24), h72: win(a, 72), h168: win(a, 168) }));
+    return { id, snow, water, next72, past24, spans, before, lastT, firstT, hasWater, coversPast: firstT <= nowMs - 23 * HOUR };
   });
 
   const pick = (filter, value) => spread(per.filter(filter).map(value));
@@ -232,9 +250,18 @@ export function blendForecast({ sources, nws, periods, ens = null }, now) {
     : reaching.length >= 3 ? { ...pick(reach(OUTLOOK_DAYS - 1), (p) => sumDays(p, FORECAST_DAYS, OUTLOOK_DAYS - 1)), sources: reaching.length }
       : reaching.length ? { mid: round1(reaching[0]), lo: round1(reaching[0]), hi: round1(reaching.at(-1)), sources: reaching.length } : null;
   const p24 = pick((p) => p.coversPast, (p) => p.past24);
-  // The last five days' snow, from the models that cover each whole day (estimates, not reports).
-  const pastDays = pastDates.map((date) => {
-    const s = pick((p) => p.firstT <= Date.parse(`${date}T07:00:00Z`), (p) => p.before.get(date));
+  // The estimates for the −1d, −3d and −7d views: snow in the 24 hours, 3 days and week to a morning's
+  // report time (the same hours the resorts' reports cover, so the views nest: −1d ≤ −3d ≤ −7d), from
+  // the forecasts that reach back that far (the models; NWS doesn't look back). One per anchor.
+  const past = anchors.map((a, k) => {
+    const span = (key, h) => pick((p) => p.firstT <= a - (h - 1) * HOUR && p.lastT >= a - HOUR, (p) => p.spans[k][key])?.mid ?? null;
+    return { asOf: a, h24: span('h24', 24), h72: span('h72', 72), h168: span('h168', 168) };
+  });
+  // The last seven report days' snow (7 AM to 7 AM), from the models that cover each whole day (estimates, not reports).
+  const today7 = localHour(nowMs) >= REPORT_HOUR ? anchor : anchor + 24 * HOUR;
+  const pastDays = pastDates.map((date, i) => {
+    const start = today7 - (pastDates.length - i) * 24 * HOUR;
+    const s = pick((p) => p.firstT <= start + HOUR, (p) => p.before.get(date));
     return { date, snow: s ? s.mid : null };
   });
 
@@ -267,6 +294,7 @@ export function blendForecast({ sources, nws, periods, ens = null }, now) {
     days,
     hourly,
     past24: p24?.mid ?? null,
+    past,
     pastDays,
     past24Range: p24 ? [p24.lo, p24.hi] : null,
     next72: n72.mid,
@@ -462,8 +490,8 @@ export function snowLog(prev, today, report, modelPast = {}, { open = true, open
     put(day, report.new24);
     if (report.new48 != null && !log.has(addDays(day, -1))) put(addDays(day, -1), Math.max(0, report.new48 - report.new24));
   }
-  // (Days already logged get the models' estimate too, once there is one.)
-  for (const e of log.values()) if (e.model == null && modelPast[e.date] != null) e.model = modelPast[e.date];
+  // (Days already logged get the models' latest estimate of that day too, once there is one.)
+  for (const e of log.values()) if (modelPast[e.date] != null) e.model = modelPast[e.date];
   return [...log.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -481,6 +509,89 @@ export function modelCorrection(log) {
   const ratio = Math.min(3, Math.max(0.5, (reported + 1) / (modeled + 1)));
   const weight = Math.min(1, (reported + modeled) / 40);
   return { factor: round1(1 + weight * (ratio - 1)), reported: round1(reported), modeled: round1(modeled), days: both.length };
+}
+
+// Great-circle distance between two [lat, lon] points, in km.
+export function km([a1, o1], [a2, o2]) {
+  const rad = Math.PI / 180;
+  const h = Math.sin(((a2 - a1) * rad) / 2) ** 2 + Math.cos(a1 * rad) * Math.cos(a2 * rad) * Math.sin(((o2 - o1) * rad) / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(h));
+}
+// Resorts this close share storms, and the models' misses with them (the Wasatch, Nov 20–21: reports
+// 2–4× the models at Solitude and Park City, while closed Alta and Brighton showed the models' 2–3″).
+export const NEARBY_KM = 20;
+const nearWeight = (d) => 1 / Math.max(d, 2);
+
+// A resort with no correction of its own (it hasn't reported: closed, or no feed) takes its reporting
+// neighbors' within NEARBY_KM, nearer ones counting more. own: modelCorrection results, by index.
+export function nearbyCorrection(resorts, own) {
+  return resorts.map((r, i) => {
+    if (own[i].days >= 2) return own[i];
+    const near = resorts.map((o, j) => ({ j, d: km(r.at, o.at) })).filter((x) => x.j !== i && own[x.j].days >= 2 && x.d <= NEARBY_KM);
+    if (!near.length) return own[i];
+    const w = near.reduce((a, x) => a + nearWeight(x.d), 0);
+    const factor = round1(near.reduce((a, x) => a + nearWeight(x.d) * own[x.j].factor, 0) / w);
+    return { ...own[i], factor, nearby: near.map((x) => resorts[x.j].id) };
+  });
+}
+
+// The models' estimates of the past days where a resort didn't report, from how far off they were at
+// its reporting neighbors (within NEARBY_KM) those same days: each report day's estimate here times
+// the neighbors' report-to-model ratio that day (each +1, capped ⅓–3×; nearer neighbors count more).
+// Run on the finished area (after any reused forecast is put back). Sets each resort's
+// forecast.nearby = { days: { date: inches }, past: [{ asOf, h24, h72, h168 }], from: [ids] }.
+export function calibrateNearby(resorts) {
+  const day = (r, date) => r.forecast?.pastDays?.find((x) => x.date === date)?.snow ?? null;
+  const raw = (r, date) => (day(r, date) == null ? null : day(r, date) / (r.forecast.correction?.factor || 1));
+  // (A logged 0″ under half a foot modeled is a resort not measuring yet: no evidence either way.)
+  const logged = (r, date) => {
+    const e = r.snowLog?.find((x) => x.date === date);
+    return e && !(e.snow === 0 && (raw(r, date) ?? 0) >= 6) ? e.snow : null;
+  };
+  for (const r of resorts) {
+    if (!r.forecast?.pastDays) continue;
+    delete r.forecast.nearby;
+    const near = resorts.filter((o) => o !== r && o.snowLog?.length && o.forecast?.pastDays).map((o) => ({ o, d: km(r.at, o.at) })).filter((x) => x.d <= NEARBY_KM);
+    if (!near.length) continue;
+    const days = {};
+    const from = new Set();
+    for (const { date } of r.forecast.pastDays) {
+      const base = raw(r, date);
+      if (base == null) continue;
+      let w = 0;
+      let ratio = 0;
+      for (const { o, d } of near) {
+        const got = logged(o, date);
+        const modeled = raw(o, date);
+        if (got == null || modeled == null) continue;
+        ratio += nearWeight(d) * Math.min(3, Math.max(1 / 3, (got + 1) / (modeled + 1)));
+        w += nearWeight(d);
+        from.add(o.id);
+      }
+      if (w) days[date] = round1((base * ratio) / w);
+    }
+    if (!Object.keys(days).length) continue;
+    // Each past span the same way: its days' adjusted total over their unadjusted (a report-time
+    // anchor at 7 AM: the span's last report day is the calendar day of 11 AM the day before).
+    const past = (r.forecast.past ?? []).map((p) => {
+      const end = new Date(p.asOf - 20 * 3_600_000).toISOString().slice(0, 10);
+      const scale = (n) => {
+        let cal = 0;
+        let orig = 0;
+        for (let k = 0; k < n; k++) {
+          const date = addDays(end, -k);
+          if (day(r, date) == null) continue;
+          orig += day(r, date);
+          cal += days[date] ?? day(r, date);
+        }
+        return orig > 0 ? cal / orig : 1;
+      };
+      const sc = (v, n) => (v == null ? null : round1(v * scale(n)));
+      return { asOf: p.asOf, h24: sc(p.h24, 1), h72: sc(p.h72, 3), h168: sc(p.h168, 7) };
+    });
+    r.forecast.nearby = { days, past, from: [...from] };
+  }
+  return resorts;
 }
 
 // The terrain log: one entry per day ({ date, runs, lifts } open), today's replaced as it updates.
@@ -749,7 +860,8 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
   }
   // Each resort's model correction, learned from its own reports (see modelCorrection): applied to the
   // weather models and ensembles, not the Weather Service's forecast (its forecasters already adjust).
-  const corrections = RESORTS.map((r) => modelCorrection(prevResorts[r.id]?.snowLog));
+  // One without reports of its own borrows its reporting neighbors' (nearbyCorrection).
+  const corrections = nearbyCorrection(RESORTS, RESORTS.map((r) => modelCorrection(prevResorts[r.id]?.snowLog)));
   const scaleHours = (hours, f) => (hours && f !== 1 ? hours.map((h) => ({ ...h, v: h.v * f, w: h.w == null ? h.w : h.w * f })) : hours);
   const scaleEns = (e, f) => {
     if (!e || f === 1) return e;
