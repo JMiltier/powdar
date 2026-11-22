@@ -76,11 +76,11 @@ const METRICS = {
   next7: { kind: 'snow', get: (r) => r.forecast?.next7, range: (r) => r.forecast?.next7Range, steps: [1, 3, 6, 12], top: 'Most snow, next 7 days' },
   // Snowpack at the nearest SNOTEL station as a % of normal for the date.
   season: { kind: 'season', get: (r) => station(r)?.pct ?? null },
-  // Base depth: the resort's own report when it gives one (usually once open), otherwise NOAA's
+  // Base depth: the resort's own report when it gives one (usually once open), otherwise the natural
+  // snow on the ground (naturalDepth: the nearest snow station's measurement, else NOAA's
   // modelled snow depth at the resort (marked est.).
   base: {
-    // (Last resort: the nearest snow station's depth.)
-    kind: 'base', get: (r) => r.report?.depth ?? r.noaa?.depth ?? station(r)?.latest?.depth ?? null, est: (r) => r.report?.depth == null,
+    kind: 'base', get: (r) => r.report?.depth ?? naturalDepth(r)?.v ?? null, est: (r) => r.report?.depth == null,
     steps: [6, 12, 24, 48], top: 'Deepest base',
   },
   dates: { kind: 'dates' },
@@ -487,9 +487,9 @@ function valueFor(r, metricKey = state.metric) {
     if (s === 'late') return { text: 'Late', level: 'late', sort: 7e4 };
     return { text: s === 'done' ? 'Closed' : 'TBA', long: s === 'done' ? 'closed for the season' : 'opening day not announced', level: 'tba', sort: 0 };
   }
-  // Base at an open resort that doesn't report one (Vail Resorts' mountains): NOAA's natural snow
+  // Base at an open resort that doesn't report one (Vail Resorts' mountains): the natural snow
   // says ~0 while the resort skis on machine-made snow, so say "not reported" rather than 0″.
-  if (m.kind === 'base' && r.report?.depth == null && isOpenish(r) && (r.noaa?.depth ?? 0) < 6) {
+  if (m.kind === 'base' && r.report?.depth == null && isOpenish(r) && (naturalDepth(r)?.v ?? 0) < 6) {
     return { text: '–', sub: 'not reported', level: 'tba', sort: -0.5 };
   }
   if (m.kind === 'season') {
@@ -511,6 +511,16 @@ function valueFor(r, metricKey = state.metric) {
 // A resort's snowpack: its station's, or, where it has more than one nearby, their average (see
 // mergeStations). Cached per resort for the current data.
 const mergedStations = new WeakMap();
+// Natural snow on the ground: what the resort's snow station(s) measured (a reading from the last 3
+// days), else NOAA's snow model (SNODAS). The model runs far under the stations early in the season
+// (Nov 22, 2026: 0.4″ at Keystone and ~1″ at Grizzly Peak, where the station measured 5″), so a
+// measurement comes first. → { v, from: 'station' | 'noaa', st? } or null.
+function naturalDepth(r) {
+  const st = station(r);
+  if (st?.latest?.depth != null && st.latest.date >= addDays(state.data.today, -3)) return { v: st.latest.depth, from: 'station', st };
+  if (r.noaa?.depth != null) return { v: r.noaa.depth, from: 'noaa' };
+  return null;
+}
 function station(r) {
   if (!r.station) return null;
   const sp = state.data.snowpack ?? {};
@@ -1271,7 +1281,7 @@ function snowSurface(r, which) {
   else if (code === 'PP' || /packed powder/i.test(surface)) add(5, 'reported: packed powder');
   else if (/^(HP|FG|ICY)$/.test(code) || /hard|icy|frozen/i.test(surface)) add(-8, `reported: ${word}`);
   const base = r.report?.depth;
-  const natural = r.noaa?.depth;
+  const natural = naturalDepth(r)?.v;
   if (!untouched && base >= 12 && natural != null && natural < base * 0.35) add(-3, 'mostly machine-made snow');
   return out;
 }
@@ -1820,11 +1830,14 @@ function seasonSection(r, notes) {
   }
   const fact = (label, value) => `<li><span>${label}</span><b>${value}</b></li>`;
   const facts = [];
-  if (r.noaa?.depth != null) {
-    facts.push(fact('Natural snow on the ground', `about ${depth(r.noaa.depth)}`));
-    notes.push(`Snow on the ground: ${sourceLink('https://www.nohrsc.noaa.gov/nsa/', 'NOAA NOHRSC')} SNODAS snow model, updated daily${r.noaa.water != null ? ` (${water(r.noaa.water)} of water here)` : ''}.`);
-  } else if (st?.latest.depth != null && !past) {
-    facts.push(fact('Snow on the ground', `${depth(st.latest.depth)} at the station`));
+  const nat = naturalDepth(r);
+  if (nat?.from === 'station') {
+    const at = nat.st.stations ? `${nat.st.stations.length} nearby snow stations` : `${esc(nat.st.name)} snow station`;
+    facts.push(fact('Natural snow on the ground', `${depth(nat.v)} <small class="muted">at ${at}, ${esc(weekday(nat.st.latest.date, state.data.today) === 'Today' ? 'today' : monthDay(nat.st.latest.date))}</small>`));
+    notes.push(`Natural snow on the ground: measured at ${nat.st.stations ? `${nat.st.stations.map((x) => sourceLink(SNOTEL_SITE(x.id), x.name)).join(' and ')} (averaged), their daily readings` : `${sourceLink(SNOTEL_SITE(r.station), `the ${nat.st.name} SNOTEL station`)}, its daily reading`}; the resort’s own slopes can differ with elevation and wind.`);
+  } else if (nat) {
+    facts.push(fact('Natural snow on the ground', `about ${depth(nat.v)} <small class="muted">(est.)</small>`));
+    notes.push(`Natural snow on the ground: ${sourceLink('https://www.nohrsc.noaa.gov/nsa/', 'NOAA NOHRSC')} SNODAS snow model, updated daily${r.noaa.water != null ? ` (${water(r.noaa.water)} of water here)` : ''}; no snow station near enough to measure it.`);
   }
   if (r.avgSnow) {
     facts.push(fact('Typical season', `about ${depth(r.avgSnow)} of snow`));
