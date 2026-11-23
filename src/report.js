@@ -12,6 +12,9 @@ import { liftsDue } from './lift-hours.js';
 import { VAIL_SITES, snowPage, liftPage, parseVailSnow, parseVailTerrain } from './vail.js';
 import { mtnpowderUrl, parseMtnPowderSnow } from './mtnpowder.js';
 import { powdrSnowUrl, parsePowdrSnow } from './powdr.js';
+import { ALTA_PAGE, MTROSE_PAGE, SUGARBOWL_PAGE, parseAltaSnow, parseMtRoseSnow, parseSugarBowlSnow } from './pages.js';
+// Resorts whose snow report is only on their own page: [page, reader].
+const PAGE_REPORTS = { alta: [ALTA_PAGE, parseAltaSnow], 'mt-rose': [MTROSE_PAGE, parseMtRoseSnow], 'sugar-bowl': [SUGARBOWL_PAGE, parseSugarBowlSnow] };
 import { fetchInsights, OFFICES } from './insights.js';
 import { WOLF_CREEK_REPORT, parseWolfCreek } from './wolfcreek.js';
 import CAMS from './cams.json' with { type: 'json' };
@@ -413,6 +416,26 @@ export function newerSnow(mp) {
   return out;
 }
 
+// Every resort's report, checked the same way: its totals run 24 hours ≤ 48 ≤ 72 ≤ 7 days, so one that
+// breaks that order is a field the resort left behind (Deer Valley, Nov 23, 2026: 6″ in 72 hours, 0″
+// in 7 days) and is dropped. And a closed resort's report of nothing but zeros, season included, is a
+// placeholder, not a measurement (Big Bear's before opening; Kirkwood's): no report, so the estimate stands.
+export function saneReport(report, isOpen = true) {
+  if (!report) return report;
+  const out = { ...report };
+  let floor = out.new24 ?? 0;
+  for (const k of ['new48', 'new72', 'new7d']) {
+    if (out[k] == null) continue;
+    if (out[k] < floor) out[k] = null;
+    else floor = out[k];
+  }
+  const snow = ['new24', 'new48', 'new72', 'new7d', 'seasonTotal'].map((k) => out[k]).filter((v) => v != null);
+  if (!isOpen && snow.length && snow.every((v) => v === 0) && !out.depth && !out.seasonTotal) {
+    return { ...out, new24: null, new48: null, new72: null, new7d: null, placeholder: true };
+  }
+  return out;
+}
+
 export function freshSnow(report, now) {
   if (!report?.updated) return report;
   const t = /^\d{4}-\d{2}-\d{2}$/.test(report.updated) ? Date.parse(`${report.updated}T14:00:00Z`) : Date.parse(report.updated);
@@ -647,7 +670,9 @@ export const REGIONS = {
   },
   UT: {
     code: 'UT', name: 'Utah', resorts: UT_RESORTS, planned: {}, skiUtah: true, hours: 'UT',
-    vailIds: ['park-city'], liftSources: {}, cams: {},
+    vailIds: ['park-city'], liftSources: LIFT_SOURCES, cams: {},
+    // Their own snow reports where they publish one (newer than, or filling in, Ski Utah's).
+    mtnpowder: { solitude: 65, 'deer-valley': 49 }, powdr: { snowbird: 'api.snowbird.com' }, pages: ['alta'],
     offices: [{ id: 'SLC', name: 'Salt Lake City', covers: 'all of Utah’s ski country, the Wasatch to Brian Head' }], alertArea: 'UT',
   },
   // California's three areas (src/resorts-ca.js), on Pacific time. No status feed like Colorado's or
@@ -657,7 +682,7 @@ export const REGIONS = {
     vailIds: ['heavenly', 'northstar', 'kirkwood'], liftSources: LIFT_SOURCES, cams: {},
     // (Alpine Meadows' own feed carries no snow report now: its measuring spots are in Palisades'.)
     mtnpowder: { palisades: 61, 'alpine-meadows': [61, ['Station5', 'Station4', 'Station6']] },
-    powdr: { boreal: 'api.rideboreal.com' },
+    powdr: { boreal: 'api.rideboreal.com', 'soda-springs': 'api.skisodasprings.com' }, pages: ['mt-rose', 'sugar-bowl'],
     // One-time: these three's logged days before Nov 20, 2026 came from reports whose Pacific-time
     // stamp wasn't read, so each update logged the same report as "yesterday" (Northstar's 21.7″ twice,
     // Kirkwood's placeholder zeros). The models' estimate stands for those days instead.
@@ -678,6 +703,7 @@ export const REGIONS = {
   SOCAL: {
     code: 'SOCAL', name: 'SoCal', resorts: SOCAL_RESORTS, planned: CA_PLANNED, tz: 'America/Los_Angeles', hours: 'CA',
     vailIds: [], liftSources: LIFT_SOURCES, cams: {},
+    mtnpowder: { 'bear-mountain': 57, 'snow-summit': 58 },
     offices: [
       { id: 'SGX', name: 'San Diego', covers: 'the San Bernardino Mountains: Big Bear and Snow Valley' },
       { id: 'LOX', name: 'Los Angeles', covers: 'the San Gabriels: Mountain High and Baldy' },
@@ -832,6 +858,17 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
   const powdrSnow = Object.fromEntries(await pool(Object.entries(R.powdr ?? {}), 2, async ([id, host]) => {
     try {
       return [id, parsePowdrSnow(await getJson(fetchFn, powdrSnowUrl(host), { backoff }))];
+    } catch (err) {
+      log(`Snow report failed for ${id}: ${err.message}`);
+      return [id, null];
+    }
+  }));
+
+  // And the reports only on a resort's own page (Alta, Mt. Rose).
+  const pageSnow = Object.fromEntries(await pool(R.pages ?? [], 2, async (id) => {
+    const [url, parse] = PAGE_REPORTS[id];
+    try {
+      return [id, parse(await getText(fetchFn, url, { backoff }))];
     } catch (err) {
       log(`Snow report failed for ${id}: ${err.message}`);
       return [id, null];
@@ -997,17 +1034,20 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
     }
     // No status anywhere else, but the resort's own lift feed says a lift is running today: open
     // (California's resorts besides Vail's), with its own snow report where it publishes one.
-    // (The resort's own report: MtnPowder's or Powdr's.)
-    const mp = mtnpowder[r.id] ?? powdrSnow[r.id];
+    // (The resort's own report: MtnPowder's, Powdr's, or read from its page.)
+    const mp = mtnpowder[r.id] ?? powdrSnow[r.id] ?? pageSnow[r.id];
     if (!c && (liftsById[r.id]?.total || mp)) {
-      const isOpen = liftsById[r.id]?.total ? liftsToday(liftsById[r.id]) > 0 : (mp?.trails?.open ?? 0) > 0;
+      // (Where the area's own list says a resort isn't open, Ski Utah's, a lift turning before its
+      // opening day is staff or a preview, not opening day: Brighton, Nov 23, 2026, the day before.)
+      const listedClosed = R.skiUtah && su && !su.open;
+      const isOpen = !listedClosed && (liftsById[r.id]?.total ? liftsToday(liftsById[r.id]) > 0 : (mp?.trails?.open ?? 0) > 0);
       c = { isOpen, report: mp ? { ...mp, source: LIFT_SOURCES[r.id]?.page ?? r.url } : {}, own: true };
     }
-    // A resort on Colorado Ski Country's feed that also publishes its own report: its snow numbers from
-    // whichever was updated last (lifts and runs stay with the live feeds).
-    // The same morning's (posted a little before the copy it sent Colorado Ski Country): it fills in what
-    // that copy leaves out, the 72 hours, 7 days and season total.
-    if (c && !c.vail && !c.own && mp?.updated) {
+    // A resort with a report from Colorado Ski Country or Ski Utah that also publishes its own: its snow
+    // numbers from whichever was updated last (lifts and runs stay with the live feeds). The same
+    // morning's (posted a little before the copy it sent on): it fills in what that copy leaves out,
+    // the 72 hours, 7 days and season total. (Vail Resorts' pages are their own report already.)
+    if (c && !c.vail && mp?.updated) {
       const cscAt = isoMs(c.report?.updated) || 0;
       if (Date.parse(mp.updated) > cscAt) {
         c = { ...c, report: { ...c.report, ...newerSnow(mp), source: LIFT_SOURCES[r.id]?.page ?? r.url } };
@@ -1026,7 +1066,7 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
     if (c?.vail || c?.own) Object.assign(facts, { open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when, opened: p.opened, reopen: p.reopen });
     // A report from a closed resort is usually last season's leftovers.
     // (Vail Resorts' own reports are current even before opening day: keep those.)
-    const report = live && (c.isOpen || c.vail || c.own) ? freshSnow(withLiveLifts(c.report, liftsById[r.id]), now) : null;
+    const report = live && (c.isOpen || c.vail || c.own) ? saneReport(freshSnow(withLiveLifts(c.report, liftsById[r.id]), now), c.isOpen) : null;
     return {
       id: r.id,
       name: r.name,

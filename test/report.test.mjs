@@ -282,6 +282,15 @@ test("snowLog: an afternoon update doesn't log the night's snow twice, and the n
   assert.deepEqual(fixed.map((e) => [e.date, e.snow]), [['2026-11-21', 0.8], ['2026-11-22', 0]]);
 });
 
+test('saneReport: totals run 24 ≤ 48 ≤ 72 ≤ 7 days; a closed resort of all zeros is a placeholder', async () => {
+  const { saneReport } = await import('../src/report.js');
+  assert.equal(saneReport({ new24: 0, new48: 2, new72: 6, new7d: 0, seasonTotal: 27 }).new7d, null); // Deer Valley
+  assert.equal(saneReport({ new24: 0, new48: 2, new72: 6, new7d: 9 }).new7d, 9);
+  const bb = saneReport({ new24: 0, new48: 0, new72: 0, new7d: 0, seasonTotal: 0, depth: null }, false); // Big Bear, closed
+  assert.equal(bb.new24, null);
+  assert.equal(saneReport({ new24: 0, new48: 0, seasonTotal: 0 }, true).new24, 0); // (open: a real 0″)
+});
+
 test('modelCorrection: learns how far off the models run at a resort, cautiously', async () => {
   const { modelCorrection } = await import('../src/report.js');
   assert.equal(modelCorrection([]).factor, 1);

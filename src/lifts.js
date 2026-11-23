@@ -1,6 +1,7 @@
 // Live lift-by-lift status straight from each resort's own lift-status data, refreshed with every
 // update. Endpoints follow Liftie (github.com/pirxpilot/liftie, BSD-3), which tracks these feeds.
 // Vail Resorts mountains block automated requests, so they're not included.
+import { ALTA_PAGE, MTROSE_PAGE, SUGARBOWL_PAGE, altaData } from './pages.js';
 
 // Normalise the many ways resorts say it into: open, hold, scheduled, closed.
 export function liftStatus(text = '') {
@@ -60,6 +61,22 @@ const powdr = (host, page) => ({
   },
 });
 
+// Boyne's feed (Brighton): lifts, and runs with difficulty and grooming.
+const BOYNE = 'https://apim-marketing-001.azure-api.net/FeedService/v1/Feed/Facilities/Areas';
+const BOYNE_LEVEL = { beginner: 'green', intermediate: 'blue', advanced: 'black', expert: 'double', 'terrain-park': 'park', park: 'park' };
+const boyne = (code, page) => ({
+  url: `${BOYNE}/Lifts/All?resortName=${code}`,
+  page,
+  type: 'json',
+  parse: (rows) => rows.map((l) => ({ name: l.name, status: liftStatus(l.status), hours: l.openTime && l.closeTime ? `${l.openTime}–${l.closeTime}` : null })),
+  runs: {
+    url: `${BOYNE}/Trails/All?resortName=${code}`,
+    type: 'json',
+    parse: (rows) => rows.filter((t) => liftStatus(t.status) === 'open' && !t.uphill)
+      .map((t) => run(t.name, BOYNE_LEVEL[t.difficultyIcon] ?? null, t.groomed === true, t.area)),
+  },
+});
+
 // Aspen Snowmass's lift feed, one per mountain.
 const aspen = (mountain, page) => ({
   url: `https://www.aspensnowmass.com/aspensnowmass/liftstatus/feed?mountain=${mountain}`,
@@ -75,6 +92,14 @@ export const LIFT_SOURCES = {
   'mammoth-mountain': mtnpowder(60, 'https://www.mammothmountain.com/on-the-mountain/mountain-report#lifts-and-trails'),
   june: mtnpowder(59, 'https://www.junemountain.com/mountain-information/mountain-report#/'),
   boreal: powdr('api.rideboreal.com', 'https://www.rideboreal.com/the-mountain/the-mountain/trail-lift-info/full-trail-report'),
+  // Utah (src/resorts-ut.js)
+  snowbird: powdr('api.snowbird.com', 'https://www.snowbird.com/the-mountain/mountain-report/lift-trail-report/'),
+  solitude: mtnpowder(65, 'https://www.solitudemountain.com/mountain-and-village/conditions-and-maps#/'),
+  'deer-valley': mtnpowder(49, 'https://www.deervalley.com/explore-the-mountain/mountain-report#/lifts'),
+  brighton: boyne('br', 'https://brightonresort.com/conditions'),
+  // Southern California: Big Bear's two mountains.
+  'bear-mountain': mtnpowder(57, 'https://www.bigbearmountainresort.com/mountain-information/mountain-report'),
+  'snow-summit': mtnpowder(58, 'https://www.bigbearmountainresort.com/mountain-information/mountain-report'),
   'arapahoe-basin': mtnpowder(93, 'https://www.arapahoebasin.com/snow-report/#lift-and-trail-status'),
   steamboat: mtnpowder(6, 'https://www.steamboat.com/the-mountain/mountain-report#/lifts'),
   'winter-park': mtnpowder(5, 'https://www.winterparkresort.com/the-mountain/weather-dashboard#mountain-status'),
@@ -137,6 +162,42 @@ export const LIFT_SOURCES = {
     },
   },
 };
+
+// Pages without a feed. Alta: the data its page is built from (lifts, each with its runs).
+LIFT_SOURCES.alta = {
+  url: ALTA_PAGE,
+  page: ALTA_PAGE,
+  type: 'html',
+  parse: (html) => (altaData(html)?.liftStatus?.lifts ?? []).map((l) => ({
+    name: l.name, status: l.open ? 'open' : 'closed', hours: l.opening_at_formatted && l.closing_at_formatted ? `${l.opening_at_formatted}–${l.closing_at_formatted}` : null,
+  })),
+  runs: {
+    parse: (html) => (altaData(html)?.liftStatus?.lifts ?? []).flatMap((l) => l.runs ?? []).filter((r) => r.open)
+      .filter((r, i, all) => all.findIndex((x) => x.name === r.name) === i)
+      .map((r) => run(r.name, { green: 'green', blue: 'blue', black: 'black', double_black: 'double', 'double-black': 'double' }[r.difficulty] ?? null, r.groomed === true, null)),
+  },
+};
+// Mt. Rose: its report page's lift table (name, then a colored status word).
+LIFT_SOURCES['mt-rose'] = {
+  url: MTROSE_PAGE,
+  page: MTROSE_PAGE,
+  type: 'html',
+  parse: (html) => {
+    const block = html.slice(html.indexOf('id="lift-status"'), html.indexOf('id="lift-status"') + 40000);
+    return [...block.matchAll(/<div class="rose-name">([\s\S]*?)<\/div>[\s\S]*?<div class="column column-status">([\s\S]*?)<\/div>/g)]
+      .map((m) => ({ name: decode(m[1]), status: liftStatus(decode(m[2])), hours: null }));
+  },
+};
+// Sugar Bowl: each lift's block on its conditions page (name, then status).
+LIFT_SOURCES['sugar-bowl'] = {
+  url: SUGARBOWL_PAGE,
+  page: SUGARBOWL_PAGE,
+  type: 'html',
+  parse: (html) => [...html.matchAll(/lift_status_top">\s*<div>\s*<div class="fw_semi_bold">([^<]+)<\/div>[\s\S]*?_status_text">([^<]*)</g)]
+    .map((m) => ({ name: decode(m[1]), status: liftStatus(m[2]), hours: null })),
+};
+// Soda Springs: Powdr's API, like Boreal.
+LIFT_SOURCES['soda-springs'] = powdr('api.skisodasprings.com', 'https://www.skisodasprings.com/the-mountain/trail-lift-info');
 
 // Readers for the JSON feed types Liftie uses, so any resort with one of these can be read.
 export function feedReader({ tool, url, page }) {

@@ -1000,7 +1000,7 @@ function renderDetail(r) {
     ${runsOpen}
     <ul class="report">
       ${rep.depth != null ? `<li><span>Base depth</span><b>${depth(rep.depth)}</b></li>` : ''}
-      <li><span>Reported new snow</span><b>${rep.staleSince ? `no report since ${esc(monthDay(String(rep.staleSince).slice(0, 10)))}` : `${inches(rep.new24)} 24 hr · ${inches(rep.new48)} 48 hr`}</b></li>
+      ${rep.staleSince || rep.new24 != null || rep.new48 != null ? `<li><span>Reported new snow</span><b>${rep.staleSince ? `no report since ${esc(monthDay(String(rep.staleSince).slice(0, 10)))}` : [rep.new24 != null ? `${inches(rep.new24)} 24 hr` : '', rep.new48 != null ? `${inches(rep.new48)} 48 hr` : '', rep.new7d != null ? `${inches(rep.new7d)} 7 days` : ''].filter(Boolean).join(' · ')}</b></li>` : ''}
       ${rep.seasonTotal != null ? `<li><span>Season snowfall so far</span><b>${inches(rep.seasonTotal)}</b></li>` : ''}
       ${rep.surface ? `<li><span>Surface</span><b>${esc(SURFACE[rep.surface] ?? rep.surface)}</b></li>` : ''}
 
