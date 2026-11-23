@@ -46,7 +46,7 @@ function applyTheme(pick) {
 
 const SURFACE = {
   P: 'Powder', PDR: 'Powder', PP: 'Packed powder', 'P/PP': 'Powder & packed powder', MG: 'Machine groomed',
-  MMS: 'Machine-made snow', HP: 'Hard pack', SC: 'Spring conditions', SPR: 'Spring conditions', WP: 'Wet packed',
+  MMS: 'Machine-made snow', MM: 'Machine-made snow', HP: 'Hard pack', SC: 'Spring conditions', SPR: 'Spring conditions', WP: 'Wet packed',
   VC: 'Variable', LG: 'Loose granular', LSGR: 'Loose granular', FG: 'Frozen granular', WG: 'Wet granular', ICY: 'Icy',
 };
 const SOURCE_NAMES = {
@@ -974,10 +974,30 @@ function renderDetail(r) {
   const meter = (label, open, total) => (total ? `
     <div class="meter"><span>${label}</span><b>${open} of ${total}</b>
       <i style="--pct:${Math.max(open ? 2 : 0, Math.round((open / total) * 100))}%"></i></div>` : '');
+  // Which runs are open, where the resort lists them (collapsed): by area where it has several, then
+  // easiest first.
+  const runList = r.lifts?.runList ?? [];
+  const LEVELS = ['green', 'blue', 'black', 'double', 'park'];
+  const LEVEL_WORDS = { green: 'Easiest', blue: 'Intermediate', black: 'Advanced', double: 'Expert', park: 'Terrain park' };
+  const levelIcon = (lv) => ({
+    green: '<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.6" fill="#1f9d55"/></svg>',
+    blue: '<svg viewBox="0 0 12 12"><rect x="1.6" y="1.6" width="8.8" height="8.8" fill="#2f6fde"/></svg>',
+    black: '<svg viewBox="0 0 12 12"><path d="M6 .8 11.2 6 6 11.2.8 6z" fill="currentColor"/></svg>',
+    double: '<svg viewBox="0 0 20 12"><path d="M5.5.8 10.6 6 5.5 11.2.4 6zM14.5.8 19.6 6l-5.1 5.2L9.4 6z" fill="currentColor"/></svg>',
+    park: '<svg viewBox="0 0 12 12"><rect x="1" y="2.5" width="10" height="7" rx="3.5" fill="#e07b16"/></svg>',
+  }[lv] ?? '');
+  const areas = [...new Set(runList.map((x) => x.area ?? ''))];
+  const rank = (x) => (LEVELS.includes(x.level) ? LEVELS.indexOf(x.level) : LEVELS.length); // (unknown last)
+  const sortedRuns = [...runList].sort((a, b) => (areas.length > 1 ? areas.indexOf(a.area ?? '') - areas.indexOf(b.area ?? '') : 0)
+    || rank(a) - rank(b) || a.name.localeCompare(b.name));
+  const runRow = (x) => `<li class="run"><i class="run-lvl" role="img" aria-label="${LEVEL_WORDS[x.level] ?? 'Difficulty not given'}" title="${LEVEL_WORDS[x.level] ?? ''}">${levelIcon(x.level)}</i><span>${esc(x.name)}</span>${x.groomed ? '<small>groomed</small>' : ''}</li>`;
+  const runRows = sortedRuns.map((x, i) => `${areas.length > 1 && (i === 0 || sortedRuns[i - 1].area !== x.area) ? `<li class="run-area">${esc(x.area ?? 'Other')}</li>` : ''}${runRow(x)}`).join('');
+  const runsOpen = runList.length ? `<details class="more-lifts open-runs"><summary>${runList.length} open run${runList.length === 1 ? '' : 's'}</summary><ul class="lifts runs">${runRows}</ul></details>` : '';
   const report = rep ? `
     <h3 class="section">Open terrain</h3>
     ${meter('Lifts', rep.lifts?.open ?? 0, rep.lifts?.total)}
     ${meter('Runs', rep.trails?.open ?? 0, rep.trails?.total)}
+    ${runsOpen}
     <ul class="report">
       ${rep.depth != null ? `<li><span>Base depth</span><b>${depth(rep.depth)}</b></li>` : ''}
       <li><span>Reported new snow</span><b>${rep.staleSince ? `no report since ${esc(monthDay(String(rep.staleSince).slice(0, 10)))}` : `${inches(rep.new24)} 24 hr · ${inches(rep.new48)} 48 hr`}</b></li>
@@ -2478,6 +2498,9 @@ async function liveCsc(data) {
     const s = r.csc && r.report ? byKey.get(r.csc) : null;
     if (!s?.updated || !(isoMs(s.updated) > (isoMs(r.report.updated) || 0))) continue;
     const { staleSince, ...rest } = r.report;
+    // (A 72-hour or 7-day total from an earlier day's report doesn't go with the new numbers.)
+    const sameDay = rest.updated && new Date(isoMs(rest.updated)).toDateString() === new Date(isoMs(s.updated)).toDateString();
+    if (!sameDay) { delete rest.new72; delete rest.new7d; }
     r.report = {
       ...rest,
       new24: n(s.snow_total_24_hour),

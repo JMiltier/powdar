@@ -34,3 +34,30 @@ export function parseSkiUtah(html, season) {
   }
   return out;
 }
+
+// One resort's own page there (www.skiutah.com/members/<slug>/snowreport): when it was updated, and
+// its 24 and 48 hours, last 7 days, base and season so far, which the list leaves out. → a report
+// like the others (src/vail.js parseVailSnow), or null.
+export const skiUtahResortUrl = (slug) => `https://www.skiutah.com/members/${slug}/snowreport`;
+export function parseSkiUtahResort(html) {
+  // (The snow report's own time: the last one before its figures; the page has others, for roads.)
+  const at = html.indexOf('Past 24 HR');
+  const updated = at < 0 ? null : [...html.slice(0, at).matchAll(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})(?:\.\d+)?([+-]\d{2}:\d{2})/g)].map((m) => m[1] + m[2]).at(-1) ?? null; // (fractions of a second, sometimes)
+  const flat = text(html);
+  const inches = (label) => {
+    const m = new RegExp(`${label}\\s*(\\d+(?:\\.\\d+)?)\\s*(?:"|″|”|in)`, 'i').exec(flat.replace(/&rdquo;/g, '”'));
+    return m ? Number(m[1]) : null;
+  };
+  const new24 = inches('Past 24 HR');
+  if (new24 == null && !updated) return null;
+  return {
+    new24,
+    new48: inches('Past 48 HR'),
+    new7d: inches('last 7 days'),
+    depth: inches('base depth'),
+    seasonTotal: inches('year to date'),
+    surface: null,
+    updated: updated ? new Date(updated.replace(' ', 'T')).toISOString() : null,
+    message: null,
+  };
+}

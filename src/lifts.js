@@ -19,6 +19,12 @@ const decode = (s) => s
 // Hours only when they say something ("0:00 - 0:00" and "CLOSED" don't).
 const hoursText = (h) => (h && /\d/.test(h) && !/^0:00\s*-\s*0:00$/.test(h.trim()) ? h.trim() : null);
 
+// Runs: each open one as { name, level, groomed, area }, level one of green, blue, black, double, park
+// (null when the resort doesn't say). Only open runs are kept: what the app lists.
+export const run = (name, level, groomed, area) => ({ name: decode(String(name)), level: level ?? null, ...(groomed ? { groomed: true } : {}), ...(area ? { area: decode(String(area)) } : {}) });
+const MTNPOWDER_LEVEL = { GreenCircle: 'green', BlueSquare: 'blue', BlueBlackSquare: 'blue', BlackDiamond: 'black', DoubleBlackDiamond: 'double', ExtremeTerrain: 'double', Park: 'park', TerrainPark: 'park', Halfpipe: 'park' };
+const POWDR_LEVEL = { easiest: 'green', more_difficult: 'blue', most_difficult: 'black', extreme: 'double', extreme_terrain: 'double' };
+
 // MtnPowder (Alterra's reporting platform): A-Basin, Steamboat, Winter Park; Palisades, Alpine, Mammoth, June.
 const mtnpowder = (id, page) => ({
   url: `https://mtnpowder.com/feed/${id}/lifts`,
@@ -29,6 +35,13 @@ const mtnpowder = (id, page) => ({
     const h = l.Hours?.[day];
     return { name: l.Name.replace(/ Lift$/, ''), status: liftStatus(l.StatusEnglish), hours: h?.Open ? `${h.Open}–${h.Close}` : null, updated: l.UpdateDate };
   }),
+  // (The runs are in the resort's full feed.)
+  runs: {
+    url: `https://mtnpowder.com/feed?resortId=${id}`,
+    type: 'json',
+    parse: (feed) => (feed.MountainAreas ?? []).flatMap((a) => (a.Trails ?? []).filter((t) => liftStatus(t.StatusEnglish) === 'open' && t.Nordic !== 'Yes' && t.TrailIcon !== 'UphillArrow') // (uphill routes aren't runs)
+      .map((t) => run(t.Name, MTNPOWDER_LEVEL[t.TrailIcon] ?? (/park/i.test(t.TerrainParkOnRun) ? 'park' : null), t.Grooming === 'Yes', a.Name))),
+  },
 });
 
 // Powdr's API: Copper, Eldora.
@@ -39,6 +52,12 @@ const powdr = (host, page) => ({
   parse: (rows) => rows.filter((l) => l.season !== 'summer').map((l) => ({
     name: l.name, status: liftStatus(l.status), hours: l.hours || null, updated: l.updated ? new Date(l.updated * 1000).toISOString() : null,
   })),
+  runs: {
+    url: `https://${host}/api/v1/dor/drupal/trails`,
+    type: 'json',
+    parse: (rows) => rows.filter((t) => t.status === 'open' && t.season !== 'summer' && t.include !== false && ['alpine_trail', 'terrain_park_trail'].includes(t.type))
+      .map((t) => run(t.name, t.type === 'terrain_park_trail' ? 'park' : POWDR_LEVEL[t.difficulty], t.groom_status === 'groomed', t.sector?.name)),
+  },
 });
 
 // Aspen Snowmass's lift feed, one per mountain.
@@ -77,6 +96,13 @@ export const LIFT_SOURCES = {
         const i = t.lastIndexOf(' - ');
         return { name: t.slice(0, i).replace(/\b([A-Z])([A-Z]+)\b/g, (_, a, b) => a + b.toLowerCase()), status: liftStatus(t.slice(i + 3)), hours: null };
       }),
+    // Each lift's table lists its runs: difficulty icon, status icon, name, grooming icon, area.
+    runs: {
+      parse: (html) => [...html.matchAll(/<tr class="row-\d+">\s*<td class="column-1">([\s\S]*?)<\/td><td class="column-2">([\s\S]*?)<\/td><td class="column-3">([\s\S]*?)<\/td><td class="column-4">([\s\S]*?)<\/td><td class="column-5">([\s\S]*?)<\/td>/g)]
+        .filter((m) => /icon_open/i.test(m[2]) && decode(m[3]))
+        .map((m) => run(decode(m[3]), { beginner: 'green', more_difficult: 'blue', most_difficult: 'black', expert: 'double', terrainpark: 'park' }[/icon_([a-z_]+)\.png/i.exec(m[1])?.[1]?.toLowerCase()] ?? null, /groom/i.test(m[4]), decode(m[5])))
+        .filter((r, i, all) => all.findIndex((x) => x.name === r.name) === i), // (a run under two lifts once)
+    },
   },
   monarch: {
     url: 'https://skimonarch.com/conditions/',
@@ -86,6 +112,18 @@ export const LIFT_SOURCES = {
       const table = html.match(/<table class="lifts-table">([\s\S]*?)<\/table>/)?.[1] ?? '';
       return [...table.matchAll(/<tr>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/g)]
         .map((m) => ({ name: decode(m[1]).replace(/\s+\(.+\)$/, ''), status: liftStatus(decode(m[2])), hours: null }));
+    },
+    // Its trail tables: name, difficulty (a colored shape), groomed, status.
+    runs: {
+      parse: (html) => [...html.matchAll(/<table class="trails-table"[\s\S]*?<\/table>/g)].flatMap((t) => [...t[0].matchAll(/<tr>\s*<td data-label="Trail">([\s\S]*?)<\/td>\s*<td[^>]*data-label="Difficulty">([\s\S]*?)<\/td>\s*<td[^>]*data-label="Groomed">([\s\S]*?)<\/td>\s*<td[^>]*data-label="Status">([\s\S]*?)<\/td>/g)])
+        .filter((m) => liftStatus(decode(m[4])) === 'open')
+        .map((m) => {
+          const shape = m[2];
+          // (Green circle, blue square, black diamond, two diamonds; an oval for a terrain park.)
+          const level = /<circle/i.test(shape) ? 'green' : /<rect/i.test(shape) ? 'blue' : /<ellipse/i.test(shape) ? 'park'
+            : (shape.match(/<polygon|<path/g) ?? []).length >= 2 ? 'double' : /<polygon|<path/.test(shape) ? 'black' : null;
+          return run(decode(m[1]), level, /\S/.test(decode(m[3])) || /<svg|<img|✓|✔/.test(m[3]), null);
+        }),
     },
   },
   telluride: {
@@ -109,12 +147,14 @@ export function feedReader({ tool, url, page }) {
 }
 
 // One resort's lifts → { open, hold, scheduled, total, lifts, page, checked }.
-export function summarizeLifts(lifts, page, checked) {
+export function summarizeLifts(lifts, page, checked, runs = null) {
   const count = (s) => lifts.filter((l) => l.status === s).length;
   const times = lifts.map((l) => l.updated).filter(Boolean).sort();
   return {
     open: count('open'), hold: count('hold'), scheduled: count('scheduled'), total: lifts.length,
     lifts: lifts.map(({ name, status, hours, closes }) => ({ name, status, hours, ...(closes ? { closes } : {}) })),
+    // The open runs by name, where the resort lists them (see run).
+    ...(runs ? { runList: runs } : {}),
     page,
     // The resort's own last-change time when the feed has one; otherwise when we checked.
     updated: times.at(-1) ?? null,

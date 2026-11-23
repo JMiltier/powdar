@@ -3,7 +3,7 @@
 import { RESORTS, PLANNED } from './resorts.js';
 import { UT_RESORTS } from './resorts-ut.js';
 import { TAHOE_RESORTS, MAMMOTH_RESORTS, SOCAL_RESORTS, CA_PLANNED } from './resorts-ca.js';
-import { SKI_UTAH, parseSkiUtah } from './skiutah.js';
+import { SKI_UTAH, parseSkiUtah, parseSkiUtahResort, skiUtahResortUrl } from './skiutah.js';
 import { MODELS, modelUrl, snowHours, uvUrl } from './models.js';
 import { ensembleUrl, summarizeEnsemble } from './ensemble.js';
 import { parseSnotel, snotelUrl, stationSeason, waterYear } from './snotel.js';
@@ -11,6 +11,7 @@ import { LIFT_SOURCES, summarizeLifts } from './lifts.js';
 import { liftsDue } from './lift-hours.js';
 import { VAIL_SITES, snowPage, liftPage, parseVailSnow, parseVailTerrain } from './vail.js';
 import { mtnpowderUrl, parseMtnPowderSnow } from './mtnpowder.js';
+import { powdrSnowUrl, parsePowdrSnow } from './powdr.js';
 import { fetchInsights, OFFICES } from './insights.js';
 import { WOLF_CREEK_REPORT, parseWolfCreek } from './wolfcreek.js';
 import CAMS from './cams.json' with { type: 'json' };
@@ -641,6 +642,8 @@ export const REGIONS = {
     // Their own snow reports too (Alterra's, on MtnPowder): they often update after posting to
     // Colorado Ski Country in the morning (A-Basin, Nov 21: 0″ at 6 AM there, 3″ at noon on its own).
     mtnpowder: { 'arapahoe-basin': 93, steamboat: 6, 'winter-park': 5 },
+    // And Powdr's (Copper, Eldora): 72 hours and 7 days besides, with the time posted.
+    powdr: { 'copper-mountain': 'api.coppercolorado.com', eldora: 'api.eldora.com' },
   },
   UT: {
     code: 'UT', name: 'Utah', resorts: UT_RESORTS, planned: {}, skiUtah: true, hours: 'UT',
@@ -654,6 +657,7 @@ export const REGIONS = {
     vailIds: ['heavenly', 'northstar', 'kirkwood'], liftSources: LIFT_SOURCES, cams: {},
     // (Alpine Meadows' own feed carries no snow report now: its measuring spots are in Palisades'.)
     mtnpowder: { palisades: 61, 'alpine-meadows': [61, ['Station5', 'Station4', 'Station6']] },
+    powdr: { boreal: 'api.rideboreal.com' },
     // One-time: these three's logged days before Nov 20, 2026 came from reports whose Pacific-time
     // stamp wasn't read, so each update logged the same report as "yesterday" (Northstar's 21.7″ twice,
     // Kirkwood's placeholder zeros). The models' estimate stands for those days instead.
@@ -720,6 +724,17 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
       log(`Ski Utah's snow report failed: ${err.message}`);
     }
   }
+  // And each open resort's own page there: the report's time, 48 hours, 7 days, season so far.
+  const skiUtahPages = {};
+  if (R.skiUtah) {
+    await pool(RESORTS.filter((r) => skiUtah.get(r.skiutah)?.open), 2, async (r) => {
+      try {
+        skiUtahPages[r.id] = parseSkiUtahResort(await getText(fetchFn, skiUtahResortUrl(r.skiutah), { backoff }));
+      } catch (err) {
+        log(`Ski Utah page failed for ${r.id}: ${err.message}`);
+      }
+    });
+  }
 
   // Each model is one request covering every resort; NWS is two requests per resort (gridded
   // numbers + the text forecast); SNOTEL is two requests for every station (this season, normals).
@@ -773,7 +788,17 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
         const body = src.type === 'json' ? await getJson(fetchFn, src.url, { backoff }) : await getText(fetchFn, src.url, { backoff });
         const lifts = src.parse(body);
         if (!lifts.length) throw new Error('no lifts found');
-        return summarizeLifts(lifts, src.page, now.toISOString());
+        // Which runs are open, where the resort lists them (the same page, or a feed of its own).
+        let runs = null;
+        if (src.runs) {
+          try {
+            const rb = !src.runs.url ? body : src.runs.type === 'json' ? await getJson(fetchFn, src.runs.url, { backoff }) : await getText(fetchFn, src.runs.url, { backoff });
+            runs = src.runs.parse(rb);
+          } catch (err) {
+            log(`Run list failed for ${id}: ${err.message}`);
+          }
+        }
+        return summarizeLifts(lifts, src.page, now.toISOString(), runs);
       } catch (err) {
         log(`Lift status failed for ${id}: ${err.message}`);
         return null;
@@ -803,6 +828,16 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
     }
   }));
 
+  // Powdr's mountains: their own snow reports, every update.
+  const powdrSnow = Object.fromEntries(await pool(Object.entries(R.powdr ?? {}), 2, async ([id, host]) => {
+    try {
+      return [id, parsePowdrSnow(await getJson(fetchFn, powdrSnowUrl(host), { backoff }))];
+    } catch (err) {
+      log(`Snow report failed for ${id}: ${err.message}`);
+      return [id, null];
+    }
+  }));
+
   // Vail Resorts' mountains: their own snow reports (every update) and lift/run status (ski hours,
   // like the other lift feeds; otherwise the last reading stands). See vail.js.
   const vailIds = R.vailIds;
@@ -819,7 +854,7 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
     if (liftsDue(R.hours ?? 'CO', now, prev?.checked)) {
       try {
         const t = parseVailTerrain(await getText(fetchFn, liftPage(site), { backoff }));
-        if (t?.lifts.length) terrain = { ...summarizeLifts(t.lifts, liftPage(site), now.toISOString()), runs: t.trails };
+        if (t?.lifts.length) terrain = { ...summarizeLifts(t.lifts, liftPage(site), now.toISOString(), t.runList), runs: t.trails };
       } catch (err) {
         log(`Lift status failed for ${id}: ${err.message}`);
       }
@@ -953,7 +988,7 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
     // Ski Utah: open when its list says so (with its 24-hour snow and base); Park City's own pages
     // (above) come first.
     const su = R.skiUtah && skiUtah.get(r.skiutah);
-    if (!c && su?.open) c = { isOpen: true, report: { new24: su.new24 ?? null, depth: su.depth ?? null, source: `https://www.skiutah.com/members/${r.skiutah}/snowreport` }, own: true };
+    if (!c && su?.open) c = { isOpen: true, report: { ...(skiUtahPages[r.id] ?? { new24: su.new24 ?? null, depth: su.depth ?? null }), source: skiUtahResortUrl(r.skiutah) }, own: true };
     if (!c && r.id === 'wolf-creek' && wolf) {
       const fresh = wolf.updated && wolf.updated >= addDays(today, -1);
       // (Its report gives the lifts running, not the total, so no "of N".)
@@ -962,15 +997,24 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
     }
     // No status anywhere else, but the resort's own lift feed says a lift is running today: open
     // (California's resorts besides Vail's), with its own snow report where it publishes one.
-    const mp = mtnpowder[r.id];
+    // (The resort's own report: MtnPowder's or Powdr's.)
+    const mp = mtnpowder[r.id] ?? powdrSnow[r.id];
     if (!c && (liftsById[r.id]?.total || mp)) {
       const isOpen = liftsById[r.id]?.total ? liftsToday(liftsById[r.id]) > 0 : (mp?.trails?.open ?? 0) > 0;
       c = { isOpen, report: mp ? { ...mp, source: LIFT_SOURCES[r.id]?.page ?? r.url } : {}, own: true };
     }
     // A resort on Colorado Ski Country's feed that also publishes its own report: its snow numbers from
     // whichever was updated last (lifts and runs stay with the live feeds).
-    if (c && !c.vail && !c.own && mp?.updated && Date.parse(mp.updated) > (isoMs(c.report?.updated) || 0)) {
-      c = { ...c, report: { ...c.report, ...newerSnow(mp), source: LIFT_SOURCES[r.id]?.page ?? r.url } };
+    // The same morning's (posted a little before the copy it sent Colorado Ski Country): it fills in what
+    // that copy leaves out, the 72 hours, 7 days and season total.
+    if (c && !c.vail && !c.own && mp?.updated) {
+      const cscAt = isoMs(c.report?.updated) || 0;
+      if (Date.parse(mp.updated) > cscAt) {
+        c = { ...c, report: { ...c.report, ...newerSnow(mp), source: LIFT_SOURCES[r.id]?.page ?? r.url } };
+      } else if (cscAt && localDate(new Date(mp.updated)) === localDate(new Date(cscAt))) {
+        const fill = Object.fromEntries(['new72', 'new7d', 'seasonTotal'].filter((k) => c.report?.[k] == null && mp[k] != null).map((k) => [k, mp[k]]));
+        c = { ...c, report: { ...c.report, ...fill } };
+      }
     }
     const live = Boolean(c);
     const p = planned[r.id] ?? {};

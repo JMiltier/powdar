@@ -333,6 +333,14 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.2px; white-space: nowrap; 
 .lift-scheduled i { background: var(--soon); }
 .lift-closed span { font-weight: 500; color: var(--muted); }
 .more-lifts { margin: 0 0 4px; }
+/* Open runs: a difficulty symbol, the name, "groomed"; area headings where a resort has several. */
+.open-runs { margin: 2px 0 12px; }
+.run { display: flex; align-items: center; gap: 8px; padding: 6px 2px; border-top: 1px solid var(--line); }
+.run span { flex: 1; min-width: 0; font-weight: 600; }
+.run small { flex: none; color: var(--muted); font-size: 0.78rem; }
+.run-lvl { flex: none; display: inline-grid; place-items: center; width: 18px; height: 12px; color: var(--text); }
+.run-lvl svg { height: 12px; width: auto; }
+.run-area { padding: 10px 2px 4px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 .more-lifts summary { cursor: pointer; padding: 7px 2px; font-size: 0.85rem; font-weight: 650; color: var(--accent); border-top: 1px solid var(--line); }
 .report { list-style: none; margin: 0 0 10px; padding: 0; font-size: 0.88rem; }
 .report li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 2px; border-top: 1px solid var(--line); }

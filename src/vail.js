@@ -2,6 +2,7 @@
 // Colorado Ski Country's feed. Each publishes its snow report and lift/run status on its own site, as
 // data embedded in the page (FR.snowReportData, FR.TerrainStatusFeed). Their robots.txt allows these
 // pages; we read them with a plainly named User-Agent, a few times an hour at most.
+import { run } from './lifts.js';
 
 export const VAIL_SITES = {
   vail: 'https://www.vail.com',
@@ -90,6 +91,7 @@ const hhmm = (t) => {
   if (!Number.isFinite(h)) return null;
   return `${((h + 11) % 12) + 1}${m ? `:${String(m).padStart(2, '0')}` : ''}${h < 12 ? 'a' : 'p'}`;
 };
+const VAIL_LEVEL = { 1: 'green', 2: 'blue', 3: 'black', 4: 'double', 5: 'park' };
 export function parseVailTerrain(html) {
   // The first copy with lifts in it (Crested Butte's page carries an empty one first).
   let d = null;
@@ -104,8 +106,10 @@ export function parseVailTerrain(html) {
     hours: l.OpenTime && l.CloseTime ? `${hhmm(l.OpenTime)}–${hhmm(l.CloseTime)}` : null,
     closes: /^\d{1,2}:\d{2}/.test(l.CloseTime ?? '') ? l.CloseTime.slice(0, 5).padStart(5, '0') : null, // "20:00": today's closing time
   }));
-  const trails = (d.GroomingAreas ?? []).flatMap((a) => a.Trails ?? []);
-  return { lifts, trails: { open: trails.filter((t) => t.IsOpen).length, total: trails.length } };
+  const trails = (d.GroomingAreas ?? []).flatMap((a) => (a.Trails ?? []).map((t) => ({ ...t, area: a.Name })));
+  // The open runs (Difficulty 1 green, 2 blue, 3 black, 4 double black, 5 terrain park).
+  const runList = trails.filter((t) => t.IsOpen).map((t) => run(t.Name, VAIL_LEVEL[t.Difficulty] ?? null, t.IsGroomed === true, t.area));
+  return { lifts, trails: { open: trails.filter((t) => t.IsOpen).length, total: trails.length }, runList };
 }
 
 // Webcams: the mountain-cams page embeds Brownrice players (player.brownrice.com/embed/<id>, whose
