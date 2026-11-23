@@ -268,6 +268,20 @@ test("calibrateNearby: past days scaled by the neighbors' report-to-model ratio 
   assert.equal(n.past[0].h24, 5.1);
 });
 
+test("snowLog: an afternoon update doesn't log the night's snow twice, and the next morning's 48 hours set the day before", async () => {
+  const { snowLog } = await import('../src/report.js');
+  // Beaver Creek, Nov 21–23, 2026 (closed; reporting the storm).
+  let log = snowLog([], '2026-11-21', { new24: 8.7, new48: 9.5, updated: '2026-11-21T05:30:00-07:00' }, {}, { open: false });
+  log = snowLog(log, '2026-11-21', { new24: 11.8, new48: 12.6, updated: '2026-11-21T15:40:00-07:00' }, {}, { open: false }); // afternoon revision
+  assert.deepEqual(log.map((e) => [e.date, e.snow]), [['2026-11-19', 0.8], ['2026-11-20', 8.7]]);
+  log = snowLog(log, '2026-11-22', { new24: 2.8, new48: 11.5, updated: '2026-11-22T05:30:00-07:00' }, {}, { open: false });
+  log = snowLog(log, '2026-11-23', { new24: 0, new48: 2.8, new7d: 13.8, updated: '2026-11-23T05:36:00-07:00' }, {}, { open: false });
+  assert.deepEqual(log.map((e) => [e.date, e.snow]), [['2026-11-19', 0.8], ['2026-11-20', 8.7], ['2026-11-21', 2.8]]);
+  // A logged day the resort's own later 48 hours contradict is corrected (Vail: 7.9″ logged, 0.8″ by Monday's report).
+  const fixed = snowLog([{ date: '2026-11-21', snow: 7.9 }], '2026-11-23', { new24: 0, new48: 0.8, updated: '2026-11-23T05:36:00-07:00' });
+  assert.deepEqual(fixed.map((e) => [e.date, e.snow]), [['2026-11-21', 0.8], ['2026-11-22', 0]]);
+});
+
 test('modelCorrection: learns how far off the models run at a resort, cautiously', async () => {
   const { modelCorrection } = await import('../src/report.js');
   assert.equal(modelCorrection([]).factor, 1);
@@ -282,7 +296,7 @@ test('modelCorrection: learns how far off the models run at a resort, cautiously
 test('reportDay: a morning report covers the day before; old reports cover nothing', async () => {
   const { reportDay } = await import('../src/report.js');
   assert.equal(reportDay('2026-12-10T06:00:00-07:00', '2026-12-10'), '2026-12-09');
-  assert.equal(reportDay('2026-12-10T16:30:00-07:00', '2026-12-10'), '2026-12-10'); // afternoon update
+  assert.equal(reportDay('2026-12-10T16:30:00-07:00', '2026-12-10'), '2026-12-09'); // afternoon update: the same report day, revised
   assert.equal(reportDay('2026-12-09T06:00:00-07:00', '2026-12-10'), '2026-12-08'); // not updated today
   assert.equal(reportDay('2026-12-06T06:00:00-07:00', '2026-12-10'), null);
   assert.equal(reportDay('2026-12-10', '2026-12-10'), '2026-12-09'); // date only (Wolf Creek)

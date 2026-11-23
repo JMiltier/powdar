@@ -734,7 +734,14 @@ function last24(r) {
 // week the last 3 days), so they never read less than it: −1d ≤ −3d ≤ −7d.
 function pastTotal(r, n, own) {
   const inner = n === 3 ? last24(r) : past72(r);
-  const span = pastSpan(r, n, own);
+  let span = pastSpan(r, n, own);
+  // (And within the resort's own current figures: its 3 days at least its 48 hours and at most its 7
+  // days, so a day logged twice can't run past what the resort itself says.)
+  if (n === 3 && span.v != null && reportCurrent(r)) {
+    const { new48, new7d } = r.report;
+    if (new7d != null && span.v > new7d) span = { v: new7d, est: false };
+    if (new48 != null && span.v < new48) span = { v: new48, est: span.est };
+  }
   return inner.v != null && (span.v == null || inner.v > span.v) ? { v: inner.v, est: inner.est || span.est } : span;
 }
 // The resort's own 72-hour or 7-day figure while its report is current; with nothing it reported in the
@@ -2485,22 +2492,27 @@ async function liveCsc(data) {
   return changed;
 }
 // The report into the resort's day-by-day log, the way the build does it (src/report.js reportDay,
-// snowLog): an afternoon report covers today, a morning one yesterday; its 48 hours fill the day before.
+// snowLog): a report covers the day before its date; a morning one sets that day and its 48 and 72
+// hours the days before; an update from noon on only fills a day with none.
 function logReport(r, today) {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: areaZone(), year: 'numeric', month: '2-digit', day: '2-digit', hour: 'numeric', hourCycle: 'h23' })
     .formatToParts(new Date(isoMs(r.report.updated))).map((x) => [x.type, x.value]));
   const ymd = `${p.year}-${p.month}-${p.day}`;
-  const day = Number(p.hour) >= 15 ? ymd : addDays(ymd, -1);
-  if (day < addDays(today, -2) || r.report.new24 == null) return;
+  const day = addDays(ymd, -1);
+  const { new24, new48, new72 } = r.report;
+  if (ymd < addDays(today, -2) || new24 == null) return;
+  const late = Number(p.hour) >= 12;
   const log = new Map((r.snowLog ?? []).map((e) => [e.date, { ...e }]));
-  const put = (date, v) => {
-    if (v == null || v < 0) return;
+  const set = (date, v) => {
     const e = log.get(date) ?? { date, snow: 0 };
-    e.snow = Math.round(Math.max(v, e.snow) * 10) / 10;
+    e.snow = Math.round(v * 10) / 10;
     log.set(date, e);
   };
-  put(day, r.report.new24);
-  if (r.report.new48 != null && !log.has(addDays(day, -1))) put(addDays(day, -1), Math.max(0, r.report.new48 - r.report.new24));
+  if (!late || !log.has(day)) set(day, new24);
+  if (!late && new48 != null && new48 >= new24) {
+    set(addDays(day, -1), new48 - new24);
+    if (new72 != null && new72 >= new48) set(addDays(day, -2), new72 - new48);
+  }
   r.snowLog = [...log.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 

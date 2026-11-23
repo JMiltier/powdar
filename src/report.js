@@ -456,41 +456,52 @@ export async function pool(items, limit, fn) {
 // Each entry also keeps the weather models' (uncorrected) estimate for that day, when known, so the
 // two can be compared (see modelCorrection).
 // Which day a report's "24 hours" means: reports go out in the morning, covering the day before and
-// the night (so the day before the update); one updated mid-afternoon or later mostly covers that
-// day itself. Nothing for a report more than two days old.
+// the night (a report day runs 7 AM to 7 AM: reportAnchor), so the day before the update. Nothing for
+// a report more than two days old. (A later update the same day is the same report day revised: see
+// snowLog. Counting an afternoon update as that day's own double-counted the night before: Beaver
+// Creek, Nov 21, 2026, a Friday-night storm logged on both days, 21″ for 3 days its 7-day total of
+// 13.8″ ruled out.)
 export function reportDay(updated, today) {
   if (!updated) return addDays(today, -1);
   const d = /^\d{4}-\d{2}-\d{2}$/.test(updated) ? null : new Date(updated);
   const day = d ? localDate(d) : updated;
   if (day < addDays(today, -2)) return null;
-  const hour = d ? Number(new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', hourCycle: 'h23' }).format(d)) : 7;
-  return hour >= 15 ? day : addDays(day, -1);
+  return addDays(day, -1);
 }
+// An update from noon on: the morning's report revised during the day (its 24 hours now reach into
+// today's snow).
+const lateUpdate = (updated) => Boolean(updated && !/^\d{4}-\d{2}-\d{2}$/.test(updated) && localHour(Date.parse(updated)) >= 12);
 
 // open: the resort is open now; openedOn: the day it opened. A resort that isn't open isn't measuring:
 // its 0″ isn't logged (snow it does report, is), and its logged 0″ days, and any from before it
 // opened, are dropped, so the models' estimate stands for those (Purgatory's feed said 0″ under a 5″
 // storm the week before it opened; Kirkwood's placeholder page, 0″ under two feet).
+// The morning's report sets its day; a later update only fills a day with none. Its 48- and 72-hour
+// figures set the days before (the resort's own later word on them: they correct what was logged).
 export function snowLog(prev, today, report, modelPast = {}, { open = true, openedOn = null } = {}) {
   const log = new Map((prev ?? [])
     .filter((e) => e.date >= addDays(today, -14) && !(e.snow === 0 && (!open || (openedOn && e.date < openedOn))))
     .map((e) => [e.date, { ...e }]));
-  const put = (date, v) => {
+  const set = (date, v) => {
     if (v == null || v < 0) return;
+    if (v === 0 && !open) { log.delete(date); return; } // (a closed resort's 0″: no word either way)
     const e = log.get(date) ?? { date, snow: 0 };
-    e.snow = Math.round(Math.max(v, e.snow) * 10) / 10; // (48 h − 24 h: 22.099999… → 22.1)
-    if (modelPast[date] != null) e.model = modelPast[date];
+    e.snow = Math.round(v * 10) / 10; // (48 h − 24 h: 22.099999… → 22.1)
     log.set(date, e);
   };
-  const day = report?.new24 != null && (open || report.new24 > 0) ? reportDay(report.updated, today) : null;
+  const day = report?.new24 != null ? reportDay(report.updated, today) : null;
   // (A report with no time on it, Ski Utah's, that still says what yesterday's said is most likely the
   // same report, not the same snow again: it isn't logged twice.)
   const stale = day && !report.updated && report.new24 > 0 && !log.has(day) && log.get(addDays(day, -1))?.snow === report.new24;
   if (day && !stale) {
-    put(day, report.new24);
-    if (report.new48 != null && !log.has(addDays(day, -1))) put(addDays(day, -1), Math.max(0, report.new48 - report.new24));
+    const late = lateUpdate(report.updated);
+    if (!late || !log.has(day)) set(day, report.new24);
+    if (!late && report.new48 != null && report.new48 >= report.new24) {
+      set(addDays(day, -1), report.new48 - report.new24);
+      if (report.new72 != null && report.new72 >= report.new48) set(addDays(day, -2), report.new72 - report.new48);
+    }
   }
-  // (Days already logged get the models' latest estimate of that day too, once there is one.)
+  // (Each logged day gets the models' latest estimate of it too, once there is one.)
   for (const e of log.values()) if (modelPast[e.date] != null) e.model = modelPast[e.date];
   return [...log.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
