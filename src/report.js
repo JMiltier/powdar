@@ -420,6 +420,22 @@ export function newerSnow(mp) {
 // breaks that order is a field the resort left behind (Deer Valley, Nov 23, 2026: 6″ in 72 hours, 0″
 // in 7 days) and is dropped. And a closed resort's report of nothing but zeros, season included, is a
 // placeholder, not a measurement (Big Bear's before opening; Kirkwood's): no report, so the estimate stands.
+// The numbers first read for a posting time stand until the resort posts again: a page that rolls its
+// figures over by itself (Keystone's, at midnight Nov 23–24, 2026: 24 hours to 0″ under the morning's
+// time, which read as "0″ Sunday, 5.9″ Saturday") isn't a new report.
+// And one older than the report already held never replaces it (Vail's site serves cached copies:
+// Keystone's page gave Tuesday's 6 AM report, then Monday's again, minutes apart).
+export function sameReport(report, prev) {
+  if (!report?.updated || !prev?.updated) return report;
+  const at = isoMs(report.updated);
+  const before = isoMs(prev.updated);
+  if (!Number.isFinite(at) || !Number.isFinite(before) || at > before) return report;
+  const out = { ...report };
+  for (const k of ['new24', 'new48', 'new72', 'new7d', 'depth', 'seasonTotal']) if (prev[k] != null) out[k] = prev[k];
+  out.updated = prev.updated;
+  return out;
+}
+
 export function saneReport(report, isOpen = true) {
   if (!report) return report;
   const out = { ...report };
@@ -521,8 +537,19 @@ export function snowLog(prev, today, report, modelPast = {}, { open = true, open
     const late = lateUpdate(report.updated);
     if (!late || !log.has(day)) set(day, report.new24);
     if (!late && report.new48 != null && report.new48 >= report.new24) {
-      set(addDays(day, -1), report.new48 - report.new24);
-      if (report.new72 != null && report.new72 >= report.new48) set(addDays(day, -2), report.new72 - report.new48);
+      // (Unless it would make the week more than the resort's own 7-day total: its 48 hours then
+      // repeat a day already counted, and what was logged stands.)
+      const week = () => [...log.values()].filter((e) => e.date > addDays(day, -7) && e.date <= day).reduce((a, e) => a + e.snow, 0);
+      const correct = (date, v) => {
+        const before = log.get(date) ? { ...log.get(date) } : null;
+        set(date, v);
+        if (report.new7d != null && week() > report.new7d + 1) {
+          if (before) log.set(date, before);
+          else log.delete(date);
+        }
+      };
+      correct(addDays(day, -1), report.new48 - report.new24);
+      if (report.new72 != null && report.new72 >= report.new48) correct(addDays(day, -2), report.new72 - report.new48);
     }
   }
   // (Each logged day gets the models' latest estimate of it too, once there is one.)
@@ -553,9 +580,14 @@ export function km([a1, o1], [a2, o2]) {
   return 12742 * Math.asin(Math.sqrt(h));
 }
 // Resorts this close share storms, and the models' misses with them (the Wasatch, Nov 20–21: reports
-// 2–4× the models at Solitude and Park City, while closed Alta and Brighton showed the models' 2–3″).
-export const NEARBY_KM = 20;
+// 2–4× the models at Solitude and Park City, while closed Alta and Brighton showed the models' 2–3″;
+// Colorado, Nov 17–23: Vail, Beaver Creek and Crested Butte 1.7–1.8× the models, Aspen 35–45 km off
+// still on the models alone). Nearer ones count far more (nearWeight).
+export const NEARBY_KM = 50;
 const nearWeight = (d) => 1 / Math.max(d, 2);
+// How much of a neighbor's miss carries over: all of it within 20 km, half by NEARBY_KM.
+const nearTrust = (d) => (d <= 20 ? 1 : 1 - (0.5 * (d - 20)) / (NEARBY_KM - 20));
+const carried = (ratio, d) => 1 + (ratio - 1) * nearTrust(d);
 
 // A resort with no correction of its own (it hasn't reported: closed, or no feed) takes its reporting
 // neighbors' within NEARBY_KM, nearer ones counting more. own: modelCorrection results, by index.
@@ -565,7 +597,7 @@ export function nearbyCorrection(resorts, own) {
     const near = resorts.map((o, j) => ({ j, d: km(r.at, o.at) })).filter((x) => x.j !== i && own[x.j].days >= 2 && x.d <= NEARBY_KM);
     if (!near.length) return own[i];
     const w = near.reduce((a, x) => a + nearWeight(x.d), 0);
-    const factor = round1(near.reduce((a, x) => a + nearWeight(x.d) * own[x.j].factor, 0) / w);
+    const factor = round1(near.reduce((a, x) => a + nearWeight(x.d) * carried(own[x.j].factor, x.d), 0) / w);
     return { ...own[i], factor, nearby: near.map((x) => resorts[x.j].id) };
   });
 }
@@ -599,7 +631,7 @@ export function calibrateNearby(resorts) {
         const got = logged(o, date);
         const modeled = raw(o, date);
         if (got == null || modeled == null) continue;
-        ratio += nearWeight(d) * Math.min(3, Math.max(1 / 3, (got + 1) / (modeled + 1)));
+        ratio += nearWeight(d) * carried(Math.min(3, Math.max(1 / 3, (got + 1) / (modeled + 1))), d);
         w += nearWeight(d);
         from.add(o.id);
       }
@@ -662,6 +694,9 @@ export const REGIONS = {
     code: 'CO', name: 'Colorado', resorts: RESORTS, planned: PLANNED, csc: true,
     vailIds: ['vail', 'beaver-creek', 'breckenridge', 'keystone', 'crested-butte'], liftSources: LIFT_SOURCES, cams: CAMS,
     offices: OFFICES, alertArea: 'CO', wolfCreek: true,
+    // One-time repairs from a resort's own report, where a page fault had logged it wrong (Keystone's
+    // midnight rollover, Nov 24, 2026; its Monday report said Sunday 2.8″, Saturday 3.1″).
+    logFixes: { keystone: { '2026-11-21': 3.1, '2026-11-22': 2.8 } },
     // Their own snow reports too (Alterra's, on MtnPowder): they often update after posting to
     // Colorado Ski Country in the morning (A-Basin, Nov 21: 0″ at 6 AM there, 3″ at noon on its own).
     mtnpowder: { 'arapahoe-basin': 93, steamboat: 6, 'winter-park': 5 },
@@ -1066,7 +1101,7 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
     if (c?.vail || c?.own) Object.assign(facts, { open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when, opened: p.opened, reopen: p.reopen });
     // A report from a closed resort is usually last season's leftovers.
     // (Vail Resorts' own reports are current even before opening day: keep those.)
-    const report = live && (c.isOpen || c.vail || c.own) ? saneReport(freshSnow(withLiveLifts(c.report, liftsById[r.id]), now), c.isOpen) : null;
+    const report = live && (c.isOpen || c.vail || c.own) ? saneReport(freshSnow(withLiveLifts(sameReport(c.report, prevResorts[r.id]?.report), liftsById[r.id]), now), c.isOpen) : null;
     return {
       id: r.id,
       name: r.name,
@@ -1091,7 +1126,8 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
       // Runs and lifts open each day (the last 8 days), to see new terrain opening.
       terrainLog: terrainLog(prevResorts[r.id]?.terrainLog, today, report?.trails?.open ?? null, (liftsById[r.id] ?? report?.lifts)?.open ?? null),
       // What the resort reported falling, day by day (see snowLog).
-      snowLog: snowLog((prevResorts[r.id]?.snowLog ?? []).filter((e) => !R.logsFrom?.[r.id] || e.date >= R.logsFrom[r.id]), today, report, rawPast[i], { open: Boolean(facts.isOpen || (facts.opened && facts.open && facts.open <= today)), openedOn: facts.open && facts.open <= today ? facts.open : null }),
+      snowLog: snowLog((prevResorts[r.id]?.snowLog ?? []).filter((e) => !R.logsFrom?.[r.id] || e.date >= R.logsFrom[r.id])
+        .map((e) => (R.logFixes?.[r.id]?.[e.date] != null ? { ...e, snow: R.logFixes[r.id][e.date] } : e)), today, report, rawPast[i], { open: Boolean(facts.isOpen || (facts.opened && facts.open && facts.open <= today)), openedOn: facts.open && facts.open <= today ? facts.open : null }),
       aspect: r.aspect ?? null,
       noaa: noaaSnow[i] ?? null,
       avgSnow: r.avgSnow ?? null,

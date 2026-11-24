@@ -291,6 +291,24 @@ test('saneReport: totals run 24 ≤ 48 ≤ 72 ≤ 7 days; a closed resort of all
   assert.equal(saneReport({ new24: 0, new48: 0, seasonTotal: 0 }, true).new24, 0); // (open: a real 0″)
 });
 
+test("sameReport: a page rolling its numbers over under the same posting time keeps the first reading", async () => {
+  const { sameReport } = await import('../src/report.js');
+  const morning = { new24: 2.8, new48: 5.9, new7d: 10.6, updated: '2026-11-23T12:45:00.000Z' };
+  const midnight = { new24: 0, new48: 5.9, new7d: 10.6, updated: '2026-11-23T12:45:00.000Z' }; // Keystone, Nov 24 00:30
+  assert.equal(sameReport(midnight, morning).new24, 2.8);
+  const next = { new24: 0.8, new48: 6.7, new7d: 11.8, updated: '2026-11-24T13:00:00.000Z' };
+  assert.equal(sameReport(next, morning).new24, 0.8); // (a new posting time: its own numbers)
+  const back = sameReport(morning, next); // (a cached older copy afterwards: the newer report stands)
+  assert.deepEqual([back.new24, back.updated], [0.8, next.updated]);
+});
+
+test("snowLog: a 48-hour correction that would push the week past the resort's own 7 days doesn't stand", async () => {
+  const { snowLog } = await import('../src/report.js');
+  const prev = [{ date: '2026-11-17', snow: 0.8 }, { date: '2026-11-20', snow: 3.9 }, { date: '2026-11-21', snow: 5.9 }, { date: '2026-11-22', snow: 0 }];
+  const log = snowLog(prev, '2026-11-24', { new24: 0.8, new48: 6.7, new7d: 11.8, updated: '2026-11-24T06:00:00-07:00' });
+  assert.deepEqual(log.map((e) => [e.date.slice(5), e.snow]), [['11-17', 0.8], ['11-20', 3.9], ['11-21', 5.9], ['11-22', 0], ['11-23', 0.8]]);
+});
+
 test('modelCorrection: learns how far off the models run at a resort, cautiously', async () => {
   const { modelCorrection } = await import('../src/report.js');
   assert.equal(modelCorrection([]).factor, 1);
