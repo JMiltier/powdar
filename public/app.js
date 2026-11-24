@@ -2661,6 +2661,7 @@ function openWest() {
       west: { areas: AREAS, onPick: pickArea, onDismiss: closeWest },
     });
   } else west.refit();
+  west.setMarks(state.marks); // (labels on or off, as on the area's map)
   // (The layer moves to the West: the area's map stops drawing its own meanwhile.)
   state.map?.setLayer('none');
   applyLayer();
@@ -2925,6 +2926,8 @@ document.addEventListener('click', (e) => {
     write(STORE.labels, state.marks);
     syncMarksBtn();
     state.map?.setMarks(state.marks);
+    west?.setMarks(state.marks);
+    if (!$('#west').hidden) return toast({ all: 'Area labels on', dots: 'Labels off: the list below still goes to each area', none: 'Just the map (tap again for labels)' }[state.marks]);
     return toast({ all: 'Resort labels on', dots: 'Labels off: tap a dot for its resort', none: 'Just the map (tap again for labels)' }[state.marks]);
   }
   if (t.closest('#install-btn')) {
