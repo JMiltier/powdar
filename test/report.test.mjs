@@ -295,10 +295,11 @@ test("sameReport: a page rolling its numbers over under the same posting time ke
   const { sameReport } = await import('../src/report.js');
   const morning = { new24: 2.8, new48: 5.9, new7d: 10.6, updated: '2026-11-23T12:45:00.000Z' };
   const midnight = { new24: 0, new48: 5.9, new7d: 10.6, updated: '2026-11-23T12:45:00.000Z' }; // Keystone, Nov 24 00:30
-  assert.equal(sameReport(midnight, morning).new24, 2.8);
+  assert.equal(sameReport(midnight, morning, new Date('2026-11-24T07:30:00Z')).new24, 2.8); // (after midnight)
+  assert.equal(sameReport({ ...morning, new7d: 9.6 }, morning, new Date('2026-11-23T20:00:00Z')).new7d, 9.6); // (same day: a correction)
   const next = { new24: 0.8, new48: 6.7, new7d: 11.8, updated: '2026-11-24T13:00:00.000Z' };
   assert.equal(sameReport(next, morning).new24, 0.8); // (a new posting time: its own numbers)
-  const back = sameReport(morning, next); // (a cached older copy afterwards: the newer report stands)
+  const back = sameReport(morning, next, new Date('2026-11-24T16:00:00Z')); // (a cached older copy afterwards: the newer report stands)
   assert.deepEqual([back.new24, back.updated], [0.8, next.updated]);
 });
 
@@ -309,15 +310,36 @@ test("snowLog: a 48-hour correction that would push the week past the resort's o
   assert.deepEqual(log.map((e) => [e.date.slice(5), e.snow]), [['11-17', 0.8], ['11-20', 3.9], ['11-21', 5.9], ['11-22', 0], ['11-23', 0.8]]);
 });
 
+test('forecast scorecard: each source kept per report day and lead, scored against reports, weighted once proven', async () => {
+  const { forecastLog, forecastSkill, skillWeights, weightedMiddle, SKILL_MIN } = await import('../src/report.js');
+  const start = Date.parse('2026-11-26T14:00:00Z'); // 7 AM in Denver
+  const hours = (inches) => Array.from({ length: 72 }, (_, k) => ({ t: start + k * 3_600_000 + 1_800_000, v: inches / 24 }));
+  const log = forecastLog([], '2026-11-26', start + 3_600_000, { nws: hours(4), gem_seamless: hours(12) });
+  assert.deepEqual(log.map((e) => [e.date, e.lead, e.by.nws, e.by.gem_seamless]), [['2026-11-26', 1, 4, 12], ['2026-11-27', 2, 4, 12], ['2026-11-28', 3, 4, 12]]);
+  assert.equal(forecastLog(log, '2026-11-26', start + 7_200_000, { nws: hours(9) })[0].by.nws, 4); // (the first reading stands)
+  const resorts = Array.from({ length: SKILL_MIN }, () => ({ forecastLog: log, snowLog: [{ date: '2026-11-26', snow: 5 }] }));
+  const skill = forecastSkill(resorts);
+  assert.deepEqual(skill[1].nws, { n: SKILL_MIN, mae: 1, bias: -1 });
+  assert.deepEqual(skill[1].gem_seamless, { n: SKILL_MIN, mae: 7, bias: 7 });
+  const w = skillWeights(skill, 1);
+  assert.ok(w.nws > w.gem_seamless * 4);
+  assert.equal(weightedMiddle([{ v: 4, w: w.nws }, { v: 12, w: w.gem_seamless }, { v: 8, w: w.ecmwf_ifs025 }]), 4); // (unproven sources: the average weight)
+  assert.equal(skillWeights(forecastSkill(resorts.slice(0, 3)), 1), null); // (not enough yet)
+});
+
 test('modelCorrection: learns how far off the models run at a resort, cautiously', async () => {
   const { modelCorrection } = await import('../src/report.js');
   assert.equal(modelCorrection([]).factor, 1);
   assert.equal(modelCorrection([{ date: 'a', snow: 0, model: 0.2 }, { date: 'b', snow: 0, model: 0 }]).factor, 1); // dry: nothing to judge
   // Wolf Creek, Nov 13–14: 7″ and 5″ reported where the models had 0.1″ and 4.3″.
   const wc = modelCorrection([{ date: 'a', snow: 7, model: 0.1 }, { date: 'b', snow: 5, model: 4.3 }]);
-  assert.ok(wc.factor > 1.4 && wc.factor < 1.8, String(wc.factor)); // one storm: a cautious nudge
-  // Lots of evidence, models running double: about ½.
-  assert.equal(modelCorrection([{ date: 'a', snow: 10, model: 20 }, { date: 'b', snow: 10, model: 20 }]).factor, 0.5); // (60″ of evidence: full weight)
+  assert.ok(wc.factor > 1 && wc.factor < 1.15, String(wc.factor)); // one storm: barely a nudge
+  // Vail, Nov 14–21: 18.4″ reported over 3.1″ modeled, four snowy days: a small step up, not ×1.8.
+  const vail = modelCorrection([{ date: 'a', snow: 1, model: 0.2 }, { date: 'b', snow: 2, model: 0.9 }, { date: 'c', snow: 0.8, model: 0.1 }, { date: 'd', snow: 6.7, model: 1.4 }, { date: 'e', snow: 7.9, model: 0.5 }]);
+  assert.ok(vail.factor > 1 && vail.factor <= 1.25, String(vail.factor));
+  // Lots of evidence (8 snowy days, 120″), models running double: 0.6 (the floor).
+  const many = Array.from({ length: 8 }, (_, i) => ({ date: String(i), snow: 5, model: 10 }));
+  assert.equal(modelCorrection(many).factor, 0.6);
 });
 
 test('reportDay: a morning report covers the day before; old reports cover nothing', async () => {

@@ -747,8 +747,21 @@ function pastTotal(r, n, own) {
 // The resort's own 72-hour or 7-day figure while its report is current; with nothing it reported in the
 // span, the models' total for the same hours (to this morning's report time); otherwise its reported
 // days added up, the models' estimate of each report day (7 AM to 7 AM) filling any it didn't report (est.).
+// A resort's own 72-hour or 7-day total, if its day-by-day reports can account for it: with every day
+// reported, about their sum; otherwise no less than the reported days and not wildly more than the
+// estimate of the rest. (Northstar, Nov 26, 2026: "7 days 39.8″" over six reported days of 0″ and one
+// estimated at ~11″, its page corrected to 18″ later the same morning.)
+function ownFits(r, n, own) {
+  const days = pastSnow(r, n);
+  const logged = days.filter((d) => !d.est && d.snow != null);
+  const sum = logged.reduce((a, d) => a + d.snow, 0);
+  const rest = days.filter((d) => d.est || d.snow == null).reduce((a, d) => a + (d.snow ?? 0), 0);
+  if (!logged.length) return true;
+  if (logged.length === n) return Math.abs(own - sum) <= Math.max(2, 0.25 * sum);
+  return own >= sum - 1 && own - sum <= 2.5 * rest + 3;
+}
 function pastSpan(r, n, own) {
-  if (own != null && reportCurrent(r)) return { v: own, est: false };
+  if (own != null && reportCurrent(r) && ownFits(r, n, own)) return { v: own, est: false };
   const today = state.data.today;
   const rolling = n === 3 ? modelPast(r)?.h72 : modelPast(r)?.h168;
   if (rolling != null && !(r.snowLog ?? []).some((e) => e.date >= addDays(today, -n))) return { v: rolling, est: true };
@@ -1052,8 +1065,15 @@ function renderDetail(r) {
   const nameOf = (id) => state.data.resorts.find((x) => x.id === id)?.name ?? id;
   const nameList = (ids) => ids.map(nameOf).join(ids.length > 2 ? ', ' : ' and ').replace(/, ([^,]*)$/, ', and $1');
   if (f?.nearby?.from?.length) notes.push(`Estimates of past days here (marked est.) are scaled by how far off the weather models were at ${esc(nameList(f.nearby.from))} those same days, from their own snow reports (nearby resorts share storms, and the models’ misses; the nearer, the more they count).`);
+  // The sources' record here: their next-day forecasts against what the resorts then reported.
+  const rec = state.data.sources?.skill?.[1];
+  const scored = rec ? Object.entries(rec).filter(([, x]) => x.n >= 5).sort((a, b) => a[1].mae - b[1].mae) : [];
+  if (scored.length >= 2) {
+    const fmt = ([id, x]) => `${esc(SOURCE_NAMES[id] ?? id)} off by ${inches(x.mae).replace('<1″', 'under 1″')}${Math.abs(x.bias) >= 0.5 ? ` (${x.bias > 0 ? 'high' : 'low'})` : ''}`;
+    notes.push(`Track record: next-day forecasts against the ${esc(state.data.stateName ?? 'area')} resorts’ own reports, the last two weeks (${scored[0][1].n} resort-days): ${scored.map(fmt).join(', ')}, on average.${state.data.sources.weighted ? ' The next 3 days lean toward the more accurate ones.' : ''}`);
+  }
   if (f?.correction?.nearby?.length && f.correction.factor !== 1) notes.push(`Model correction: the weather models are scaled ×${f.correction.factor} here, borrowed from ${esc(nameList(f.correction.nearby))} nearby (from their own snow reports against the models), until ${esc(r.name)} reports its own.`);
-  else if (f?.correction?.factor && f.correction.factor !== 1) notes.push(`Model correction: the weather models (not the Weather Service forecast) are scaled ×${f.correction.factor} here, from ${esc(r.name)}’s own snow reports against the models’ estimates over the last ${f.correction.days} days (${inches(f.correction.reported)} reported, ${inches(f.correction.modeled)} modeled); trusted more as more snow falls, and kept between ½ and 3×.`);
+  else if (f?.correction?.factor && f.correction.factor !== 1) notes.push(`Model correction: the weather models (not the Weather Service forecast) are scaled ×${f.correction.factor} here, from ${esc(r.name)}’s own snow reports against the models’ estimates over the last ${f.correction.days} days (${inches(f.correction.reported)} reported, ${inches(f.correction.modeled)} modeled); trusted only as the evidence builds (several snowy days and plenty of snow), kept between 0.6 and 2×, and never applied to NOAA’s Blend, which NOAA corrects itself.`);
   if (f?.week2?.runs) notes.push(`Days 4–14 also draw on ${f.week2.runs} ensemble runs (European, American and Canadian models, each run many times from slightly different starts; ${sourceLink('https://open-meteo.com/en/docs/ensemble-api', 'Open-Meteo')}): days 4–7 average their middle with the forecasts above, days 8–14 are their middle alone, the range the middle half of the runs.`);
   if (f?.days.some((d) => d.uv != null)) notes.push(`UV index: each day’s peak, from ${sourceLink('https://open-meteo.com', 'Open-Meteo')}. At ski-area elevations, with snow reflecting it back, sunburn comes fast even on cold days.`);
   if (f) notes.push(`Weather: ${sourceLink(`https://forecast.weather.gov/MapClick.php?lat=${r.at[0]}&lon=${r.at[1]}`, 'National Weather Service forecast')}.`);
@@ -2442,8 +2462,9 @@ function startMap() {
       return [...buttons, [b.left - 4, b.top - 4, b.left + INSET_W + 4, b.top + INSET_H + 4]];
     },
     // Aspen's four dots nearly touch: Snowmass and Buttermilk (the upper of the pair) to the left,
-    // Aspen Mountain to the right, Highlands (the lower one) below.
-    labelSides: { snowmass: 'W', buttermilk: 'W', 'aspen-mountain': 'E', 'aspen-highlands': 'S' },
+    // Aspen Mountain to the right, Highlands (the lower one) below. A-Basin, Keystone and Breck stacked
+    // to the right in that order, as their dots run north to south.
+    labelSides: { snowmass: 'W', buttermilk: 'W', 'aspen-mountain': 'E', 'aspen-highlands': 'S', 'arapahoe-basin': 'E', keystone: 'E', breckenridge: 'E' },
   });
   if (useInset) {
     insetEl = document.createElement('div');

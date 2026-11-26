@@ -1020,9 +1020,9 @@ export function createSnowMap(el, { resorts, onSelect, getPadding, extend, place
         // neighbors costs extra (the cartographer's rule: Keystone, on the cluster's east side, labels
         // east; Copper, west).
         const out = it.away ? Math.max(0, -(s[0] * it.away[0] + s[1] * it.away[1]) / (Math.hypot(s[0], s[1]) || 1)) : 0;
-        // (A preferred side, labelSides: worth a fair bit more line.)
+        // (A preferred side, labelSides: kept unless there's no room there at all.)
         const side = Math.abs(s[1]) > Math.abs(s[0]) * 0.6 ? (s[1] < 0 ? 'N' : 'S') : s[0] > 0 ? 'E' : 'W';
-        const sided = labelSides[it.r.id] && labelSides[it.r.id] !== side ? 1500 : 0;
+        const sided = labelSides[it.r.id] && labelSides[it.r.id] !== side ? 20000 : 0;
         const long = Math.max(0, lead.len - 25); // (past ~20 px of visible line, length costs much more)
         // (The area the label and its line cover: a quick first check for clashes.)
         const ext = tail ? [Math.min(box[0], tail.seg[2]), Math.min(box[1], tail.seg[3]), Math.max(box[2], tail.seg[2]), Math.max(box[3], tail.seg[3])] : box;

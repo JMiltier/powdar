@@ -10,7 +10,7 @@ export const MODELS = [
   { id: 'ecmwf_ifs025', label: 'European (ECMWF)' },
   { id: 'gfs_seamless', label: 'American (GFS/HRRR)' },
   { id: 'gem_seamless', label: 'Canadian (GEM)' },
-  { id: 'ncep_nbm_conus', label: 'NOAA Blend (NBM)', days: 11 },
+  { id: 'ncep_nbm_conus', label: 'NOAA Blend (NBM)', days: 11, calibrated: true }, // (bias-corrected by NOAA: not scaled by our correction)
   { id: 'ukmo_global_deterministic_10km', label: 'UK Met Office', days: 7 },
 ];
 

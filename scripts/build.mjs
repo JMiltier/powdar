@@ -1,7 +1,7 @@
 // Fetches fresh data and writes public/data.json. Run by the GitHub Action every 30 minutes.
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fetchSnowcast } from '../src/snowcast.js';
-import { buildReport, calibrateNearby, REGIONS as STATE_REGIONS } from '../src/report.js';
+import { buildReport, calibrateNearby, FORECAST_METHOD, REGIONS as STATE_REGIONS } from '../src/report.js';
 import { buildStateReport } from '../src/state-report.js';
 
 const RETRY_AFTER_MS = 45_000;
@@ -32,7 +32,7 @@ async function published(file) {
 }
 const liveCo = (process.env.LIVE_URL || DATA_BRANCH) ? await published('data/co.json') : null;
 // (Not when the saved forecast predates a field the app now reads: then it's fetched fresh.)
-const currentShape = (d) => d?.resorts?.every((r) => !r.forecast || (r.forecast.pastDays && 'hourly' in r.forecast && 'past' in r.forecast))
+const currentShape = (d) => d?.resorts?.every((r) => !r.forecast || (r.forecast.pastDays && 'hourly' in r.forecast && 'past' in r.forecast && r.forecast.method === FORECAST_METHOD))
   && d.resorts.some((r) => r.forecast?.days?.some((x) => x.detail || x.nightDetail))
   // Ensembles there, or tried within the hour (so a failing ensemble service doesn't mean refetching
   // every model on every run).
@@ -62,7 +62,7 @@ if (!modelsOk(report) && liveCo) {
     const age = Date.now() - Date.parse(live.sources?.modelsAt ?? 0);
     if (age < REUSE_FOR_MS) {
       const old = new Map(live.resorts.map((r) => [r.id, r.forecast]));
-      for (const r of report.resorts) if (old.get(r.id)?.sources?.length > 1) r.forecast = old.get(r.id);
+      for (const r of report.resorts) if (old.get(r.id)?.sources?.length > 1 && old.get(r.id)?.method === FORECAST_METHOD) r.forecast = old.get(r.id);
       report.sources.modelsAt = live.sources.modelsAt;
       report.sources.modelsReused = true;
       console.log(`Reusing the published model forecast from ${Math.round(age / 60_000)} min ago.`);
@@ -117,7 +117,7 @@ async function buildArea(code) {
     const prev = await published(file);
     const age = Date.now() - Date.parse(prev?.sources?.modelsAt ?? 0);
     // (Forecasts from before the hour-by-hour estimate and report-time past totals were added are refetched.)
-    const skip = Boolean(prev && age < 2 * 3_600_000 && prev.resorts?.every((r) => !r.forecast || ('hourly' in r.forecast && 'past' in r.forecast)));
+    const skip = Boolean(prev && age < 2 * 3_600_000 && prev.resorts?.every((r) => !r.forecast || ('hourly' in r.forecast && 'past' in r.forecast && r.forecast.method === FORECAST_METHOD)));
     const rep = await buildReport({
       region: R, log: (msg) => console.warn(`${R.name}: ${msg}`), skipModels: skip,
       prevLifts: Object.fromEntries((prev?.resorts ?? []).filter((r) => r.lifts).map((r) => [r.id, r.lifts])),
@@ -126,7 +126,7 @@ async function buildArea(code) {
     });
     if ((skip || !Object.values(rep.sources.models ?? {}).some(Boolean)) && prev && age < 12 * 3_600_000) {
       const old = new Map(prev.resorts.map((r) => [r.id, r.forecast]));
-      for (const r of rep.resorts) if (old.get(r.id)?.sources?.length > 1) r.forecast = old.get(r.id);
+      for (const r of rep.resorts) if (old.get(r.id)?.sources?.length > 1 && old.get(r.id)?.method === FORECAST_METHOD) r.forecast = old.get(r.id);
       rep.sources.modelsAt = prev.sources.modelsAt;
       rep.sources.modelsReused = true;
     }

@@ -45,6 +45,8 @@ const localHour = (ms) => Number(new Intl.DateTimeFormat('en-US', { timeZone: TZ
 // (src/report.js reportDay puts a morning report on the day before). The latest such 7 AM, at or
 // before `ms`: the estimates are reckoned to it too, so every number on the map covers the same hours.
 export const REPORT_HOUR = 7;
+// How forecasts are made: published ones made another way are remade, not reused (scripts/build.mjs).
+export const FORECAST_METHOD = 2; // 2: the cautious correction, NOAA's Blend unscaled, the scorecard's weights
 export function reportAnchor(ms) {
   let t = Math.floor(ms / 3_600_000) * 3_600_000;
   for (let i = 0; i < 26 && localHour(t) !== REPORT_HOUR; i++) t -= 3_600_000;
@@ -104,6 +106,14 @@ function nwsTemps(props, dates) {
 
 // The middle value and a likely range across forecasts. With five sources the range skips the
 // single highest and lowest, so one wild model can't stretch it.
+// The weighted middle: values [{ v, w }] → the value where half the weight lies on either side.
+export function weightedMiddle(values) {
+  const s = values.filter((x) => x.w > 0).sort((a, b) => a.v - b.v);
+  const total = s.reduce((a, x) => a + x.w, 0);
+  let run = 0;
+  for (const x of s) { run += x.w; if (run >= total / 2) return round1(x.v); }
+  return null;
+}
 export function spread(values) {
   const s = [...values].sort((a, b) => a - b);
   const n = s.length;
@@ -183,7 +193,7 @@ export function surfaceWeather(locs, today) {
 // week2, runs }), see src/ensemble.js. Days 1–3 stay with the single runs and the Weather Service
 // (strongest up close); days 4–7 average their consensus with the ensembles' middle; days 8–14 come
 // from the ensembles alone.
-export function blendForecast({ sources, nws, periods, ens = null }, now) {
+export function blendForecast({ sources, nws, periods, ens = null, weights = null }, now) {
   const today = localDate(now);
   const dates = Array.from({ length: OUTLOOK_DAYS }, (_, i) => addDays(today, i));
   // (A week back: the −7d view and a resort's "last 7 days" bars, the models' estimate filling any day
@@ -228,6 +238,13 @@ export function blendForecast({ sources, nws, periods, ens = null }, now) {
   });
 
   const pick = (filter, value) => spread(per.filter(filter).map(value));
+  // (Days 1–3 lean toward the sources with the better record here, when there's one: weights[0–2].)
+  const picked = (filter, value, w) => {
+    const s = pick(filter, value);
+    if (!s || !w) return s;
+    const mid = weightedMiddle(per.filter(filter).map((p) => ({ v: value(p), w: w[p.id] })));
+    return mid == null ? s : { ...s, mid };
+  };
   const reach = (i) => (p) => covers(p.lastT, dates[i]);
   const sumDays = (p, from, to) => dates.slice(from, to + 1).reduce((a, d) => a + p.snow.get(d), 0);
 
@@ -235,12 +252,12 @@ export function blendForecast({ sources, nws, periods, ens = null }, now) {
   const sky = nwsDaily(periods);
   const ensOn = (date) => ens?.days?.find((d) => d.date === date) ?? null;
   const days = dates.slice(0, FORECAST_DAYS).map((date, i) => {
-    let s = pick(reach(i), (p) => p.snow.get(date)) ?? spread(per.map((p) => p.snow.get(date)));
+    let s = picked(reach(i), (p) => p.snow.get(date), weights?.[i]) ?? spread(per.map((p) => p.snow.get(date)));
     const e = i >= 3 ? ensOn(date) : null;
     if (e) s = { mid: round1((s.mid + e.mid) / 2), lo: round1(Math.min(s.lo, e.lo)), hi: round1(Math.max(s.hi, e.hi)) };
     return { date, snow: s.mid, snowLo: s.lo, snowHi: s.hi, ...temps.get(date), ...sky.get(date) };
   });
-  const n72 = pick((p) => p.lastT >= nowMs + 66 * HOUR, (p) => p.next72) ?? spread(per.map((p) => p.next72));
+  const n72 = picked((p) => p.lastT >= nowMs + 66 * HOUR, (p) => p.next72, weights?.[3] ?? null) ?? spread(per.map((p) => p.next72));
   let n7 = pick(reach(FORECAST_DAYS - 1), (p) => sumDays(p, 0, FORECAST_DAYS - 1)) ?? spread(per.map((p) => sumDays(p, 0, FORECAST_DAYS - 1)));
   // With ensembles: the week is the days above added up (so it matches them), the range taking in both.
   if (ens?.next7 && days.slice(3).every((d) => ensOn(d.date))) {
@@ -420,16 +437,19 @@ export function newerSnow(mp) {
 // breaks that order is a field the resort left behind (Deer Valley, Nov 23, 2026: 6″ in 72 hours, 0″
 // in 7 days) and is dropped. And a closed resort's report of nothing but zeros, season included, is a
 // placeholder, not a measurement (Big Bear's before opening; Kirkwood's): no report, so the estimate stands.
-// The numbers first read for a posting time stand until the resort posts again: a page that rolls its
-// figures over by itself (Keystone's, at midnight Nov 23–24, 2026: 24 hours to 0″ under the morning's
-// time, which read as "0″ Sunday, 5.9″ Saturday") isn't a new report.
+// Once the day has turned, a report's numbers stand as they were until the resort posts again: a page
+// that rolls its figures over by itself at midnight (Keystone's, Nov 23–24, 2026: 24 hours to 0″
+// under the morning's time, which read as "0″ Sunday, 5.9″ Saturday") isn't a new report. The same
+// day, a change under the same time is the resort correcting itself, and stands (Northstar, Nov 26:
+// 7 days 39.8″, then 18″, both "6:28 AM").
 // And one older than the report already held never replaces it (Vail's site serves cached copies:
 // Keystone's page gave Tuesday's 6 AM report, then Monday's again, minutes apart).
-export function sameReport(report, prev) {
+export function sameReport(report, prev, now = new Date()) {
   if (!report?.updated || !prev?.updated) return report;
   const at = isoMs(report.updated);
   const before = isoMs(prev.updated);
   if (!Number.isFinite(at) || !Number.isFinite(before) || at > before) return report;
+  if (at === before && localDate(new Date(now)) === localDate(new Date(at))) return report;
   const out = { ...report };
   for (const k of ['new24', 'new48', 'new72', 'new7d', 'depth', 'seasonTotal']) if (prev[k] != null) out[k] = prev[k];
   out.updated = prev.updated;
@@ -558,9 +578,12 @@ export function snowLog(prev, today, report, modelPast = {}, { open = true, open
 }
 
 // How far off the weather models have been at a resort, from its own snow reports over the last two
-// weeks: reported ÷ modeled (each +1″, so a dry spell doesn't make wild ratios), capped at ½–3×, and
-// only partly trusted until there's plenty of snow to judge by (full weight from about 40″ reported
-// plus modeled: one storm is a hint, a few make a pattern). → { factor, reported, modeled, days } (factor 1 = no change).
+// weeks: reported ÷ modeled (each +1″, so a dry spell doesn't make wild ratios), kept within 0.6–2×,
+// and trusted only as the evidence builds: by how many snowy days it rests on (full at 8) and how much
+// snow (full at 60″ reported plus modeled). One storm is a hint, not a pattern: Colorado, Nov 17–23,
+// 2026, the models a third of what Vail measured, and a ×1.8 learned from that storm alone had its
+// next forecast at 13″ where the Weather Service and the models' own middle said 4–8″.
+// → { factor, reported, modeled, days } (factor 1 = no change).
 // (A day the resort logged 0″ while the models saw half a foot or more is a resort not measuring yet,
 // not a model gone wrong: it doesn't count.)
 export function modelCorrection(log) {
@@ -568,9 +591,62 @@ export function modelCorrection(log) {
   const reported = both.reduce((a, e) => a + e.snow, 0);
   const modeled = both.reduce((a, e) => a + e.model, 0);
   if (both.length < 2 || reported + modeled < 2) return { factor: 1, reported, modeled, days: both.length };
-  const ratio = Math.min(3, Math.max(0.5, (reported + 1) / (modeled + 1)));
-  const weight = Math.min(1, (reported + modeled) / 40);
+  const ratio = Math.min(2, Math.max(0.6, (reported + 1) / (modeled + 1)));
+  const snowy = both.filter((e) => e.snow >= 1 || e.model >= 1).length;
+  const weight = Math.min(1, snowy / 8) * Math.min(1, (reported + modeled) / 60);
   return { factor: round1(1 + weight * (ratio - 1)), reported: round1(reported), modeled: round1(modeled), days: both.length };
+}
+
+// The forecasts' scorecard. Each morning every source's forecast (unadjusted) for the next three report
+// days (7 AM to 7 AM) is kept, the first reading of each day and lead: { date, lead (1 = the report
+// day just starting, 2 and 3 the ones after), by: { source: inches } }. Two weeks are kept.
+export function forecastLog(prev, today, nowMs, bySource) {
+  const keep = (prev ?? []).filter((e) => e.date >= addDays(today, -14));
+  if (!bySource || !Object.values(bySource).some((h) => h?.length)) return keep;
+  const first = localDate(new Date(nowMs - REPORT_HOUR * HOUR)); // (the report day under way)
+  for (let lead = 1; lead <= 3; lead++) {
+    const date = addDays(first, lead - 1);
+    if (keep.some((e) => e.date === date && e.lead === lead)) continue;
+    const by = {};
+    for (const [id, hours] of Object.entries(bySource)) {
+      if (!hours?.length) continue;
+      const inDay = hours.filter((h) => localDate(new Date(h.t - REPORT_HOUR * HOUR)) === date);
+      if (inDay.length >= 20) by[id] = round1(inDay.reduce((a, h) => a + h.v, 0)); // (a whole day of it)
+    }
+    if (Object.keys(by).length) keep.push({ date, lead, by });
+  }
+  return keep.sort((a, b) => a.date.localeCompare(b.date) || a.lead - b.lead);
+}
+// Each source's record across an area's resorts, from the scorecard against what each resort then
+// reported for those days: → { [lead]: { [source]: { n, mae (inches off, on average), bias (inches
+// over, + , or under, −) } } }.
+export function forecastSkill(resorts) {
+  const acc = {};
+  for (const r of resorts) {
+    const got = new Map((r.snowLog ?? []).map((e) => [e.date, e.snow]));
+    for (const e of r.forecastLog ?? []) {
+      if (!got.has(e.date)) continue;
+      for (const [id, v] of Object.entries(e.by)) {
+        const a = ((acc[e.lead] ??= {})[id] ??= { n: 0, abs: 0, diff: 0 });
+        a.n++; a.abs += Math.abs(v - got.get(e.date)); a.diff += v - got.get(e.date);
+      }
+    }
+  }
+  return Object.fromEntries(Object.entries(acc).map(([lead, by]) => [lead, Object.fromEntries(Object.entries(by)
+    .map(([id, a]) => [id, { n: a.n, mae: round1(a.abs / a.n), bias: round1(a.diff / a.n) }]))]));
+}
+// Blend weights for a lead from the record: nearer-right sources count more (1 / (inches off + ½)),
+// once a source has 20 resort-days behind it; sources without that many count as the average.
+// → { [source]: weight } or null (nothing to go on yet).
+export const SKILL_MIN = 20;
+export function skillWeights(skill, lead) {
+  const by = skill?.[lead];
+  if (!by) return null;
+  const known = Object.entries(by).filter(([, s]) => s.n >= SKILL_MIN);
+  if (known.length < 2) return null;
+  const w = Object.fromEntries(known.map(([id, s]) => [id, 1 / (s.mae + 0.5)]));
+  const mean = Object.values(w).reduce((a, b) => a + b, 0) / known.length;
+  return new Proxy(w, { get: (t, k) => (k in t ? t[k] : mean) });
 }
 
 // Great-circle distance between two [lat, lon] points, in km.
@@ -986,18 +1062,25 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
     const sc = (x) => x && { mid: round1(x.mid * f), lo: round1(x.lo * f), hi: round1(x.hi * f) };
     return { ...e, days: e.days.map((d) => ({ date: d.date, ...sc(d) })), next7: sc(e.next7), week2: sc(e.week2) };
   };
+  // The sources' record in this area so far (the scorecard, against the resorts' reports): weights
+  // for days 1–3 and the next 72 hours, once there's enough of it.
+  const skill = forecastSkill(Object.values(prevResorts));
+  const lw = [1, 2, 3].map((lead) => skillWeights(skill, lead));
+  const weights = lw.some(Boolean) ? [...lw, lw[0] ?? lw[1] ?? lw[2]] : null;
   const forecasts = RESORTS.map((r, i) => {
     const f = corrections[i].factor;
     const out = blendForecast({
+      weights,
       ens: scaleEns(ensemble?.byId?.[r.id] ?? null, f),
       nws: nwsData[i],
       periods: nwsText[i],
       sources: [
         { id: 'nws', hours: nwsSnowHours(nwsData[i]) },
-        ...MODELS.map((m, k) => ({ id: m.id, hours: scaleHours(snowHours(modelData[k]?.[i]), f) })),
+        // (NOAA's Blend is bias-corrected already: not scaled again.)
+        ...MODELS.map((m, k) => ({ id: m.id, hours: m.calibrated ? snowHours(modelData[k]?.[i]) : scaleHours(snowHours(modelData[k]?.[i]), f) })),
       ],
     }, now);
-    if (out) out.correction = corrections[i];
+    if (out) { out.correction = corrections[i]; out.method = FORECAST_METHOD; }
     return out;
   });
   // The models' own (uncorrected) estimate of each past day, for the snow log's comparison.
@@ -1101,7 +1184,7 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
     if (c?.vail || c?.own) Object.assign(facts, { open: inSeason(p.open, season), close: inSeason(p.close, season), when: p.when, opened: p.opened, reopen: p.reopen });
     // A report from a closed resort is usually last season's leftovers.
     // (Vail Resorts' own reports are current even before opening day: keep those.)
-    const report = live && (c.isOpen || c.vail || c.own) ? saneReport(freshSnow(withLiveLifts(sameReport(c.report, prevResorts[r.id]?.report), liftsById[r.id]), now), c.isOpen) : null;
+    const report = live && (c.isOpen || c.vail || c.own) ? saneReport(freshSnow(withLiveLifts(sameReport(c.report, prevResorts[r.id]?.report, now), liftsById[r.id]), now), c.isOpen) : null;
     return {
       id: r.id,
       name: r.name,
@@ -1123,6 +1206,11 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
       // The weather that shapes the snow surface (yesterday, today, tomorrow); the last one when the
       // models weren't fetched this time.
       wx: surfaceWeather(MODELS.map((m, k) => modelData[k]?.[i]), today) ?? (prevResorts[r.id]?.wx?.some((d) => d.date === today) ? prevResorts[r.id].wx : null),
+      // Each source's forecast for the next three report days, for the scorecard (forecastSkill).
+      // (Only where there's a report to score it against.)
+      forecastLog: !live ? [] : forecastLog(prevResorts[r.id]?.forecastLog, today, now.getTime(), skipModels ? null : {
+        nws: nwsSnowHours(nwsData[i]), ...Object.fromEntries(MODELS.map((m, k) => [m.id, snowHours(modelData[k]?.[i])])),
+      }),
       // Runs and lifts open each day (the last 8 days), to see new terrain opening.
       terrainLog: terrainLog(prevResorts[r.id]?.terrainLog, today, report?.trails?.open ?? null, (liftsById[r.id] ?? report?.lifts)?.open ?? null),
       // What the resort reported falling, day by day (see snowLog).
@@ -1162,6 +1250,9 @@ export async function buildReport({ region: R = REGIONS.CO, fetch: fetchFn = fet
       snotel: Object.keys(snowpack).length,
       lifts: liftData.filter(Boolean).length,
       noaa: noaaSnow.filter(Boolean).length,
+      // The forecasts' record here (see forecastSkill), and whether it weighted today's blend.
+      skill: forecastSkill(resorts),
+      weighted: Boolean(weights),
     },
     resorts,
     snowpack,
