@@ -1,5 +1,6 @@
 import { createSnowMap, CREDITS, satTile, SNOW_RAMP, SNOW_COLOR, CAST_AMOUNTS } from './map.js?v=__V__';
 import { weatherIcon, UI } from './icons.js?v=__V__';
+import * as V from './views.js?v=__V__';
 
 // One data file per state (data/co.json, data/ut.json…), plus an index of states for the picker.
 const dataUrl = (code) => `data/${code.toLowerCase()}.json`;
@@ -695,84 +696,15 @@ function rowSub(r) {
 // morning's 24-hour figure for yesterday), otherwise the weather models' estimate (est: true).
 // The last n days' total: the resort's own figure for them (own) when its report is current, else its
 // reported days added up, the models' estimate filling any day it didn't report.
-// This morning's report time: the latest 7 AM in the area's time zone. Resorts' morning reports give the
-// 24 hours to about then, and the models' estimates are reckoned to it too (src/report.js
-// reportAnchor), so every number on the map covers the same hours; what's fallen since is on each
-// resort's page ("+2″ since 7 AM").
-const REPORT_HOUR = 7;
-function reportAnchor(ms = Date.now()) {
-  const hourIn = (t) => Number(new Intl.DateTimeFormat('en-US', { timeZone: areaZone(), hour: 'numeric', hourCycle: 'h23' }).format(new Date(t)));
-  let t = Math.floor(ms / HOUR_MS) * HOUR_MS;
-  for (let i = 0; i < 26 && hourIn(t) !== REPORT_HOUR; i++) t -= HOUR_MS;
-  return t;
-}
-// The models' estimates to this morning's report time: { h24, h72, h168 } (the build gives today's
-// and tomorrow's; the one that matches now), or null.
-function modelPast(r) {
-  // (Adjusted to the neighbors' reports where the build could: src/report.js calibrateNearby.)
-  const list = r.forecast?.nearby?.past?.length ? r.forecast.nearby.past : r.forecast?.past;
-  if (!list?.length) return r.forecast?.past24 != null ? { h24: r.forecast.past24, h72: null, h168: null } : null;
-  const a = reportAnchor();
-  return list.find((p) => Math.abs(p.asOf - a) < HOUR_MS) ?? list[0];
-}
-// A resort's report while it's this morning's (or later): posted since 3 AM on the day of this
-// morning's report time. An older one is the day before's, not the last 24 hours.
-function reportCurrent(r) {
-  const rep = r.report;
-  if (!rep || rep.staleSince) return false;
-  if (!rep.updated) return true; // (Ski Utah's carry no time: its list only shows today's)
-  const t = isoMs(/^\d{4}-\d{2}-\d{2}$/.test(rep.updated) ? `${rep.updated}T14:00:00Z` : rep.updated);
-  return !Number.isFinite(t) || t >= reportAnchor() - 4 * HOUR_MS;
-}
-// The last 24 hours: the resort's current report, otherwise the models' estimate of the same hours (est.).
-function last24(r) {
-  if (reportCurrent(r) && r.report.new24 != null) return { v: r.report.new24, est: false };
-  const m = modelPast(r)?.h24;
-  return { v: m ?? null, est: m != null };
-}
-// The last 3 and 7 days. Each holds the span before it (the last 3 days include the last 24 hours, the
-// week the last 3 days), so they never read less than it: −1d ≤ −3d ≤ −7d.
-function pastTotal(r, n, own) {
-  const inner = n === 3 ? last24(r) : past72(r);
-  let span = pastSpan(r, n, own);
-  // (And within the resort's own current figures: its 3 days at least its 48 hours and at most its 7
-  // days, so a day logged twice can't run past what the resort itself says.)
-  if (n === 3 && span.v != null && reportCurrent(r)) {
-    const { new48, new7d } = r.report;
-    if (new7d != null && span.v > new7d) span = { v: new7d, est: false };
-    if (new48 != null && span.v < new48) span = { v: new48, est: span.est };
-  }
-  return inner.v != null && (span.v == null || inner.v > span.v) ? { v: inner.v, est: inner.est || span.est } : span;
-}
-// The resort's own 72-hour or 7-day figure while its report is current; with nothing it reported in the
-// span, the models' total for the same hours (to this morning's report time); otherwise its reported
-// days added up, the models' estimate of each report day (7 AM to 7 AM) filling any it didn't report (est.).
-// A resort's own 72-hour or 7-day total, if its day-by-day reports can account for it: with every day
-// reported, about their sum; otherwise no less than the reported days and not wildly more than the
-// estimate of the rest. (Northstar, Nov 26, 2026: "7 days 39.8″" over six reported days of 0″ and one
-// estimated at ~11″, its page corrected to 18″ later the same morning.)
-function ownFits(r, n, own) {
-  const days = pastSnow(r, n);
-  const logged = days.filter((d) => !d.est && d.snow != null);
-  const sum = logged.reduce((a, d) => a + d.snow, 0);
-  const rest = days.filter((d) => d.est || d.snow == null).reduce((a, d) => a + (d.snow ?? 0), 0);
-  if (!logged.length) return true;
-  if (logged.length === n) return Math.abs(own - sum) <= Math.max(2, 0.25 * sum);
-  return own >= sum - 1 && own - sum <= 2.5 * rest + 3;
-}
-function pastSpan(r, n, own) {
-  if (own != null && reportCurrent(r) && ownFits(r, n, own)) return { v: own, est: false };
-  const today = state.data.today;
-  const rolling = n === 3 ? modelPast(r)?.h72 : modelPast(r)?.h168;
-  if (rolling != null && !(r.snowLog ?? []).some((e) => e.date >= addDays(today, -n))) return { v: rolling, est: true };
-  // (A report updated this afternoon covers today, so the n days end today; otherwise yesterday.)
-  const days = (r.snowLog ?? []).some((e) => e.date === today) ? [...pastSnow(r, n - 1), pastToday(r)] : pastSnow(r, n);
-  if (days.every((d) => d.snow == null)) return { v: null, est: false };
-  return { v: Math.round(days.reduce((a, d) => a + (d.snow ?? 0), 0) * 10) / 10, est: days.some((d) => d.est || d.snow == null) };
-}
-const past72 = (r) => pastTotal(r, 3, r.report?.new72);
-const past7 = (r) => pastTotal(r, 7, r.report?.new7d);
-const pastToday = (r) => ({ date: state.data.today, snow: r.snowLog.find((e) => e.date === state.data.today).snow, est: false });
+// The past views (−1d, −3d, −7d) come from public/views.js, the same code the build's audit checks
+// (src/audit.js), in this area's context: the data's day, its time zone, now.
+const viewCtx = () => ({ today: state.data.today, tz: areaZone(), now: Date.now() });
+const reportAnchor = () => V.reportAnchor(viewCtx());
+const reportCurrent = (r) => V.reportCurrent(r, viewCtx());
+const last24 = (r) => V.last24(r, viewCtx());
+const pastSnow = (r, n) => V.pastSnow(r, n, viewCtx());
+const past72 = (r) => V.pastTotal(r, 3, viewCtx());
+const past7 = (r) => V.pastTotal(r, 7, viewCtx());
 
 // Snow on the way down now and since the resort's report, from the forecasts' hour-by-hour estimate
 // (the build's, read at this moment, so it holds between updates): a resort's report comes once a
@@ -808,19 +740,6 @@ function snowNowText(r) {
   return [now ? 'snowing now' : '', more ? `+${inches(Math.max(1, Math.round(more.v)))} since ${at}` : ''].filter(Boolean).join(' · ');
 }
 
-function pastSnow(r, n) {
-  const today = state.data.today;
-  // (The build puts each report on the day it covers; see reportDay in src/report.js.)
-  const logged = new Map((r.snowLog ?? []).map((e) => [e.date, e.snow]));
-  const near = r.forecast?.nearby?.days ?? {};
-  const model = new Map((r.forecast?.pastDays ?? []).map((d) => [d.date, near[d.date] ?? d.snow]));
-  return Array.from({ length: n }, (_, i) => {
-    const date = addDays(today, i - n);
-    if (logged.has(date)) return { date, snow: logged.get(date), est: false };
-    const m = model.get(date);
-    return { date, snow: m ?? null, est: m != null };
-  });
-}
 // A resort page's "Last 7 days": a bar per day with its total, the resort's own numbers solid and the
 // models' estimates (where the resort didn't report) lighter and marked.
 function pastStrip(r) {
@@ -2501,7 +2420,7 @@ function startMap() {
 // takes to come round. Only the snow numbers and base, and only where they're newer than the build's.
 const CSC_FEED = 'https://snow.coloradoski.com/view/publicreport-feed';
 // ("…06:54:18.757032-07:00": six digits of seconds, which not every browser reads.)
-const isoMs = (iso) => Date.parse(String(iso ?? '').replace(/(\.\d{3})\d+/, '$1'));
+const isoMs = V.isoMs;
 async function liveCsc(data) {
   if (!data?.resorts?.some((r) => r.csc && r.report)) return false;
   let feed;

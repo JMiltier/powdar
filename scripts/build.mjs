@@ -3,6 +3,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { fetchSnowcast } from '../src/snowcast.js';
 import { buildReport, calibrateNearby, FORECAST_METHOD, REGIONS as STATE_REGIONS } from '../src/report.js';
 import { buildStateReport } from '../src/state-report.js';
+import { auditArea, auditMarkdown } from '../src/audit.js';
+// Every area's data check (src/audit.js), gathered for public/audit.json and the update's summary.
+const findings = [];
 
 const RETRY_AFTER_MS = 45_000;
 const REUSE_FOR_MS = 12 * 3_600_000;
@@ -105,6 +108,7 @@ calibrateNearby(report.resorts); // (after any reused forecast is back: from thi
 await writeFile(new URL('../public/data.json', import.meta.url), JSON.stringify(report)); // older app versions
 await writeFile(new URL('../public/data/co.json', import.meta.url), JSON.stringify(report));
 console.log('Wrote Colorado');
+findings.push(...auditArea(report, liveCo));
 
 // ---------- The other areas: the same pipeline as Colorado (src/report.js REGIONS) ----------
 // (See AREAS in public/app.js.) Their weather models every 2 hours (Colorado's hourly), to stay inside
@@ -132,6 +136,7 @@ async function buildArea(code) {
     }
     calibrateNearby(rep.resorts); // (after any reused forecast is back: from this update's reports)
     await writeFile(new URL(`../public/${file}`, import.meta.url), JSON.stringify(rep));
+    findings.push(...auditArea(rep, prev));
     console.log(`Wrote ${R.name}`);
   } catch (err) {
     console.warn(`${R.name} failed (${err.message}); keeping the last one.`);
@@ -140,6 +145,17 @@ async function buildArea(code) {
   }
 }
 for (const code of Object.keys(STATE_REGIONS).filter((c) => c !== 'CO')) await buildArea(code);
+
+// The data check: public/audit.json (read by scripts/audit-issue.mjs, which raises or closes the alert
+// issue), the update's summary on GitHub, and the log.
+{
+  const at = new Date().toISOString();
+  const count = (level) => findings.filter((f) => f.level === level).length;
+  await writeFile(new URL('../public/audit.json', import.meta.url), JSON.stringify({ at, errors: count('error'), warnings: count('warn'), notes: count('info'), findings }, null, 1));
+  const md = auditMarkdown(findings, at);
+  console.log(md);
+  if (process.env.GITHUB_STEP_SUMMARY) await writeFile(process.env.GITHUB_STEP_SUMMARY, `${md}\n`, { flag: 'a' });
+}
 
 // The snow forecast's chance areas (src/snowcast.js); the last published copy if WPC is unreachable.
 try {

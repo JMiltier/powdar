@@ -90,3 +90,21 @@ npx wrangler secret put GITHUB_TOKEN  # fine-grained token: JMiltier/powdar only
 npx wrangler deploy
 npx wrangler tail                     # watch it: "data 14 min old: update started"
 ```
+
+## Data check
+
+Every update checks what the app will show (`src/audit.js`, using `public/views.js`, the same code the
+app runs) and writes `public/audit.json`:
+
+- **Errors:** a rule broken: −1d ≤ −3d ≤ −7d, or a forecast outside every source it blends.
+- **Warnings:** very likely wrong data: a resort's days not adding up to its own 48-hour or 7-day totals;
+  far out of line with nearby resorts; a big change between updates with no new report or forecast run.
+- **Notes:** a report gone stale, a large model correction.
+
+Errors and warnings open (or update) an issue labeled "data check" (`scripts/audit-issue.mjs`), so
+they're emailed; it closes itself once everything passes.
+
+Before shipping a change that touches the numbers: `npm run build` with `LIVE_URL` set, then
+`node scripts/diff.mjs` lists every number on the map that would change, biggest first.
+The maintainer's Mac keeps hourly copies of the published data for a week and daily ones for four
+months (`~/Library/Application Support/Powdar/archive`), for checking a change against what was shown.

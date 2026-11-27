@@ -20,6 +20,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  issues: write # (the data check's alert issue: scripts/audit-issue.mjs)
 
 concurrency:
   group: pages
@@ -44,6 +45,11 @@ jobs:
           ALL_STATES: ${{ inputs.all_states && '1' || '' }}
           # Forecasts the maintainer's Mac mini fetched, for when GitHub can't reach the weather models.
           DATA_BRANCH_URL: https://raw.githubusercontent.com/${{ github.repository }}/data/
+      # The data check (src/audit.js): errors and warnings raise an issue (emailed); it closes once clean.
+      - run: node scripts/audit-issue.mjs
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
       # Stamp file URLs with this commit so phones and installed apps load fresh code after each change.
       - run: sed -i "s/__V__/${GITHUB_SHA::8}/g" public/index.html public/app.js
       - uses: actions/upload-pages-artifact@v3

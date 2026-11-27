@@ -316,6 +316,9 @@ export function blendForecast({ sources, nws, periods, ens = null, weights = nul
     hourly,
     past24: p24?.mid ?? null,
     past,
+    // Each source's own next 72 hours (as blended: the models with this resort's correction), for the
+    // audit's check that the blend stays within them (src/audit.js) and the resort page.
+    next72By: Object.fromEntries(per.filter((p) => p.lastT >= nowMs + 66 * HOUR).map((p) => [p.id, round1(p.next72)])),
     pastDays,
     past24Range: p24 ? [p24.lo, p24.hi] : null,
     next72: n72.mid,
@@ -557,13 +560,16 @@ export function snowLog(prev, today, report, modelPast = {}, { open = true, open
     const late = lateUpdate(report.updated);
     if (!late || !log.has(day)) set(day, report.new24);
     if (!late && report.new48 != null && report.new48 >= report.new24) {
-      // (Unless it would make the week more than the resort's own 7-day total: its 48 hours then
-      // repeat a day already counted, and what was logged stands.)
+      // (Where the resort gives a 7-day total, that's the referee: a correction stands only if it brings
+      // the week nearer that total, not further from it. Vail's pages' 48 hours have contradicted their
+      // own 24 hours and 7 days: Beaver Creek's fixed a doubled day, Nov 23, 2026; Keystone's would have
+      // doubled one, Nov 24; Breckenridge's wiped a 2″ day its 7-day total still counted, Nov 25.)
       const week = () => [...log.values()].filter((e) => e.date > addDays(day, -7) && e.date <= day).reduce((a, e) => a + e.snow, 0);
       const correct = (date, v) => {
         const before = log.get(date) ? { ...log.get(date) } : null;
+        const off = report.new7d != null ? Math.abs(week() - report.new7d) : 0;
         set(date, v);
-        if (report.new7d != null && week() > report.new7d + 1) {
+        if (report.new7d != null && Math.abs(week() - report.new7d) > off + 0.3) {
           if (before) log.set(date, before);
           else log.delete(date);
         }
@@ -772,7 +778,7 @@ export const REGIONS = {
     offices: OFFICES, alertArea: 'CO', wolfCreek: true,
     // One-time repairs from a resort's own report, where a page fault had logged it wrong (Keystone's
     // midnight rollover, Nov 24, 2026; its Monday report said Sunday 2.8″, Saturday 3.1″).
-    logFixes: { keystone: { '2026-11-21': 3.1, '2026-11-22': 2.8 } },
+    logFixes: { keystone: { '2026-11-21': 3.1, '2026-11-22': 2.8 }, breckenridge: { '2026-11-23': 2 } }, // (Breck: its Nov 24 report)
     // Their own snow reports too (Alterra's, on MtnPowder): they often update after posting to
     // Colorado Ski Country in the morning (A-Basin, Nov 21: 0″ at 6 AM there, 3″ at noon on its own).
     mtnpowder: { 'arapahoe-basin': 93, steamboat: 6, 'winter-park': 5 },
